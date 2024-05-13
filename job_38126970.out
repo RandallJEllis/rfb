@@ -1,0 +1,51 @@
+Running job number  575
+Start  575
+End  576
+outcome: 132224-0.0
+Number of features: 5
+0 Current Time = 02:44:01
+10 Current Time = 02:44:52
+20 Current Time = 02:45:42
+30 Current Time = 02:46:31
+40 Current Time = 02:47:23
+50 Current Time = 02:48:13
+60 Current Time = 02:49:05
+70 Current Time = 02:49:57
+80 Current Time = 02:50:47
+90 Current Time = 02:51:37
+Number of features: 50
+0 Current Time = 02:52:27
+10 Current Time = 02:55:31
+20 Current Time = 02:58:43
+30 Current Time = 03:01:48
+40 Current Time = 03:05:02
+50 Current Time = 03:08:11
+60 Current Time = 03:11:23
+70 Current Time = 03:14:26
+80 Current Time = 03:17:31
+90 Current Time = 03:20:39
+Number of features: 100
+0 Current Time = 03:23:48
+10 Current Time = 03:29:54
+20 Current Time = 03:35:46
+30 Current Time = 03:41:51
+40 Current Time = 03:47:51
+50 Current Time = 03:53:46
+60 Current Time = 03:59:34
+70 Current Time = 04:05:26
+80 Current Time = 04:11:31
+90 Current Time = 04:17:20
+Number of features: 500
+0 Current Time = 04:23:07
+10 Current Time = 04:51:51
+20 Current Time = 05:17:30
+30 Current Time = 05:42:32
+40 Current Time = 06:07:56
+50 Current Time = 06:32:49
+60 Current Time = 06:57:03
+70 Current Time = 07:21:07
+80 Current Time = 07:44:49
+90 Current Time = 08:08:32
+Number of features: 1000
+0 Current Time = 08:32:32
+10 Current Time = 09:21:30

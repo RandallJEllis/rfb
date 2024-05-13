@@ -1,0 +1,51 @@
+Running job number  161
+Start  161
+End  162
+outcome: 131092-0.0
+Number of features: 5
+0 Current Time = 23:12:45
+10 Current Time = 23:13:20
+20 Current Time = 23:13:54
+30 Current Time = 23:14:27
+40 Current Time = 23:15:01
+50 Current Time = 23:15:35
+60 Current Time = 23:16:07
+70 Current Time = 23:16:41
+80 Current Time = 23:17:16
+90 Current Time = 23:17:49
+Number of features: 50
+0 Current Time = 23:18:23
+10 Current Time = 23:20:40
+20 Current Time = 23:22:51
+30 Current Time = 23:25:03
+40 Current Time = 23:27:15
+50 Current Time = 23:29:30
+60 Current Time = 23:31:39
+70 Current Time = 23:33:53
+80 Current Time = 23:36:07
+90 Current Time = 23:38:20
+Number of features: 100
+0 Current Time = 23:40:30
+10 Current Time = 23:45:05
+20 Current Time = 23:49:42
+30 Current Time = 23:54:00
+40 Current Time = 23:58:23
+50 Current Time = 00:02:57
+60 Current Time = 00:07:36
+70 Current Time = 00:12:12
+80 Current Time = 00:16:52
+90 Current Time = 00:21:29
+Number of features: 500
+0 Current Time = 00:26:02
+10 Current Time = 00:50:24
+20 Current Time = 01:13:53
+30 Current Time = 01:36:41
+40 Current Time = 01:59:12
+50 Current Time = 02:22:53
+60 Current Time = 02:45:04
+70 Current Time = 03:08:47
+80 Current Time = 03:31:18
+90 Current Time = 03:52:21
+Number of features: 1000
+0 Current Time = 04:13:31
+10 Current Time = 04:57:20

@@ -1,0 +1,51 @@
+Running job number  360
+Start  360
+End  361
+outcome: 131624-0.0
+Number of features: 5
+0 Current Time = 02:10:02
+10 Current Time = 02:10:40
+20 Current Time = 02:11:16
+30 Current Time = 02:11:52
+40 Current Time = 02:12:26
+50 Current Time = 02:13:01
+60 Current Time = 02:13:36
+70 Current Time = 02:14:11
+80 Current Time = 02:14:46
+90 Current Time = 02:15:19
+Number of features: 50
+0 Current Time = 02:15:52
+10 Current Time = 02:18:07
+20 Current Time = 02:20:24
+30 Current Time = 02:22:39
+40 Current Time = 02:24:54
+50 Current Time = 02:27:11
+60 Current Time = 02:29:27
+70 Current Time = 02:31:43
+80 Current Time = 02:33:59
+90 Current Time = 02:36:15
+Number of features: 100
+0 Current Time = 02:38:28
+10 Current Time = 02:44:32
+20 Current Time = 02:50:30
+30 Current Time = 02:56:23
+40 Current Time = 03:02:21
+50 Current Time = 03:08:00
+60 Current Time = 03:13:17
+70 Current Time = 03:18:39
+80 Current Time = 03:23:59
+90 Current Time = 03:29:43
+Number of features: 500
+0 Current Time = 03:35:26
+10 Current Time = 04:09:50
+20 Current Time = 04:46:22
+30 Current Time = 05:22:49
+40 Current Time = 05:59:10
+50 Current Time = 06:30:51
+60 Current Time = 06:54:20
+70 Current Time = 07:18:07
+80 Current Time = 07:42:02
+90 Current Time = 08:05:47
+Number of features: 1000
+0 Current Time = 08:29:28
+10 Current Time = 09:19:24

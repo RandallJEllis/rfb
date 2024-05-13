@@ -1,0 +1,196 @@
+import argparse
+import pandas as pd
+import math
+import numpy as np
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import confusion_matrix, roc_auc_score, precision_recall_fscore_support, accuracy_score, balanced_accuracy_score
+import sys
+from datetime import datetime
+
+
+def main():
+    df = pd.read_parquet('../tidy_data/proteomics_first_occurrences.parquet')
+    proteins = pd.read_csv('../tidy_data/protein_colnames.txt', header=None)
+    proteins = proteins[0].tolist()
+    outcomes = pd.read_csv('../tidy_data/outcome_colnames.txt', header=None)
+    outcomes = outcomes[0].tolist()
+    demo = ['21003-0.0', '21003-0.0_squared', '31-0.0', '53-0.0', '54-0.0',]
+
+    # Create the argument parser
+    parser = argparse.ArgumentParser(description='Random feature baselines pipeline with parallelization')
+
+    # Add arguments
+    # parser.add_argument('njobs', type=str, help='Number of cores')
+    parser.add_argument('--task_id', type=int, help='Task ID (i.e., njobs / number of outcomes per job)')
+
+    # Parse the arguments
+    args = parser.parse_args()
+
+    njobs = 200
+    task_id = args.task_id
+
+    print('Running job number ', task_id)
+
+    # set start and end indices
+    chunk_size = 1
+    start = (chunk_size * (task_id))
+    end = chunk_size * (task_id+1)
+    if start > len(outcomes):
+        sys.exit('start index is greater than length of predictor vector')
+    if end > len(outcomes):
+        end = len(outcomes)
+    print('Start ', start)
+    print('End ', end)
+
+    # process date column
+    df['53-0.0'] = (df['53-0.0'] - min(df['53-0.0']))
+    df['53-0.0'] = df['53-0.0'].apply(lambda x: x.days)
+
+    # process sex and site columns
+    enc = OneHotEncoder()
+    enc.fit(df.loc[:, ['31-0.0', '54-0.0']])
+    categ_enc = pd.DataFrame(enc.transform(df.loc[:, ['31-0.0', '54-0.0']]).toarray(), columns=enc.get_feature_names_out(['31-0.0', '54-0.0']))
+    df = df.drop(columns=['31-0.0', '54-0.0'])
+    df = df.join(categ_enc)
+
+    '''
+    Iterate over outcomes
+    create labels
+    subset df to take all proteins, all demo variables, and outcome
+    Iterate over 10 80% train/20% test splits, stratifying by label
+    Iterate over number of features [5, 50, 100, 500, 1000, all], do 100 rounds of
+    features except when doing all features choose proteins
+    fit HistGradientBoostingClassifier, calculate AUROC, accuracy,
+    balanced accuracy, precision, recall, F1
+    Store confusion matrix, metrics, number of features, which train/test split
+    '''
+
+    # store results
+    nfeats_l = []
+    proteins_l = []
+    outcome_l = []
+    iter_l = []
+    fold_l = []
+    tn_l = []
+    fp_l = []
+    fn_l = []
+    tp_l = []
+    auroc_l = []
+    accuracy_l = []
+    balanced_accuracy_l = []
+    prec_n = []
+    prec_p = []
+    rec_n = []
+    rec_p = []
+    f1_n = []
+    f1_p = []
+
+    # remove non-encoded sex and site 
+    demo_nosite_nosex = [x for x in demo if x not in ['31-0.0', '54-0.0']]
+    outcome_subset = outcomes[start:end]
+    for i, oc in zip(list(range(start, end)), outcome_subset):
+        print('outcome:', oc)
+        df['label'] = df[oc].notna().astype(int)
+        df_sub = df.loc[:, proteins + demo_nosite_nosex + ['label']]
+
+        y = df_sub.label
+        X_start = df_sub.drop(columns=['label']) 
+
+        for nfeat in [5, 50, 100, 500, 1000, len(proteins)]:
+            print('Number of features:', nfeat)
+            if nfeat < len(proteins):
+                for i in range(100):
+                    if i % 10 == 0:
+                        now = datetime.now()
+                        current_time = now.strftime("%H:%M:%S")
+                        print(i, "Current Time =", current_time)
+
+                    np.random.seed(seed=i)
+                    p = np.random.choice(proteins, size=nfeat, replace=False)
+                    p_drop = set(proteins).difference(set(p))
+                    X = X_start.drop(columns=p_drop)
+                    skf = StratifiedKFold(n_splits=10)
+                    for j, (train_index, test_index) in enumerate(skf.split(X, y)):
+                        clf = HistGradientBoostingClassifier(class_weight='balanced').fit(X.iloc[train_index], y[train_index])
+
+                        test_pred = clf.predict(X.iloc[test_index])
+                        tn, fp, fn, tp = confusion_matrix(y[test_index], test_pred).ravel()                
+                        auroc = roc_auc_score(y[test_index],
+                                            clf.predict_proba(X.iloc[test_index])[:, 1])
+                        acc = accuracy_score(y[test_index], test_pred)
+                        bal_acc = balanced_accuracy_score(y[test_index], test_pred)
+                        prfs = precision_recall_fscore_support(y[test_index],
+                                                            test_pred)
+                        nfeats_l.append(nfeat)
+                        proteins_l.append(p)
+                        outcome_l.append(oc)
+                        iter_l.append(i)
+                        fold_l.append(j)
+                        tn_l.append(tn)
+                        fp_l.append(fp)
+                        fn_l.append(fn)
+                        tp_l.append(tp)
+                        auroc_l.append(auroc)
+                        accuracy_l.append(acc)
+                        balanced_accuracy_l.append(bal_acc)
+                        prec_n.append(prfs[0][0])
+                        prec_p.append(prfs[0][1])
+                        rec_n.append(prfs[1][0])
+                        rec_p.append(prfs[1][1])
+                        f1_n.append(prfs[2][0])
+                        f1_p.append(prfs[2][1])
+            else:
+                np.random.seed(seed=0)
+                X = X_start
+                skf = StratifiedKFold(n_splits=10)
+                for j, (train_index, test_index) in enumerate(skf.split(X, y)):
+                    clf = HistGradientBoostingClassifier(class_weight='balanced').fit(X.iloc[train_index], y[train_index])
+
+                    test_pred = clf.predict(X.iloc[test_index])
+                    tn, fp, fn, tp = confusion_matrix(y[test_index], test_pred).ravel()                
+                    auroc = roc_auc_score(y[test_index],
+                                        clf.predict_proba(X.iloc[test_index])[:, 1])
+                    acc = accuracy_score(y[test_index], test_pred)
+                    bal_acc = balanced_accuracy_score(y[test_index], test_pred)
+                    prfs = precision_recall_fscore_support(y[test_index],
+                                                        test_pred)
+                    nfeats_l.append(nfeat)
+                    proteins_l.append(p)
+                    outcome_l.append(oc)
+                    iter_l.append(i)
+                    fold_l.append(j)
+                    tn_l.append(tn)
+                    fp_l.append(fp)
+                    fn_l.append(fn)
+                    tp_l.append(tp)
+                    auroc_l.append(auroc)
+                    accuracy_l.append(acc)
+                    balanced_accuracy_l.append(bal_acc)
+                    prec_n.append(prfs[0][0])
+                    prec_p.append(prfs[0][1])
+                    rec_n.append(prfs[1][0])
+                    rec_p.append(prfs[1][1])
+                    f1_n.append(prfs[2][0])
+                    f1_p.append(prfs[2][1])
+
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    print("Analyses complete. Current Time =", current_time)
+    data = {'n_features': nfeats_l, 'proteins': proteins_l, 'outcome': outcome_l,
+            'iteration': iter_l, 'cv_fold': fold_l, 'TN': tn_l, 'FP': fp_l,
+            'FN': fn_l, 'TP': tp_l, 'AUROC': auroc_l, 'accuracy': accuracy_l,
+            'balanced_acc': balanced_accuracy_l, 'prec_neg': prec_n,
+            'prec_pos': prec_p, 'rec_neg': rec_n, 'rec_pos': rec_p,
+            'f1_neg': f1_n, 'f1_pos': f1_p}
+    results = pd.DataFrame(data)
+    results.to_parquet(f'../tidy_data/results_{task_id}.parquet')
+
+    now = datetime.now()
+    current_time = now.strftime("%H:%M:%S")
+    print("Results saved. All done. Current Time =", current_time)
+
+
+if __name__ == '__main__':
+    main()

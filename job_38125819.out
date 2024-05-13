@@ -1,0 +1,62 @@
+Running job number  3
+Start  3
+End  4
+outcome: 130016-0.0
+Number of features: 5
+0 Current Time = 19:25:15
+10 Current Time = 19:25:46
+20 Current Time = 19:26:16
+30 Current Time = 19:26:44
+40 Current Time = 19:27:13
+50 Current Time = 19:27:44
+60 Current Time = 19:28:14
+70 Current Time = 19:28:44
+80 Current Time = 19:29:14
+90 Current Time = 19:29:44
+Number of features: 50
+0 Current Time = 19:30:14
+10 Current Time = 19:32:07
+20 Current Time = 19:33:59
+30 Current Time = 19:35:48
+40 Current Time = 19:37:37
+50 Current Time = 19:39:26
+60 Current Time = 19:41:16
+70 Current Time = 19:43:06
+80 Current Time = 19:44:55
+90 Current Time = 19:46:46
+Number of features: 100
+0 Current Time = 19:48:39
+10 Current Time = 19:52:01
+20 Current Time = 19:55:32
+30 Current Time = 19:59:04
+40 Current Time = 20:02:32
+50 Current Time = 20:06:28
+60 Current Time = 20:10:03
+70 Current Time = 20:13:40
+80 Current Time = 20:17:22
+90 Current Time = 20:21:00
+Number of features: 500
+0 Current Time = 20:24:29
+10 Current Time = 20:42:00
+20 Current Time = 20:58:56
+30 Current Time = 21:20:13
+40 Current Time = 21:38:10
+50 Current Time = 21:55:42
+60 Current Time = 22:13:30
+70 Current Time = 22:30:59
+80 Current Time = 22:48:43
+90 Current Time = 23:06:59
+Number of features: 1000
+0 Current Time = 23:25:07
+10 Current Time = 00:02:37
+20 Current Time = 00:39:14
+30 Current Time = 01:16:32
+40 Current Time = 01:53:35
+50 Current Time = 02:32:37
+60 Current Time = 03:12:49
+70 Current Time = 03:54:07
+80 Current Time = 04:36:17
+90 Current Time = 05:18:28
+Number of features: 2923
+Analyses complete. Current Time = 06:13:59
+Results saved. All done. Current Time = 06:14:00

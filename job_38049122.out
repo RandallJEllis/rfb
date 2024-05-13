@@ -1,0 +1,51 @@
+Running job number  24
+Start  24
+End  25
+outcome: 130196-0.0
+Number of features: 5
+0 Current Time = 23:04:51
+10 Current Time = 23:05:21
+20 Current Time = 23:05:51
+30 Current Time = 23:06:21
+40 Current Time = 23:06:51
+50 Current Time = 23:07:21
+60 Current Time = 23:07:51
+70 Current Time = 23:08:21
+80 Current Time = 23:08:50
+90 Current Time = 23:09:20
+Number of features: 50
+0 Current Time = 23:09:50
+10 Current Time = 23:11:42
+20 Current Time = 23:13:34
+30 Current Time = 23:15:30
+40 Current Time = 23:17:23
+50 Current Time = 23:19:18
+60 Current Time = 23:21:12
+70 Current Time = 23:23:06
+80 Current Time = 23:25:01
+90 Current Time = 23:26:55
+Number of features: 100
+0 Current Time = 23:28:49
+10 Current Time = 23:32:42
+20 Current Time = 23:36:38
+30 Current Time = 23:40:39
+40 Current Time = 23:44:38
+50 Current Time = 23:48:36
+60 Current Time = 23:52:36
+70 Current Time = 23:56:26
+80 Current Time = 00:00:26
+90 Current Time = 00:04:18
+Number of features: 500
+0 Current Time = 00:08:19
+10 Current Time = 00:30:20
+20 Current Time = 00:52:01
+30 Current Time = 01:13:45
+40 Current Time = 01:35:39
+50 Current Time = 01:57:52
+60 Current Time = 02:18:24
+70 Current Time = 02:38:46
+80 Current Time = 02:59:54
+90 Current Time = 03:21:17
+Number of features: 1000
+0 Current Time = 03:42:43
+10 Current Time = 04:28:44

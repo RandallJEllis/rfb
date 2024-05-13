@@ -1,0 +1,52 @@
+Running job number  345
+Start  345
+End  346
+outcome: 131586-0.0
+Number of features: 5
+0 Current Time = 02:04:38
+10 Current Time = 02:05:26
+20 Current Time = 02:06:16
+30 Current Time = 02:07:02
+40 Current Time = 02:07:50
+50 Current Time = 02:08:38
+60 Current Time = 02:09:25
+70 Current Time = 02:10:12
+80 Current Time = 02:10:59
+90 Current Time = 02:11:44
+Number of features: 50
+0 Current Time = 02:12:32
+10 Current Time = 02:15:23
+20 Current Time = 02:18:16
+30 Current Time = 02:20:59
+40 Current Time = 02:23:52
+50 Current Time = 02:26:45
+60 Current Time = 02:29:37
+70 Current Time = 02:32:33
+80 Current Time = 02:35:26
+90 Current Time = 02:38:11
+Number of features: 100
+0 Current Time = 02:40:57
+10 Current Time = 02:46:51
+20 Current Time = 02:52:50
+30 Current Time = 02:58:27
+40 Current Time = 03:04:01
+50 Current Time = 03:09:43
+60 Current Time = 03:15:11
+70 Current Time = 03:20:43
+80 Current Time = 03:26:22
+90 Current Time = 03:31:54
+Number of features: 500
+0 Current Time = 03:37:15
+10 Current Time = 04:06:01
+20 Current Time = 04:34:09
+30 Current Time = 05:01:36
+40 Current Time = 05:27:20
+50 Current Time = 05:53:10
+60 Current Time = 06:19:09
+70 Current Time = 06:44:45
+80 Current Time = 07:09:55
+90 Current Time = 07:34:26
+Number of features: 1000
+0 Current Time = 07:59:37
+10 Current Time = 08:52:52
+20 Current Time = 09:46:18

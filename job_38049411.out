@@ -1,0 +1,41 @@
+Running job number  229
+Start  229
+End  230
+outcome: 131286-0.0
+Number of features: 5
+0 Current Time = 23:14:42
+10 Current Time = 23:16:02
+20 Current Time = 23:17:20
+30 Current Time = 23:18:40
+40 Current Time = 23:20:01
+50 Current Time = 23:21:23
+60 Current Time = 23:22:43
+70 Current Time = 23:24:01
+80 Current Time = 23:25:23
+90 Current Time = 23:26:43
+Number of features: 50
+0 Current Time = 23:28:05
+10 Current Time = 23:34:09
+20 Current Time = 23:40:05
+30 Current Time = 23:45:55
+40 Current Time = 23:51:48
+50 Current Time = 23:57:43
+60 Current Time = 00:03:07
+70 Current Time = 00:08:45
+80 Current Time = 00:14:20
+90 Current Time = 00:20:03
+Number of features: 100
+0 Current Time = 00:25:33
+10 Current Time = 00:38:00
+20 Current Time = 00:49:56
+30 Current Time = 01:01:53
+40 Current Time = 01:13:45
+50 Current Time = 01:25:20
+60 Current Time = 01:36:56
+70 Current Time = 01:48:36
+80 Current Time = 02:00:16
+90 Current Time = 02:12:00
+Number of features: 500
+0 Current Time = 02:23:41
+10 Current Time = 03:35:44
+20 Current Time = 04:42:40

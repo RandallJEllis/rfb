@@ -1,0 +1,58 @@
+Running job number  402
+Start  402
+End  403
+outcome: 131734-0.0
+Number of features: 5
+0 Current Time = 02:16:13
+10 Current Time = 02:16:43
+20 Current Time = 02:17:13
+30 Current Time = 02:17:43
+40 Current Time = 02:18:13
+50 Current Time = 02:18:43
+60 Current Time = 02:19:13
+70 Current Time = 02:19:44
+80 Current Time = 02:20:14
+90 Current Time = 02:20:44
+Number of features: 50
+0 Current Time = 02:21:15
+10 Current Time = 02:23:01
+20 Current Time = 02:24:46
+30 Current Time = 02:26:30
+40 Current Time = 02:28:14
+50 Current Time = 02:29:59
+60 Current Time = 02:31:43
+70 Current Time = 02:33:28
+80 Current Time = 02:35:13
+90 Current Time = 02:36:58
+Number of features: 100
+0 Current Time = 02:38:44
+10 Current Time = 02:41:56
+20 Current Time = 02:45:06
+30 Current Time = 02:48:17
+40 Current Time = 02:51:27
+50 Current Time = 02:54:39
+60 Current Time = 02:57:50
+70 Current Time = 03:01:03
+80 Current Time = 03:04:14
+90 Current Time = 03:07:24
+Number of features: 500
+0 Current Time = 03:10:36
+10 Current Time = 03:25:49
+20 Current Time = 03:40:59
+30 Current Time = 03:56:14
+40 Current Time = 04:11:14
+50 Current Time = 04:26:24
+60 Current Time = 04:41:35
+70 Current Time = 04:56:47
+80 Current Time = 05:11:50
+90 Current Time = 05:26:52
+Number of features: 1000
+0 Current Time = 05:41:57
+10 Current Time = 06:11:58
+20 Current Time = 06:41:59
+30 Current Time = 07:13:19
+40 Current Time = 07:43:50
+50 Current Time = 08:14:48
+60 Current Time = 08:45:54
+70 Current Time = 09:16:17
+80 Current Time = 09:47:39

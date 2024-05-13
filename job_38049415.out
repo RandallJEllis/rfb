@@ -1,0 +1,51 @@
+Running job number  232
+Start  232
+End  233
+outcome: 131294-0.0
+Number of features: 5
+0 Current Time = 23:14:34
+10 Current Time = 23:15:09
+20 Current Time = 23:15:43
+30 Current Time = 23:16:19
+40 Current Time = 23:16:53
+50 Current Time = 23:17:29
+60 Current Time = 23:18:05
+70 Current Time = 23:18:40
+80 Current Time = 23:19:17
+90 Current Time = 23:19:52
+Number of features: 50
+0 Current Time = 23:20:28
+10 Current Time = 23:22:34
+20 Current Time = 23:24:45
+30 Current Time = 23:27:00
+40 Current Time = 23:29:15
+50 Current Time = 23:31:30
+60 Current Time = 23:33:43
+70 Current Time = 23:35:54
+80 Current Time = 23:38:02
+90 Current Time = 23:40:15
+Number of features: 100
+0 Current Time = 23:42:22
+10 Current Time = 23:46:25
+20 Current Time = 23:50:32
+30 Current Time = 23:54:37
+40 Current Time = 23:58:43
+50 Current Time = 00:02:49
+60 Current Time = 00:07:01
+70 Current Time = 00:10:58
+80 Current Time = 00:15:09
+90 Current Time = 00:19:20
+Number of features: 500
+0 Current Time = 00:23:35
+10 Current Time = 00:46:49
+20 Current Time = 01:08:18
+30 Current Time = 01:29:27
+40 Current Time = 01:50:05
+50 Current Time = 02:10:51
+60 Current Time = 02:31:34
+70 Current Time = 02:52:11
+80 Current Time = 03:13:10
+90 Current Time = 03:33:44
+Number of features: 1000
+0 Current Time = 03:54:18
+10 Current Time = 04:37:25
