@@ -1,3 +1,5 @@
 # bash output files
 *.out
 *.err
+rfb
+rfb.pub

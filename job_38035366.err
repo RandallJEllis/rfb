@@ -1,4 +1,0 @@
-Traceback (most recent call last):
-  File "/n/groups/patel/randy/rfb/code/rfb_pipeline.py", line 10, in <module>
-    import newfunction
-ModuleNotFoundError: No module named 'newfunction'
