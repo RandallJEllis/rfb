@@ -7,8 +7,6 @@
 #SBATCH --exclude=compute-f-17-[09-16]
 #SBATCH --time=3:00:00
 #SBATCH --mem=32G
-#SBATCH --mail-type=BEGIN,END
-#SBATCH --mail-user=randall_ellis@hms.harvard.edu
 
 # Load modules (modify if necessary)
 module load gcc/9.2.0

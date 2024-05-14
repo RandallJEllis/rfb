@@ -12,7 +12,7 @@ from datetime import datetime
 
 def main():
     def bootstrap():
-        # run 1000 bootstraps of test set
+        # run 100 bootstraps of test set
         for j in range(100):
             if j % 50 == 0:
                 now = datetime.now()
@@ -34,7 +34,7 @@ def main():
             # convert to f score
             fscore = (2 * precision * recall) / (precision + recall)
             # locate the index of the largest f score
-            ix = np.argmax(fscore)
+            ix = np.nanargmax(fscore)
             best_threshold = thresholds[ix]
             best_fscore = fscore[ix]
     
@@ -53,8 +53,8 @@ def main():
             outcome_l.append(oc)
             iter_l.append(i)
             bs_l.append(j)
-            true_labels_l.append(y_bs)
-            probas_l.append(proba_predict)
+            true_labels_l.append(y_bs.values)
+            probas_l.append(yhat)
             auroc_l.append(auroc)
             ap_l.append(ap)
             best_threshold_l.append(best_threshold)
@@ -63,7 +63,6 @@ def main():
             fp_l.append(fp)
             fn_l.append(fn)
             tp_l.append(tp)
-            auroc_l.append(auroc)
             accuracy_l.append(acc)
             balanced_accuracy_l.append(bal_acc)
             prec_n.append(prfs[0][0])
@@ -190,45 +189,6 @@ def main():
 
                     bootstrap()
 
-
-
-
-                    # skf = StratifiedKFold(n_splits=10)
-                    # for j, (train_index, test_index) in enumerate(
-                    #                             skf.split(X, y)):
-                    #     clf = HistGradientBoostingClassifier(
-                    #         class_weight='balanced').fit(X.iloc[train_index],
-                    #                                      y[train_index])
-
-                    #     test_pred = clf.predict(X.iloc[test_index])
-                    #     tn, fp, fn, tp = confusion_matrix(y[test_index],
-                    #                                       test_pred).ravel()              
-                    #     auroc = roc_auc_score(y[test_index],
-                    #                           clf.predict_proba(
-                    #                             X.iloc[test_index])[:, 1])
-                    #     acc = accuracy_score(y[test_index], test_pred)
-                    #     bal_acc = balanced_accuracy_score(y[test_index],
-                    #                                       test_pred)
-                    #     prfs = precision_recall_fscore_support(y[test_index],
-                    #                                            test_pred)
-                    #     nfeats_l.append(nfeat)
-                    #     proteins_l.append(p)
-                    #     outcome_l.append(oc)
-                    #     iter_l.append(i)
-                    #     fold_l.append(j)
-                    #     tn_l.append(tn)
-                    #     fp_l.append(fp)
-                    #     fn_l.append(fn)
-                    #     tp_l.append(tp)
-                    #     auroc_l.append(auroc)
-                    #     accuracy_l.append(acc)
-                    #     balanced_accuracy_l.append(bal_acc)
-                    #     prec_n.append(prfs[0][0])
-                    #     prec_p.append(prfs[0][1])
-                    #     rec_n.append(prfs[1][0])
-                    #     rec_p.append(prfs[1][1])
-                    #     f1_n.append(prfs[2][0])
-                    #     f1_p.append(prfs[2][1])
             else:
                 np.random.seed(seed=0)
                 X = X_start
@@ -242,41 +202,6 @@ def main():
                     class_weight='balanced').fit(X_train, y_train)
 
                 bootstrap()
-
-                
-
-
-
-                # skf = StratifiedKFold(n_splits=10)
-                # for j, (train_index, test_index) in enumerate(skf.split(X, y)):
-                #     clf = HistGradientBoostingClassifier(class_weight='balanced').fit(X.iloc[train_index], y[train_index])
-
-                #     test_pred = clf.predict(X.iloc[test_index])
-                #     tn, fp, fn, tp = confusion_matrix(y[test_index], test_pred).ravel()                
-                #     auroc = roc_auc_score(y[test_index],
-                #                         clf.predict_proba(X.iloc[test_index])[:, 1])
-                #     acc = accuracy_score(y[test_index], test_pred)
-                #     bal_acc = balanced_accuracy_score(y[test_index], test_pred)
-                #     prfs = precision_recall_fscore_support(y[test_index],
-                #                                         test_pred)
-                #     nfeats_l.append(nfeat)
-                #     proteins_l.append(p)
-                #     outcome_l.append(oc)
-                #     iter_l.append(i)
-                #     fold_l.append(j)
-                #     tn_l.append(tn)
-                #     fp_l.append(fp)
-                #     fn_l.append(fn)
-                #     tp_l.append(tp)
-                #     auroc_l.append(auroc)
-                #     accuracy_l.append(acc)
-                #     balanced_accuracy_l.append(bal_acc)
-                #     prec_n.append(prfs[0][0])
-                #     prec_p.append(prfs[0][1])
-                #     rec_n.append(prfs[1][0])
-                #     rec_p.append(prfs[1][1])
-                #     f1_n.append(prfs[2][0])
-                #     f1_p.append(prfs[2][1])
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -294,7 +219,7 @@ def main():
             'prec_pos': prec_p, 'rec_neg': rec_n, 'rec_pos': rec_p,
             'f1_neg': f1_n, 'f1_pos': f1_p}
     results = pd.DataFrame(data)
-    results.to_parquet(f'../tidy_data/results_bootstrap_{task_id}.parquet')
+    results.to_parquet(f'../tidy_data/bootstrap/results_{task_id}.parquet')
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")

@@ -6,6 +6,6 @@
 #IFS=','
 
 #for i in $numbers; do
-for i in {0..1}; do
+for i in {0..5}; do
    sbatch --export=MYVAR=$i sh_pipeline.sh
 done
