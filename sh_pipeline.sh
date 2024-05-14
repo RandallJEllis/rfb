@@ -2,11 +2,11 @@
 #SBATCH --job-name=rfb_pipeline
 #SBATCH --output=job_%J.out
 #SBATCH --error=job_%J.err
-#SBATCH --partition=medium
+#SBATCH --partition=short
 #SBATCH --nodes=1
 #SBATCH --exclude=compute-f-17-[09-16]
-#SBATCH --time=22:00:00
-#SBATCH --mem=8G
+#SBATCH --time=3:00:00
+#SBATCH --mem=32G
 #SBATCH --mail-type=BEGIN,END
 #SBATCH --mail-user=randall_ellis@hms.harvard.edu
 
