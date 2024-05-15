@@ -5,10 +5,8 @@
 #SBATCH --partition=short
 #SBATCH --nodes=1
 #SBATCH --exclude=compute-f-17-[09-16]
-#SBATCH --time=4:00:00
-#SBATCH --mem=24G
-#SBATCH --mail-type=BEGIN,END
-#SBATCH --mail-user=randall_ellis@hms.harvard.edu
+#SBATCH --time=3:00:00
+#SBATCH --mem=8G
 
 # Load modules (modify if necessary)
 module load gcc/9.2.0
