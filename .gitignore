@@ -3,3 +3,5 @@
 *.err
 rfb
 rfb.pub
+*.ipynb
+*.csv
