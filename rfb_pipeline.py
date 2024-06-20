@@ -1,6 +1,5 @@
 import argparse
 import pandas as pd
-import math
 import numpy as np
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.preprocessing import OneHotEncoder
@@ -8,26 +7,16 @@ from sklearn.model_selection import StratifiedKFold, train_test_split
 from sklearn.metrics import precision_recall_curve, average_precision_score, confusion_matrix, roc_auc_score, precision_recall_fscore_support, accuracy_score, balanced_accuracy_score
 import sys
 from datetime import datetime
-import pickle
 
 path = '../tidy_data'
 
+
 def main():
-    def bootstrap(true_labels, proba_predict, n_bootstrap):
-        
-        # run 100 bootstraps of test set
-        skf = StratifiedKFold(n_splits=n_bootstrap)
-        
-        # for j in range(100):
-        for j, (bs_index, nonbs_index) in enumerate(skf.split(proba_predict, true_labels)):
-            #if j  == 0:
-            #    now = datetime.now()
-            #    current_time = now.strftime("%H:%M:%S")
-            #    print(f'Bootstrap {j}, Current Time = {current_time}')
-            
+    def bootstrap(true_labels, proba_predict, n_bootstrap, bs_w_replace=False):
+        def append_results():
             yhat = proba_predict[bs_index]
             y_bs = true_labels.values[bs_index]
-    
+
             auroc = roc_auc_score(y_bs,
                                   yhat)
             ap = average_precision_score(y_bs, yhat)
@@ -39,17 +28,16 @@ def main():
             ix = np.nanargmax(fscore)
             best_threshold = thresholds[ix]
             best_fscore = fscore[ix]
-    
+
             test_pred = (yhat > best_threshold).astype(int)
 
             tn, fp, fn, tp = confusion_matrix(y_bs,
-                                              test_pred).ravel()             
+                                              test_pred).ravel()
             acc = accuracy_score(y_bs, test_pred)
             bal_acc = balanced_accuracy_score(y_bs,
                                               test_pred)
             prfs = precision_recall_fscore_support(y_bs,
                                                    test_pred)
-    
             nfeats_l.append(nfeat)
             proteins_l.append(p)
             outcome_l.append(oc)
@@ -73,7 +61,20 @@ def main():
             rec_p.append(prfs[1][1])
             f1_n.append(prfs[2][0])
             f1_p.append(prfs[2][1])
-            
+        if bs_w_replace is False:
+            # run 100 bootstraps of test set
+            skf = StratifiedKFold(n_splits=n_bootstrap)
+            # for j in range(100):
+            for j, (bs_index, nonbs_index) in enumerate(
+                    skf.split(proba_predict, true_labels)):
+                append_results()
+        else:
+            bootstraps = np.array([np.random.choice(range(len(true_labels)),
+                                   len(true_labels), replace=True)
+                                   for _ in range(n_bootstrap)])
+            for j, bs_index in enumerate(bootstraps):
+                append_results()
+
     df = pd.read_parquet(f'{path}/proteomics_first_occurrences.parquet')
     proteins = pd.read_csv(f'{path}/protein_colnames.txt', header=None)
     proteins = proteins[0].tolist()
@@ -95,7 +96,8 @@ def main():
 
     n_subset = 100
     n_bootstrap = 100
-    
+    bs_w_replace = True
+
     # set start and end indices
     chunk_size = 1
     start = (chunk_size * (task_id))
@@ -153,10 +155,7 @@ def main():
     f1_n = []
     f1_p = []
 
-    true_labels_l = []
-    probas_l = []
-
-    # remove non-encoded sex and site 
+    # remove non-encoded sex and site
     demo_nosite_nosex = [x for x in demo if x not in ['31-0.0', '54-0.0']]
     outcome_subset = outcomes[start:end]
     for i, oc in zip(list(range(start, end)), outcome_subset):
@@ -192,7 +191,7 @@ def main():
                     # save probability predictions
                     proba_predict = clf.predict_proba(X.iloc[test_idx])
 
-                    bootstrap(y_test, proba_predict[:, 1], n_bootstrap)
+                    bootstrap(y_test, proba_predict[:, 1], n_bootstrap, bs_w_replace=True)
 
             else:
                 np.random.seed(seed=0)
@@ -205,7 +204,7 @@ def main():
                 # save probability predictions
                 proba_predict = clf.predict_proba(X.iloc[test_idx])
 
-                bootstrap(y_test, proba_predict[:, 1], n_bootstrap)
+                bootstrap(y_test, proba_predict[:, 1], n_bootstrap, bs_w_replace=True)
 
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
@@ -220,9 +219,13 @@ def main():
             'balanced_acc': balanced_accuracy_l, 'prec_neg': prec_n,
             'prec_pos': prec_p, 'rec_neg': rec_n, 'rec_pos': rec_p,
             'f1_neg': f1_n, 'f1_pos': f1_p}
-    
+
     results = pd.DataFrame(data)
-    results.to_parquet(f'{path}/bootstrap/results_{oc}_{task_id}.parquet')
+
+    if bs_w_replace == True:
+        results.to_parquet(f'{path}/bootstrap/results_{oc}_bsWreplace_{task_id}.parquet')
+    else:
+        results.to_parquet(f'{path}/bootstrap/results_{oc}_{task_id}.parquet')
 
     # # Save all true labels
     # file_path = f'{path}/bootstrap/all_true_labels_{oc}_{task_id}.pkl'
@@ -235,11 +238,10 @@ def main():
     # with open(file_path, 'wb') as file:
     #     # Serialize and write the nested list to the file
     #     pickle.dump(probas_l, file)
-    
+
     now = datetime.now()
     current_time = now.strftime("%H:%M:%S")
     print("Results saved. All done. Current Time =", current_time)
-
 
 
 if __name__ == '__main__':
