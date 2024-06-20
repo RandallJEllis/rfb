@@ -1,0 +1,14 @@
+This folder has code to run machine learning experiments to predict dementia. There are three folders, one for each data modality:
+cognitive_tests
+neuroimaging
+proteomics
+
+Each folder contains the following four scripts:
+
+build_ml_datasets.py - combine the modality dataset with demographics and dementia data, remove patients with dementia at or before the modality time point, encode categorical and/or ordinal variables, save labels and region indices. The region indices are used for cross-validation, where one of ten UKB regions is held out for testing.
+
+ml_experiments.py - run machine learning experiments. Specifications include which of four experiments to run (age only, all demographics, modality variables only, modality variables and demographics), which loss function to use (1-AUROC, 1-F3 score, 1-average precision), whether to use an age cutoff for the patients, and the time budget for autoML. All true labels and predicted probabilities are saved, and decision thresholds are chosen based on which loss function is used during training. If the loss function is 1-AUROC, the threshold maximizing Youden's J statistic is used. If F3 or average precision is used, the threshold maximizing the F3 score is used. 
+
+sh_ml_experiments.sh - this is the script called by sbatch, specifying the parameters for ml_experiments.py
+
+loop_ml.sh - this script loops over experiment types and loss functions to call sbatch on sh_ml_experiments.sh

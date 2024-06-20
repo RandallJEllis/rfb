@@ -85,7 +85,7 @@ def main():
         
         # cv indices based on region
         region_lookup = pd.read_csv('../../metadata/coding10.tsv', sep='\t')
-        region_indices = ukb_utils.group_assessment_center(X, region_lookup)
+        region_indices = ukb_utils.group_assessment_center(X, data_instance, region_lookup)
 
         directory_path = f'{directory_path}/agecutoff_{age_cutoff}'
 
