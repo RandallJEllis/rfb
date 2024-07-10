@@ -90,9 +90,9 @@ def calc_results(metric, y_true, y_probas, youden=False, beta=1, threshold=None)
         return res
 
 
-def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_probas):
-    save_pickle(f'{filepath}/train_true_labels.pkl', train_labels)
-    save_pickle(f'{filepath}/train_probas.pkl', train_probas)
-    save_pickle(f'{filepath}/test_true_labels.pkl', test_labels)
-    save_pickle(f'{filepath}/test_probas.pkl', test_probas)
+def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_probas, other_file_info=''):
+    save_pickle(f'{filepath}/train_true_labels{other_file_info}.pkl', train_labels)
+    save_pickle(f'{filepath}/train_probas{other_file_info}.pkl', train_probas)
+    save_pickle(f'{filepath}/test_true_labels{other_file_info}.pkl', test_labels)
+    save_pickle(f'{filepath}/test_probas{other_file_info}.pkl', test_probas)
 

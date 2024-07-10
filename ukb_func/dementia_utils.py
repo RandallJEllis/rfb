@@ -4,7 +4,7 @@ import df_utils
 
 def remove_pre_instance_dementia(df, instance, dementia_df):
     'Remove dementia before the UKB visit at a specified instance and create a label column for the cases'
-
+-
     disease_source = df_utils.pull_columns_by_prefix(dementia_df, ['eid', '42019', '42021', '42023', '42025'])
     values_set = [1, 2, 11, 12, 21, 22]
     keep_disease_source = df_utils.pull_rows_with_values(disease_source, values_set)

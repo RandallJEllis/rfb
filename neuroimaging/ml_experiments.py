@@ -47,6 +47,7 @@ def main():
     X = pd.read_parquet(f'../../tidy_data/dementia/{data_modality}/X.parquet')
     y = np.load(f'../../tidy_data/dementia/{data_modality}/y.npy')
 
+
     # Create the argument parser
     parser = argparse.ArgumentParser(
         description='Run AutoML on chosen feature sets')
@@ -61,6 +62,8 @@ def main():
                         help='metric to optimize during training')
     parser.add_argument('--age_cutoff', type=int, default=None,
                         help='age cutoff')
+    parser.add_argument('--region_index', type=int, default=None,
+                        help='region index')
     # parser.add_argument('--file_suffix', type=str, default='',
     #                     help='extra information to put in the filename')
 
@@ -71,6 +74,7 @@ def main():
     metric = args.metric
     age_cutoff = args.age_cutoff
     # file_suffix = args.file_suffix
+    region_index = args.region_index
 
     # Specify the directory path
     directory_path = f'../../results/dementia/{data_modality}/{experiment}/{metric}/'
@@ -93,17 +97,17 @@ def main():
     idp_vars = pickle.load(open('../../tidy_data/dementia/neuroimaging/idp_variables.pkl', 'rb'))
     if experiment == 'age_only':
         X = X.loc[:, [f'21003-{data_instance}.0']]
-        time_budget = 200
+        time_budget = 400
     elif experiment == 'all_demographics':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist()]
-        time_budget = 250
+        time_budget = 500
     elif experiment == 'idps_only':
         # X = X.loc[:, df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
         X = X.loc[:, idp_vars]
-        time_budget = 5000
+        time_budget = 32000
     elif experiment == 'demographics_and_idps':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + idp_vars]
-        time_budget = 5500
+        time_budget = 32000
 
     if age_cutoff == 65:
         print('Modifying time budget by dividing by 3 for age cutoff of 65') 
@@ -128,6 +132,8 @@ def main():
     skf = StratifiedKFold(n_splits=10)
     
     for i, (train_index, test_index) in enumerate(skf.split(X, y)):
+        if i != region_index:
+            continue
         print(f"Fold {i}:")
     
     # for i,r in enumerate(list(region_indices.keys())):
@@ -180,21 +186,23 @@ def main():
         test_labels_l.append(y_test)
         test_probas_l.append(test_probas)
         
+        break
+        
 
-    ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l)
+    ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{i}')
 
     train_df = pd.concat(train_res_l, axis=1).T
-    train_df.to_csv(f'{directory_path}/training_results.csv')
+    train_df.to_csv(f'{directory_path}/training_results_region_{i}.csv')
 
     test_df = pd.concat(test_res_l, axis=1).T
-    test_df.to_csv(f'{directory_path}/test_results.csv')
+    test_df.to_csv(f'{directory_path}/test_results_region_{i}.csv')
 
 
-    plot_title = {'age_only': 'Age Only', 'all_demographics': 'All Demographics',
-                    'idps_only': 'All IDPs', 'demographics_and_idps': 'All Demographics + IDPs'}
-    fig = plot_results.mean_roc_curve(true_labels_list=test_labels_l, predicted_probs_list=test_probas_l,
-                            individual_label='Region fold', title=plot_title[experiment])
-    fig.savefig(f'{directory_path}/roc_curve.pdf')
+    # plot_title = {'age_only': 'Age Only', 'all_demographics': 'All Demographics',
+    #                 'idps_only': 'All IDPs', 'demographics_and_idps': 'All Demographics + IDPs'}
+    # fig = plot_results.mean_roc_curve(true_labels_list=test_labels_l, predicted_probs_list=test_probas_l,
+    #                         individual_label='Region fold', title=plot_title[experiment])
+    # fig.savefig(f'{directory_path}/roc_curve.pdf')
 
 if __name__ == "__main__":
     main()

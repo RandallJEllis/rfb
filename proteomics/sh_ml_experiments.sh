@@ -2,12 +2,12 @@
 #SBATCH --job-name=protein
 #SBATCH --output=job_%J.out
 #SBATCH --error=job_%J.err
-#SBATCH --partition=medium
+#SBATCH --partition=short
 #SBATCH --nodes=1
 #SBATCH --exclude=compute-f-17-[09-16]
-#SBATCH --time=18:00:00
-#SBATCH --mem=250G
-#SBATCH --cpus-per-task=16
+#SBATCH --time=12:00:00
+#SBATCH --mem=24G
+#SBATCH --cpus-per-task=1
 
 # Load modules (modify if necessary)
 module load gcc/9.2.0
@@ -21,7 +21,7 @@ conda activate pymc_env
 export PYTHONUNBUFFERED=1
 
 # echo "Running experiment with experiment: $experiment and metric: $metric"
-python ml_experiments.py --experiment "$experiment" --metric "$metric" #--age_cutoff 65
+python ml_experiments.py --experiment "$experiment" --metric "$metric" --region_index "$region_index" #--age_cutoff 65
 
 # running a single experiment
 # experiment=$1

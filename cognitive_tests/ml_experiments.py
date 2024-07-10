@@ -27,14 +27,14 @@ import pickle
 import matplotlib.pyplot as plt
 
 '''
-IDP experiments for:
+Cognitive test experiments for:
 Age alone
 All demographics
-All idps
-All demographics + all idps
+All cognitive_tests
+All demographics + all cognitive_tests
 
 Input arguments:
-experiment - age_only, all_demographics, idps_only, demographics_and_idps
+experiment - age_only, all_demographics, cognitive_tests_only, demographics_and_cognitive_tests
 time_budget - number of seconds for AutoML training
 metric - roc_auc or f3
 file_suffix - other information to add to the output directory path so that things don't get overwritten
