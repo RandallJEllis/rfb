@@ -1,6 +1,5 @@
 import sys
 sys.path.append('../ukb_func')
-import rfb
 import icd
 import ml_utils
 import df_utils
@@ -48,7 +47,7 @@ df = df.merge(demo, on='eid')
 # import dx dates across dementia diagnosis Field IDs
 acd = pd.read_parquet(data_path + 'acd/allcausedementia.parquet')
 
-df = dementia_utils.remove_pre_instance_dementia(df, 2, acd)
+df = dementia_utils.remove_pre_instance_dementia(df, data_instance, acd)
 
 # APOEe4 alleles
 alleles = pd.read_csv(
@@ -71,7 +70,7 @@ categ_enc = ml_utils.encode_categorical_vars(df, catcols)
 
 y = df.label.values
 X = df.loc[:,
-            [f'21003-{data_instance}.0', f'54-{data_instance}.0', '845-0.0'] + idps].join(categ_enc)
+            ['eid', f'21003-{data_instance}.0', f'54-{data_instance}.0', '845-0.0'] + idps].join(categ_enc)
 
 
 # CAN'T do region-based CV because there are only 4 assessment centers, each in different region

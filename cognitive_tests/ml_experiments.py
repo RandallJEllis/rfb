@@ -45,6 +45,7 @@ data_instance = 0
 
 def main():
     X = pd.read_parquet(f'../../tidy_data/dementia/{data_modality}/X.parquet')
+    X = X.iloc[:,1:]
     y = np.load(f'../../tidy_data/dementia/{data_modality}/y.npy')
     region_indices = pickle.load(open(f'../../tidy_data/dementia/{data_modality}/region_cv_indices.pickle', 'rb'))
 

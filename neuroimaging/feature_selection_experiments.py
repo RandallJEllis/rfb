@@ -61,6 +61,7 @@ def main():
     """
 
     X = pd.read_parquet(f'../../tidy_data/dementia/{data_modality}/X.parquet')
+    X = X.iloc[:,1:]
     y = np.load(f'../../tidy_data/dementia/{data_modality}/y.npy')
 
     # Create the argument parser
@@ -77,6 +78,8 @@ def main():
                         help='metric to optimize during training')
     parser.add_argument('--age_cutoff', type=int, default=None,
                         help='age cutoff')
+    parser.add_argument('--region_index', type=int, default=None,
+                        help='region index')
     # parser.add_argument('--file_suffix', type=str, default='',
     #                     help='extra information to put in the filename')
 
@@ -87,6 +90,11 @@ def main():
     metric = args.metric
     age_cutoff = args.age_cutoff
     # file_suffix = args.file_suffix
+    region_index = args.region_index
+
+    if region_index == None:
+        print('NEED REGION INDEX')
+        sys.exit()
 
     # Specify the directory path
     original_results_directory_path = f'../../results/dementia/{data_modality}/{experiment}/{metric}/'
@@ -110,10 +118,10 @@ def main():
     idp_vars = pickle.load(open('../../tidy_data/dementia/neuroimaging/idp_variables.pkl', 'rb'))
     if experiment == 'idps_only':
         X = X.loc[:, idp_vars]
-        time_budget = 5000
+        time_budget = 32000
     elif experiment == 'demographics_and_idps':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + idp_vars]
-        time_budget = 5500
+        time_budget = 32000
 
     if age_cutoff == 65:
         print('Modifying time budget by dividing by 3 for age cutoff of 65') 
@@ -128,8 +136,11 @@ def main():
     print(f'Dimensionality of the dataset: {X.shape}')
 
     skf = StratifiedKFold(n_splits=10)
+
     
     for i, (train_index, test_index) in enumerate(skf.split(X, y)):
+        if i != region_index:
+            continue
         print(f"Fold {i}:")
     
     # for i,r in enumerate(list(region_indices.keys())):
@@ -225,11 +236,12 @@ def main():
         test_df = pd.concat(test_res_l, axis=1).T
         test_df.to_csv(f'{directory_path}/test_results_region_{i}.csv')
 
+        break
 
-        plot_title = {'idps_only': 'FS IDPs', 'demographics_and_idps': 'FS Demographics + IDPs'}
-        fig = plot_results.mean_roc_curve(true_labels_list=test_labels_l, predicted_probs_list=test_probas_l,
-                                individual_label='Top features:', title=plot_title[experiment])
-        fig.savefig(f'{directory_path}/roc_curve_region_{i}.pdf')
+        # plot_title = {'idps_only': 'FS IDPs', 'demographics_and_idps': 'FS Demographics + IDPs'}
+        # fig = plot_results.mean_roc_curve(true_labels_list=test_labels_l, predicted_probs_list=test_probas_l,
+        #                         individual_label='Top features:', title=plot_title[experiment])
+        # fig.savefig(f'{directory_path}/roc_curve_region_{i}.pdf')
 
 if __name__ == "__main__":
     main()

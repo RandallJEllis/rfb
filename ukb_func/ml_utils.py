@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import sys
 from sklearn.metrics import confusion_matrix, roc_auc_score, \
      precision_recall_fscore_support
 from sklearn.metrics import precision_recall_curve, average_precision_score, \
@@ -96,3 +97,67 @@ def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_p
     save_pickle(f'{filepath}/test_true_labels{other_file_info}.pkl', test_labels)
     save_pickle(f'{filepath}/test_probas{other_file_info}.pkl', test_probas)
 
+def get_fold_number(fname):
+    last_underscore = fname.rfind('_')
+    last_period = fname.rfind('.')
+    fold = fname[last_underscore+1:last_period]
+    return fold
+
+def sort_fold_results(fold_numbers, fold_results):
+    # Pair strings with their corresponding numbers
+    paired_list = list(zip(fold_numbers, fold_results))
+
+    # Sort the paired list based on the numbers
+    sorted_paired_list = sorted(paired_list)
+
+    # Extract the sorted strings
+    sorted_results = [fold_result for fold_number, fold_result in sorted_paired_list]
+    sorted_results = pd.concat(sorted_results)
+    
+    return sorted_results
+    
+def concat_results(filepath):
+    train_results = []
+    train_fold = []
+    test_results = []
+    test_fold = []
+    
+    file_list = os.listdir(filepath)
+    
+    for fname in file_list:
+        if fname[:2] == '._':
+            continue
+        if '.csv' in fname:
+            if 'training_results' in fname and 'region' in fname:
+                train_results.append(pd.read_csv(f'{filepath}/{fname}', index_col=0))
+                
+                fold = get_fold_number(fname)
+                train_fold.append(fold)
+                
+            elif 'test_results' in fname and 'region' in fname:
+                test_results.append(pd.read_csv(f'{filepath}/{fname}', index_col=0))
+                
+                fold = get_fold_number(fname)
+                test_fold.append(fold)
+    
+    
+    train_results = sort_fold_results(train_fold, train_results)
+    test_results = sort_fold_results(test_fold, test_results)
+    
+    train_results.to_csv(f'{filepath}/train_results.csv')
+    test_results.to_csv(f'{filepath}/test_results.csv')
+    
+#def iter_concat_results():
+    
+    
+#if __name__ == "__main__":
+#    if len(sys.argv) > 1:
+#        function_name = sys.argv[1]
+#        args = sys.argv[2:]
+#        if function_name in globals():
+#            globals()[function_name](*args)
+#        else:
+#            print(f"No function named '{function_name}' found.")
+#    else:
+#        print("No function name provided.")
+        

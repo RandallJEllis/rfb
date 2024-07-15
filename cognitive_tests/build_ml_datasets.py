@@ -84,7 +84,7 @@ ord_enc = ml_utils.encode_ordinal_vars(df, ordcols)
 
 y = df.label.values
 X = df.loc[:,
-            [f'21003-{data_instance}.0', f'54-{data_instance}.0', '845-0.0'] + list(set(cog_tests).difference(ordcols))].join(categ_enc).join(ord_enc)
+            ['eid', f'21003-{data_instance}.0', f'54-{data_instance}.0', '845-0.0'] + list(set(cog_tests).difference(ordcols))].join(categ_enc).join(ord_enc)
 
 
 # cv indices based on region

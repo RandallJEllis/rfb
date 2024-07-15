@@ -61,6 +61,7 @@ def main():
     """
     
     X = pd.read_parquet(f'../../tidy_data/dementia/{data_modality}/X.parquet')
+    X = X.iloc[:,1:]
     y = np.load(f'../../tidy_data/dementia/{data_modality}/y.npy')
     region_indices = pickle.load(open(f'../../tidy_data/dementia/{data_modality}/region_cv_indices.pickle', 'rb'))
 
@@ -117,10 +118,10 @@ def main():
 
     if experiment == 'proteins_only':
         X = X.loc[:, df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
-        time_budget = 7000
+        time_budget = 32000
     elif experiment == 'demographics_and_proteins':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
-        time_budget = 7500
+        time_budget = 32000
 
     if age_cutoff == 65:
         print('Modifying time budget by dividing by 3 for age cutoff of 65') 
@@ -228,10 +229,10 @@ def main():
     test_df.to_csv(f'{directory_path}/test_results_region_{i}.csv')
 
 
-    plot_title = {'proteins_only': 'FS Proteins', 'demographics_and_proteins': 'FS Demographics + Proteins'}
-    fig = plot_results.mean_roc_curve(true_labels_list=test_labels_l, predicted_probs_list=test_probas_l,
-                            individual_label='Top features:', title=plot_title[experiment])
-    fig.savefig(f'{directory_path}/roc_curve_region_{i}.pdf')
+    # plot_title = {'proteins_only': 'FS Proteins', 'demographics_and_proteins': 'FS Demographics + Proteins'}
+    # fig = plot_results.mean_roc_curve(true_labels_list=test_labels_l, predicted_probs_list=test_probas_l,
+    #                         individual_label='Top features:', title=plot_title[experiment])
+    # fig.savefig(f'{directory_path}/roc_curve_region_{i}.pdf')
 
 if __name__ == "__main__":
     main()

@@ -45,6 +45,7 @@ data_instance = 2
 
 def main():
     X = pd.read_parquet(f'../../tidy_data/dementia/{data_modality}/X.parquet')
+    X = X.iloc[:,1:]
     y = np.load(f'../../tidy_data/dementia/{data_modality}/y.npy')
 
 
@@ -132,6 +133,7 @@ def main():
     skf = StratifiedKFold(n_splits=10)
     
     for i, (train_index, test_index) in enumerate(skf.split(X, y)):
+        
         if i != region_index:
             continue
         print(f"Fold {i}:")

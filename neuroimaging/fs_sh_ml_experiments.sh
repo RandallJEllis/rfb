@@ -5,8 +5,8 @@
 #SBATCH --partition=short
 #SBATCH --nodes=1
 #SBATCH --exclude=compute-f-17-[09-16]
-#SBATCH --time=8:00:00
-#SBATCH --mem=96G
+#SBATCH --time=3:00:00
+#SBATCH --mem=24G
 #SBATCH --cpus-per-task=16
 
 # Load modules (modify if necessary)
@@ -21,7 +21,7 @@ conda activate pymc_env
 export PYTHONUNBUFFERED=1
 
 echo "Running experiment with experiment: $experiment and metric: $metric"
-python feature_selection_experiments.py --experiment "$experiment" --metric "$metric" #--age_cutoff 65
+python feature_selection_experiments.py --experiment "$experiment" --metric "$metric" --region_index "$region_index" #--age_cutoff 65
 
 # running a single experiment
 # experiment=$1

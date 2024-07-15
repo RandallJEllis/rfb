@@ -21,14 +21,14 @@ conda activate pymc_env
 export PYTHONUNBUFFERED=1
 
 # echo "Running experiment with experiment: $experiment and metric: $metric"
-# python feature_selection_experiments.py --experiment "$experiment" --metric "$metric" #--age_cutoff 65
+python feature_selection_experiments.py --experiment "$experiment" --metric "$metric"  --region_index "$region_index" #--age_cutoff 65
 
 # running a single experiment
-experiment=$1
-metric=$2
-region_index=$3
-echo "Running experiment with experiment: $1 and metric: $2"
-python feature_selection_experiments.py --experiment "$experiment" --metric "$metric" --region_index "$region_index" #--age_cutoff 65
+# experiment=$1
+# metric=$2
+# region_index=$3
+# echo "Running experiment with experiment: $1 and metric: $2"
+# python feature_selection_experiments.py --experiment "$experiment" --metric "$metric" --region_index "$region_index" #--age_cutoff 65
 
 
 

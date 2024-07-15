@@ -3,8 +3,12 @@ import numpy as np
 import df_utils
 
 def remove_pre_instance_dementia(df, instance, dementia_df):
-    'Remove dementia before the UKB visit at a specified instance and create a label column for the cases'
--
+    '''
+    Remove dementia before the UKB visit at a specified instance and create a label column for the cases.
+    df: dataframe with Field IDs related to date of ICD code
+    instance: 0-3, 
+    '''
+
     disease_source = df_utils.pull_columns_by_prefix(dementia_df, ['eid', '42019', '42021', '42023', '42025'])
     values_set = [1, 2, 11, 12, 21, 22]
     keep_disease_source = df_utils.pull_rows_with_values(disease_source, values_set)
@@ -25,7 +29,7 @@ def remove_pre_instance_dementia(df, instance, dementia_df):
                     '42018', '42020', '42022', '42024', '131036',
                                 '130836', '130838', '130840', '130842'])
 
-    # remove patients diagnosed with dementia before proteomics
+    # remove patients diagnosed with dementia before instance time
     for col in date_df.columns[1:].tolist():
         date_df[col] = pd.to_datetime(date_df.loc[:, col])
     date_df['first_dx'] = date_df.iloc[:, 1:].min(axis=1)
