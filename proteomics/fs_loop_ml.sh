@@ -10,7 +10,7 @@ metrics=("roc_auc")
 for experiment in "${experiments[@]}"; do
     for metric in "${metrics[@]}"; do
         # for region_index in {0..9}; do
-	for region_index in 6; do
+	    for region_index in 6; do
             echo "Running feature selection with experiment: $experiment and metric: $metric"
             # Set the partition and time based on the experiment
             if [[ $experiment == "proteins_only" || $experiment == "demographics_and_proteins" ]]; then

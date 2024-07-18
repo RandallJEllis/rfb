@@ -74,7 +74,7 @@ def folder_recursive_roc(filepath, image_format):
             # load true labels and probas
             for i in range(10):
                 # if analyzing feature selection experiments, find the number of features for best performance
-                if 'feature_selection'  in dirpath:
+                if 'feature_selection' in dirpath:
                     df = pd.read_csv(f'{dirpath}/test_results_region_{i}.csv')
                     best_idx = df['auroc'].idxmax()
                     
@@ -106,6 +106,10 @@ def folder_recursive_roc(filepath, image_format):
                     title = 'All Cognitive Tests'
                 elif 'neuroimaging' in dirpath:
                     title = 'All IDPs'
+                    
+                if 'feature_selection' in dirpath:
+                    title = f'Feature Selected {title[4:]}'
+                    
             elif 'demographics_and_modality' in dirpath:
                 if 'proteomics' in dirpath:
                     title = 'All Demographics + Proteins'
@@ -114,8 +118,11 @@ def folder_recursive_roc(filepath, image_format):
                 elif 'neuroimaging' in dirpath:
                     title = 'All Demographics + IDPs'
                 
+                if 'feature_selection' in dirpath:
+                    title = f'All Demographics + Feature Selected {title[19:]}'
+                    
 
-            fig = mean_roc_curve(true_labels, probas, 'Region fold', title)
+            fig = mean_roc_curve(true_labels, probas, 'Fold', title)
             fig.savefig(f'{dirpath}/roc_curve.{image_format}')
     
 def figure_with_subplots(filepath):

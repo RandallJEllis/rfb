@@ -74,6 +74,8 @@ def main():
     time_budget = args.time_budget
     metric = args.metric
     age_cutoff = args.age_cutoff
+    if age_cutoff == 0:
+        age_cutoff = None
     # file_suffix = args.file_suffix
     region_index = args.region_index
 

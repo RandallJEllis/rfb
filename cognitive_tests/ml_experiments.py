@@ -63,6 +63,8 @@ def main():
                         help='options: roc_auc, f3')
     parser.add_argument('--age_cutoff', type=int, default=None,
                         help='age cutoff')
+    parser.add_argument('--region_index', type=int, default=None,
+                        help='region index')
     # parser.add_argument('--file_suffix', type=str, default='',
     #                     help='extra information to put in the filename')
 
@@ -73,6 +75,12 @@ def main():
     metric = args.metric
     age_cutoff = args.age_cutoff
     # file_suffix = args.file_suffix
+    region_index = args.region_index
+
+    if region_index == None:
+        print('NEED REGION INDEX')
+        sys.exit()
+
 
     # Specify the directory path
     directory_path = f'../../results/dementia/{data_modality}/{experiment}/{metric}/'
@@ -126,58 +134,62 @@ def main():
     test_res_l = []
 
     print(f'Dimensionality of the dataset: {X.shape}')
+    
+    region_list = list(region_indices.keys())
+    # del region_list[1]
+    
+    i = region_index
+    r = region_list[i]
 
-    for i,r in enumerate(list(region_indices.keys())):
-        current_time = datetime.now().time()
-        print(f'{r}, {current_time}')
-        indices = region_indices[r]
-        X_test = X.iloc[indices, :]
-        y_test = y[indices]
+    # for i,r in enumerate(list(region_indices.keys())):
+    current_time = datetime.now().time()
+    print(f'{r}, {current_time}')
+    indices = region_indices[r]
+    X_test = X.iloc[indices, :]
+    y_test = y[indices]
 
-        # Create a mask to select all indices not in indices
-        mask = np.ones(len(y), dtype=bool)
-        mask[indices] = False
+    # Create a mask to select all indices not in indices
+    mask = np.ones(len(y), dtype=bool)
+    mask[indices] = False
 
-        # Step 4: Subset the main array using the mask
-        X_train = X.iloc[mask, :]
-        y_train = y[mask]
-        print('made train and test split')
+    # Step 4: Subset the main array using the mask
+    X_train = X.iloc[mask, :]
+    y_train = y[mask]
+    print('made train and test split')
 
-        automl = AutoML()
-        automl.fit(X_train, y_train, task="classification", time_budget=time_budget, metric=metric, n_jobs=-1,
-                        max_iter=None, early_stop=True, append_log=True, log_file_name=f'{directory_path}/results_log_{i}.json')
+    automl = AutoML()
+    automl.fit(X_train, y_train, task="classification", time_budget=time_budget, metric=metric, n_jobs=-1,
+                    max_iter=None, early_stop=True, append_log=True, log_file_name=f'{directory_path}/results_log_{i}.json')
 
-        print('Done fitting model')
+    print('Done fitting model')
 
-        series_automl = pd.Series([automl.best_estimator, automl.best_config], index=['model', 'hyperparams'])
+    series_automl = pd.Series([automl.best_estimator, automl.best_config], index=['model', 'hyperparams'])
 
-        train_probas = automl.predict_proba(X_train)[:,1]
+    train_probas = automl.predict_proba(X_train)[:,1]
 
-        # if metric == 'roc_auc':
-        train_res, threshold = ml_utils.calc_results(metric, y_train, train_probas, beta=3)
-        # elif metric == f3.f3_metric:
-        #     train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=3)
+    # if metric == 'roc_auc':
+    train_res, threshold = ml_utils.calc_results(metric, y_train, train_probas, beta=3)
+    # elif metric == f3.f3_metric:
+    #     train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=3)
 
-        train_res = pd.concat([series_automl, train_res])
-        train_res_l.append(train_res)
-        
-        if j == 0:
-            train_labels_l.append(y_train)
-            train_probas_l.append(train_probas)
+    train_res = pd.concat([series_automl, train_res])
+    train_res_l.append(train_res)
+    
+    train_labels_l.append(y_train)
+    train_probas_l.append(train_probas)
 
-        test_probas = automl.predict_proba(X_test)[:,1]
+    test_probas = automl.predict_proba(X_test)[:,1]
 
-        # if metric == 'roc_auc':
-        test_res = ml_utils.calc_results(metric, y_test, test_probas, beta=3, threshold=threshold)
-        # elif metric == f3.f3_metric:
-        #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
+    # if metric == 'roc_auc':
+    test_res = ml_utils.calc_results(metric, y_test, test_probas, beta=3, threshold=threshold)
+    # elif metric == f3.f3_metric:
+    #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
 
-        test_res = pd.concat([series_automl, test_res])
-        test_res_l.append(test_res)
-        
-        if j == 0:
-            test_labels_l.append(y_test)
-            test_probas_l.append(test_probas)
+    test_res = pd.concat([series_automl, test_res])
+    test_res_l.append(test_res)
+    
+    test_labels_l.append(y_test)
+    test_probas_l.append(test_probas)
         
 
     ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l)

@@ -19,15 +19,15 @@ conda activate pymc_env
 # Set PYTHONUNBUFFERED to ensure immediate flushing of print statements
 export PYTHONUNBUFFERED=1
 
-# echo "Running experiment with experiment: $experiment and metric: $metric"
-# python ml_experiments.py --experiment "$experiment" --metric "$metric" --age_cutoff 65
+echo "Running experiment with experiment: $experiment and metric: $metric"
+python ml_experiments.py --experiment "$experiment" --metric "$metric" --region_index "$region_index" --age_cutoff 65
 
 # running a single experiment
 # experiment=$1
 # metric=$2
 # echo "Running experiment with experiment: $1 and metric: $2"
-echo "Running experiment with experiment: $experiment and metric: $metric"
-python ml_experiments.py --experiment "$experiment" --metric "$metric" #--age_cutoff 65
+# echo "Running experiment with experiment: $experiment and metric: $metric"
+# python ml_experiments.py --experiment "$experiment" --metric "$metric" #--age_cutoff 65
 
 
 
