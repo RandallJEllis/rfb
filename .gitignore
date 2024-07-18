@@ -6,3 +6,4 @@ rfb.pub
 *.ipynb
 *.csv
 *catboost*
+*DS_Store*
