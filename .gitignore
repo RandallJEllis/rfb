@@ -5,3 +5,4 @@ rfb
 rfb.pub
 *.ipynb
 *.csv
+*catboost*
