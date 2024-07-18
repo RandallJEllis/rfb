@@ -20,14 +20,14 @@ conda activate pymc_env
 export PYTHONUNBUFFERED=1
 
 echo "Running experiment with experiment: modality: $modality, experiment: $experiment, and metric: $metric"
-python ml_mci.py --modality "$modality" --experiment "$experiment" --metric "$metric" #--age_cutoff 65
+python ml_65_and_older.py --modality "$modality" --experiment "$experiment" --metric "$metric" #--age_cutoff 65
 
 # running a single experiment
-# experiment=$1
-# metric=$2
-# echo "Running experiment with experiment: $1 and metric: $2"
-# echo "Running experiment with experiment: modality: $modality, experiment: $experiment, and metric: $metric"
-# python ml_mci.py --modality "$modality" --experiment "$experiment" --metric "$metric" #--age_cutoff 65
-
+#modality=$1
+#experiment=$2
+#metric=$3
+#echo "Running experiment with experiment: $1 and metric: $2"
+#echo "Running experiment with experiment: modality: $modality, experiment: $experiment, and metric: $metric"
+#python ml_65_and_older.py --modality "$modality" --experiment "$experiment" --metric "$metric" #--age_cutoff 65
 
 

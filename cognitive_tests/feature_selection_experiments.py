@@ -195,8 +195,9 @@ def main():
 
             train_res = pd.concat([series_automl, train_res])
             train_res_l.append(train_res)
-            train_labels_l.append(y_train)
-            train_probas_l.append(train_probas)
+            if j == 0:
+                train_labels_l.append(y_train)
+                train_probas_l.append(train_probas)
 
             test_probas = automl.predict_proba(X_test_sub)[:,1]
 
@@ -207,8 +208,9 @@ def main():
 
             test_res = pd.concat([series_automl, test_res])
             test_res_l.append(test_res)
-            test_labels_l.append(y_test)
-            test_probas_l.append(test_probas)
+            if j == 0:
+                test_labels_l.append(y_test)
+                test_probas_l.append(test_probas)
         
 
         ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{i}')

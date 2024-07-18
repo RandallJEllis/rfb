@@ -22,7 +22,7 @@ for modality in "${modalities[@]}"; do
                 if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" ]]; then
                     time="12:00:00"
                 else
-                    time="0:45:00"
+                    time="0:25:00"
                 fi
             elif [[ "$modality" == "proteomics" ]]; then
                 job_name=proteomics
@@ -32,7 +32,7 @@ for modality in "${modalities[@]}"; do
                     time="15:00:00"
                 else
                     partition="short"
-                    time="0:45:00"
+                    time="0:25:00"
                 fi
             elif [[ "$modality" == "cognitive_tests" ]]; then
                 job_name=cognitive_tests
@@ -41,7 +41,7 @@ for modality in "${modalities[@]}"; do
                 if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" ]]; then
                     time="12:00:00"
                 else
-                    time="0:45:00"
+                    time="0:25:00"
                 fi
             fi
 

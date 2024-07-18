@@ -106,16 +106,21 @@ def main():
 
         directory_path = f'{directory_path}/agecutoff_{age_cutoff}'
 
-    # check if output folder exists
+    # check if output folder exists; create if not
     utils.check_folder_existence(directory_path)
+    utils.check_folder_existence(f'{directory_path}/experiment_logs/')
 
     if data_modality=='proteomics':
         proteomics_vars = df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()
     elif data_modality=='neuroimaging':
-        idp_vars = pickle.load(open('../../tidy_data/dementia/neuroimaging/idp_variables.pkl', 'rb'))
+        idp_vars = pickle.load(open(f'../../tidy_data/dementia/{data_modality}/idp_variables.pkl', 'rb'))
     elif data_modality=='cognitive_tests':
         cog_vars = pickle.load(open(f'../../tidy_data/dementia/{data_modality}/cognitive_columns.pkl', 'rb'))
 
+    # store ages 
+    ages = X.loc[:, f'21003-{data_instance}.0']
+
+    # filter variables for each experiment type
     if experiment == 'age_only':
         X = X.loc[:, ['eid', f'21003-{data_instance}.0']]
         time_budget = 400
@@ -143,7 +148,7 @@ def main():
         print('Modifying time budget by dividing by 3 for age cutoff of 65') 
         time_budget = time_budget/3
 
-    print(f'Running {experiment} experiment, MCI test set, autoML time budget of {time_budget} seconds, {metric} as the metric, and an age cutoff of {age_cutoff} years')
+    print(f'Running {experiment} experiment, 65+ years old test set, autoML time budget of {time_budget} seconds, {metric} as the metric, and an age cutoff of {age_cutoff} years')
 
     if metric == 'roc_auc':
         pass
@@ -159,8 +164,6 @@ def main():
     train_res_l = []
     test_res_l = []
 
-    print(f'Dimensionality of the dataset: {X.shape}')
-
     # X_train = X[~X.eid.isin(mci.eid)]
     # X_test = X[X.eid.isin(mci.eid)]
     # y_train = y[X_train.index]
@@ -174,21 +177,26 @@ def main():
     print('Going to make initial train and test split for initial autoML experiment')
 
     X = X.drop(columns=['eid'])
-    sixtyfive_and_older_X = X[X[f'21003-{data_instance}-0' >= 65]]
-    sixtyfive_and_older_y = y[X[f'21003-{data_instance}-0' >= 65]]
+    sixtyfive_and_older_X = X[ages >= 65]
+    sixtyfive_and_older_y = y[ages >= 65]
 
-    sixtyfive_and_older_X_train, X_test, sixtyfive_and_older_y_train, y_test = train_test_split(
-    sixtyfive_and_older_X, sixtyfive_and_older_y, test_size=0.2, random_state=10000)
+    X_train, X_test, y_train, y_test = train_test_split(
+    sixtyfive_and_older_X, sixtyfive_and_older_y, stratify=sixtyfive_and_older_y, test_size=0.3, random_state=10000)
 
-    under_sixtyfive_X = X[X[f'21003-{data_instance}-0' < 65]]
-    under_sixtyfive_y = y[X[f'21003-{data_instance}-0' < 65]]
+    X_test = pd.DataFrame(X_test, columns=X.columns.tolist())
+    under_sixtyfive_X = X[ages < 65]
+    under_sixtyfive_y = y[ages < 65]
 
-    X_train = np.stack((under_sixtyfive_X, sixtyfive_and_older_X_train))
-    y_train = np.concatenate((under_sixtyfive_y, sixtyfive_and_older_y_train))
+    X_train = np.concatenate((under_sixtyfive_X, X_train), axis=0)
+    X_train = pd.DataFrame(X_train, columns=X.columns.tolist())
+    y_train = np.concatenate((under_sixtyfive_y, y_train))
+
+    print(f'Dimensionality of X_train: {X_train.shape}')
+    print(f'Dimensionality of X_test: {X_test.shape}')
 
     automl = AutoML()
     automl.fit(X_train, y_train, task="classification", time_budget=time_budget, metric=metric, n_jobs=-1,
-                    max_iter=None, early_stop=True, append_log=True, log_file_name=f'{directory_path}/results_log.json')
+                    max_iter=None, early_stop=True, append_log=True, log_file_name=f'{directory_path}/experiment_logs/results_log.json')
 
     print('Done fitting model')
 
@@ -213,58 +221,82 @@ def main():
     # elif metric == f3.f3_metric:
     #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
 
-    test_res = pd.concat([series_automl, test_res])
+    # test_res = pd.concat([series_automl, test_res])
     test_res_l.append(test_res)
     test_labels_l.append(y_test)
     test_probas_l.append(test_probas)
         
-    print('Initializing loop for random test sets')
-    
-    for i in range(40):
-        sixtyfive_and_older_X = X[X[f'21003-{data_instance}-0' >= 65]]
-        sixtyfive_and_older_y = y[X[f'21003-{data_instance}-0' >= 65]]
+    print('Initializing bootstrapping')
 
-        sixtyfive_and_older_X_train, X_test, sixtyfive_and_older_y_train, y_test = train_test_split(
-        sixtyfive_and_older_X, sixtyfive_and_older_y, test_size=0.2, random_state=i)
+    n_bootstrap = 1000
+    true_labels = y_test
+    proba_predict = test_probas
+    bootstraps = np.array([np.random.choice(range(len(true_labels)),
+                           len(true_labels), replace=True)
+                           for _ in range(n_bootstrap)])
+    for i, bs_index in enumerate(bootstraps):
+        if i % 1000 == 0:
+            print(i)
 
-        under_sixtyfive_X = X[X[f'21003-{data_instance}-0' < 65]]
-        under_sixtyfive_y = y[X[f'21003-{data_instance}-0' < 65]]
-
-        X_train = np.stack((under_sixtyfive_X, sixtyfive_and_older_X_train))
-        y_train = np.concatenate((under_sixtyfive_y, sixtyfive_and_older_y_train))
-
-        loop_automl = AutoML()
-        loop_automl.fit(X_train, y_train, task="classification", time_budget=60, metric=metric, n_jobs=-1,
-                    max_iter=None, early_stop=True, starting_points=automl.best_config_per_estimator,
-                     append_log=True, log_file_name=f'{directory_path}/results_log_testset_{i}.json')
-
-        print('Done fitting model')
-
-        series_automl = pd.Series([automl.best_estimator, automl.best_config], index=['model', 'hyperparams'])
-
-        train_probas = automl.predict_proba(X_train)[:,1]
+        yhat = proba_predict[bs_index]
+        y_bs = true_labels[bs_index]
 
         # if metric == 'roc_auc':
-        train_res, threshold = ml_utils.calc_results(metric, y_train, train_probas, beta=3)
-        # elif metric == f3.f3_metric:
-        #     train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=3)
-
-        train_res = pd.concat([series_automl, train_res])
-        train_res_l.append(train_res)
-        train_labels_l.append(y_train)
-        train_probas_l.append(train_probas)
-
-        test_probas = automl.predict_proba(X_test)[:,1]
-
-        # if metric == 'roc_auc':
-        test_res = ml_utils.calc_results(metric, y_test, test_probas, beta=3, threshold=threshold)
+        test_res = ml_utils.calc_results(metric, y_bs, yhat, beta=3, threshold=threshold)
         # elif metric == f3.f3_metric:
         #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
 
-        test_res = pd.concat([series_automl, test_res])
+        # test_res = pd.concat([test_res])
         test_res_l.append(test_res)
         test_labels_l.append(y_test)
         test_probas_l.append(test_probas)
+
+    # for i in range(1000):
+    #     sixtyfive_and_older_X = X[X[f'21003-{data_instance}-0' >= 65]]
+    #     sixtyfive_and_older_y = y[X[f'21003-{data_instance}-0' >= 65]]
+
+    #     # random state is to have a unique value across parallelization indices and splits, but also comparable across experiments (age, all demographics, modality only, demographics+modality)
+    #     sixtyfive_and_older_X_train, X_test, sixtyfive_and_older_y_train, y_test = train_test_split(
+    #     sixtyfive_and_older_X, sixtyfive_and_older_y, test_size=0.2, random_state=parallel_index * 40 + i) 
+
+    #     under_sixtyfive_X = X[X[f'21003-{data_instance}-0' < 65]]
+    #     under_sixtyfive_y = y[X[f'21003-{data_instance}-0' < 65]]
+
+    #     X_train = np.stack((under_sixtyfive_X, sixtyfive_and_older_X_train))
+    #     y_train = np.concatenate((under_sixtyfive_y, sixtyfive_and_older_y_train))
+
+    #     loop_automl = AutoML()
+    #     loop_automl.fit(X_train, y_train, task="classification", time_budget=60, metric=metric, n_jobs=-1,
+    #                 max_iter=None, early_stop=True, starting_points=automl.best_config_per_estimator,
+    #                  append_log=True, log_file_name=f'{directory_path}/experiment_logs/results_log_testset_{i}_parallel_index_{parallel_index}.json')
+
+    #     print('Done fitting model')
+
+        # series_automl = pd.Series([automl.best_estimator, automl.best_config], index=['model', 'hyperparams'])
+
+        # train_probas = automl.predict_proba(X_train)[:,1]
+
+        # # if metric == 'roc_auc':
+        # train_res, threshold = ml_utils.calc_results(metric, y_train, train_probas, beta=3)
+        # # elif metric == f3.f3_metric:
+        # #     train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=3)
+
+        # train_res = pd.concat([series_automl, train_res])
+        # train_res_l.append(train_res)
+        # train_labels_l.append(y_train)
+        # train_probas_l.append(train_probas)
+
+        # test_probas = automl.predict_proba(X_test)[:,1]
+
+        # # if metric == 'roc_auc':
+        # test_res = ml_utils.calc_results(metric, y_test, test_probas, beta=3, threshold=threshold)
+        # # elif metric == f3.f3_metric:
+        # #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
+
+        # test_res = pd.concat([series_automl, test_res])
+        # test_res_l.append(test_res)
+        # test_labels_l.append(y_test)
+        # test_probas_l.append(test_probas)
     
 
     ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l)#, other_file_info=f'_region_{i}')

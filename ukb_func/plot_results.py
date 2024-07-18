@@ -4,6 +4,8 @@ import os
 import fnmatch
 import pickle
 import matplotlib.pyplot as plt
+import argparse
+import pandas as pd
 
 def mean_roc_curve(true_labels_list, predicted_probs_list, individual_label, title):
     # plot ROC curve
@@ -56,23 +58,65 @@ def folder_recursive_roc(filepath, image_format):
                     'proteins_only': 'All Proteins', 'demographics_and_proteins': 'All Demographics + Proteins'}
                     
     for dirpath, dirnames, filenames in os.walk(filepath):
-        if 'test_true_labels.pkl' in filenames and 'roc_auc' in dirpath:
+        if 'test_true_labels_region_0.pkl' in filenames and 'roc_auc' in dirpath:
+            print (f'{dirpath}') 
+            # In the provided code, `true_labels` is a list that contains the true labels for the data
+            # points in a binary classification problem. These true labels are used to calculate the
+            # True Positive Rate (TPR) and False Positive Rate (FPR) for generating Receiver Operating
+            # Characteristic (ROC) curves.
+            # In the provided code, `true_labels` is a list that contains the true labels for the data
+            # being used to generate ROC curves. It is used in the context of evaluating the
+            # performance of a classification model by comparing the true labels of the data with the
+            # predicted probabilities from the model.
+            true_labels = []
+            probas = []
+
+            # load true labels and probas
+            for i in range(10):
+                # if analyzing feature selection experiments, find the number of features for best performance
+                if 'feature_selection'  in dirpath:
+                    df = pd.read_csv(f'{dirpath}/test_results_region_{i}.csv')
+                    best_idx = df['auroc'].idxmax()
+                    
+                tl = pickle.load(open(f'{dirpath}/test_true_labels_region_{i}.pkl', 'rb'))
+                if 'feature_selection' not in dirpath:
+                    true_labels.append(tl[0])
+                else:
+                    true_labels.append(tl[best_idx])
+                
+                p = pickle.load(open(f'{dirpath}/test_probas_region_{i}.pkl', 'rb'))    
+                if 'feature_selection' not in dirpath:
+                    probas.append(p[0])
+                else:
+                    probas.append(p[best_idx])
+                
             # train_true = pickle.load(f'{dirpath}/train_true_labels.pkl')
             # train_probas = pickle.load(f'{dirpath}/train_probas.pkl')
-            test_true = pickle.load(open(f'{dirpath}/test_true_labels.pkl', 'rb'))
-            test_probas = pickle.load(open(f'{dirpath}/test_probas.pkl', 'rb'))
+            # test_true = pickle.load(open(f'{dirpath}/test_true_labels.pkl', 'rb'))
+            # test_probas = pickle.load(open(f'{dirpath}/test_probas.pkl', 'rb'))
 
             if 'age_only' in dirpath:
                 title = plot_title['age_only']
             elif 'all_demographics' in dirpath:
                 title = plot_title['all_demographics']
-            elif 'proteins_only' in dirpath:
-                title = plot_title['proteins_only']
-            elif 'demographics_and_proteins' in dirpath:
-                title = plot_title['demographics_and_proteins']
+            elif 'modality_only' in dirpath:
+                if 'proteomics' in dirpath:
+                    title = 'All Proteins'
+                elif 'cognitive_test' in dirpath:
+                    title = 'All Cognitive Tests'
+                elif 'neuroimaging' in dirpath:
+                    title = 'All IDPs'
+            elif 'demographics_and_modality' in dirpath:
+                if 'proteomics' in dirpath:
+                    title = 'All Demographics + Proteins'
+                elif 'cognitive_test' in dirpath:
+                    title = 'All Demographics + Cognitive Tests'
+                elif 'neuroimaging' in dirpath:
+                    title = 'All Demographics + IDPs'
+                
 
-            fig = mean_roc_curve(test_true, test_probas, 'Region fold', title)
-            fig.savefig(f'{dirpath}/roc_curve.pdf')
+            fig = mean_roc_curve(true_labels, probas, 'Region fold', title)
+            fig.savefig(f'{dirpath}/roc_curve.{image_format}')
     
 def figure_with_subplots(filepath):
     # save figure with subplots
@@ -122,3 +166,11 @@ def figure_with_subplots(filepath):
         # Adjust layout
         plt.tight_layout()
         plt.show()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Run folder_recursive_roc with arguments")
+    parser.add_argument('filepath', type=str, help="filepath")
+    parser.add_argument('image_format', type=str, help="image format")
+    
+    args = parser.parse_args()
+    folder_recursive_roc(args.filepath, args.image_format)

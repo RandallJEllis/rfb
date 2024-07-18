@@ -12,11 +12,6 @@ from flaml import AutoML
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import OneHotEncoder
 
-'''TODO:
-FINISH REPLICATING THE PHENOTYPING PROTOCOL FROM THE NATURE AGING PAPER!!!!
-1. SPECIFICALLY, USING THE SOURCE COLUMNS FOR DEMENTIA ICD CODES AND FILTERING OUT SELF-REPORTS
-2. USING icd.py FUNCTIONS TO IDENTIFY ICD CODES FOR DEMENTIA
-'''
 
 
 def load_datasets(output_path):
