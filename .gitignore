@@ -7,3 +7,4 @@ rfb.pub
 *.csv
 *catboost*
 *DS_Store*
+._*

@@ -3,27 +3,32 @@
 # Define the strings for experiment and metric
 experiments=("modality_only" "demographics_and_modality")
 # metrics=("roc_auc" "f3" "ap")
-metrics=("roc_auc")
+metrics=("log_loss")
+
+age_cutoffs=(0 65)
 
 # Nested loops to iterate over the strings
 for experiment in "${experiments[@]}"; do
     for metric in "${metrics[@]}"; do
-        for region_index in {0..9}; do
-            echo "Running script with experiment: $experiment and metric: $metric"
-            #Set the partition and time based on the experiment
-            if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" ]]; then
-                partition="short"
-                time="1:00:00"
-                mem="24G"
-            # else
-            #     partition="short"
-            #     time="3:00:00"
-            #     mem="64G"
-            fi
+        for age_cutoff in "${age_cutoffs[@]}"; do
+            for region_index in {0..9}; do
+                echo "Running feature selection with experiment: $experiment and metric: $metric and age cutoff: $age_cutoff and region index: $region_index"
 
-            # Replace the following line with the command you want to run
-            # sbatch --partition="$partition" --time="$time" --mem="$mem" --export=experiment="$experiment",metric="$metric" fs_sh_ml_experiments.sh
-            sbatch --partition="$partition" --time="$time" --export=experiment="$experiment",metric="$metric",region_index="$region_index" fs_sh_ml_experiments.sh
+                #Set the partition and time based on the experiment
+                if [[ $age_cutoff -eq 0 ]]; then
+                    partition="short"
+                    time="6:00:00"
+                    mem="24G"
+                elif [[ $age_cutoff -eq 65 ]]; then
+                    partition="short"
+                    time="3:00:00"
+                    mem="24G"
+                fi
+
+                # Replace the following line with the command you want to run
+                # sbatch --partition="$partition" --time="$time" --mem="$mem" --export=experiment="$experiment",metric="$metric" fs_sh_ml_experiments.sh
+                sbatch --partition="$partition" --time="$time" --mem="$mem" --export=experiment="$experiment",metric="$metric",age_cutoff="$age_cutoff",region_index="$region_index" fs_sh_ml_experiments.sh
+            done
         done
     done
 done

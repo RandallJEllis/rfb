@@ -4,13 +4,16 @@ import sys
 from sklearn.metrics import confusion_matrix, roc_auc_score, \
      precision_recall_fscore_support
 from sklearn.metrics import precision_recall_curve, average_precision_score, \
-     accuracy_score, balanced_accuracy_score, roc_curve, auc
+     accuracy_score, balanced_accuracy_score, roc_curve, auc, matthews_corrcoef
 from datetime import datetime
 import pickle
 import matplotlib.pyplot as plt
 import os
 from utils import save_pickle
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+
+def mcc_from_conf_mtx(tp, fp, tn, fn):
+    return (tp * tn - fp * fn) / np.sqrt( (tp + fp) * (tp + fn) * (tn + fp) * (tn + fn) )
 
 def encode_categorical_vars(df, catcols):
     enc = OneHotEncoder(drop='if_binary')
@@ -75,16 +78,18 @@ def calc_results(metric, y_true, y_probas, youden=False, beta=1, threshold=None)
                                       test_pred)
     prfs = precision_recall_fscore_support(y_true,
                                            test_pred, beta=beta)
+    mcc = matthews_corrcoef(y_true, test_pred)
+
     # print(f'AUROC: {auroc}, AP: {ap}, Fscore: {best_fscore}, Accuracy: {acc}, Bal. Acc.: {bal_acc}, Best threshold: {best_threshold}')
     print(f'AUROC: {np.round(auroc, 4)}, AP: {np.round(ap, 4)}, \nAccuracy: {np.round(acc, 4)}, Bal. Acc.: {np.round(bal_acc, 4)}, \nBest threshold: {np.round(threshold, 4)}')
     print(f'Precision/Recall/Fscore: {prfs}')
     print('\n')
     res =  pd.Series(data=[auroc, ap, threshold, tp, tn, fp, fn, acc, bal_acc,
                            prfs[0][0], prfs[0][1], prfs[1][0], prfs[1][1],
-                            prfs[2][0], prfs[2][1]], 
+                            prfs[2][0], prfs[2][1], mcc], 
                             index=['auroc', 'avg_prec', 'threshold', 'TP', 'TN', 'FP', 'FN',
                                    'accuracy', 'bal_acc', 'prec_n', 'prec_p', 'recall_n', 'recall_p',
-                                    f'f{beta}_n', f'f{beta}_p'])
+                                    f'f{beta}_n', f'f{beta}_p', 'mcc'])
     if return_threshold == True:
         return res, threshold
     else:

@@ -1,17 +1,21 @@
 #!/bin/bash
 
 # Define the strings for experiment and metric
-experiments=("age_only" "all_demographics" "modality_only" "demographics_and_modality")
-# metrics=("roc_auc" "f3" "ap")
-metrics=("roc_auc")
+# experiments=("age_only" "all_demographics" "modality_only" "demographics_and_modality")
+experiments=("demographics_and_modality")
 
-age_cutoffs=(0 65)
+# metrics=("roc_auc" "f3" "ap")
+metrics=("log_loss")
+
+# age_cutoffs=(0 65)
+age_cutoffs=(65)
 
 # Nested loops to iterate over the strings
 for experiment in "${experiments[@]}"; do
     for metric in "${metrics[@]}"; do
         for age_cutoff in "${age_cutoffs[@]}"; do
-            for region_index in {0..9}; do
+            # for region_index in {0..9}; do
+            for region_index in 4; do
 
                 # Set the partition and time based on the experiment
                 echo "Running script with experiment: $experiment and metric: $metric"
