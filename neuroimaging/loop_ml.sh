@@ -1,9 +1,9 @@
 #!/bin/bash
 
 # Define the strings for experiment and metric
-experiments=("age_only" "all_demographics" "modality_only" "demographics_and_modality")
-# experiments=("idps_only" "demographics_and_idps")
-# experiments=("demographics_and_idps")
+# experiments=("age_only" "all_demographics" "modality_only" "demographics_and_modality")
+experiments=("demographics_and_modality")
+
 
 # metrics=("roc_auc" "f3" "ap")
 metrics=("roc_auc")
@@ -15,20 +15,20 @@ age_cutoffs=(65)
 for experiment in "${experiments[@]}"; do
     for metric in "${metrics[@]}"; do
         for age_cutoff in "${age_cutoffs[@]}"; do
-            for region_index in {0..9}; do
+            for region_index in 5; do
                 echo "Running script with experiment: $experiment and metric: $metric"
                 # Set the partition and time based on the experiment
-                if [[ $experiment == "idps_only" || $experiment == "demographics_and_idps" ]]; then
-                    partition="short"
-
+                if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" ]]; then
                     if [[ $age_cutoff -eq 0 ]]; then
-                        time="4:00:00"
+                        partition="medium"
+                        time="15:00:00"
                     elif [[ $age_cutoff -eq 65 ]]; then
-                        time="2:00:00"
+                        partition="short"
+                        time="8:00:00"
                     fi
                 else
                     partition="short"
-                    time="0:30:00"
+                    time="1:00:00"
                 fi
 
                 # Replace the following line with the command you want to run

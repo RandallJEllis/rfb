@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --exclude=compute-f-17-[09-16]
 #SBATCH --time=2:00:00
-#SBATCH --mem=48G
+#SBATCH --mem=64G
 #SBATCH --cpus-per-task=1
 
 # Load modules (modify if necessary)

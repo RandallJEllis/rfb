@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Define the strings for experiment and metric
-experiments=("age_only" "all_demographics" "modality_only" "demographics_and_modality")
+# experiments=("age_only" "all_demographics" "modality_only" "demographics_and_modality")
+experiments=("modality_only" "demographics_and_modality")
 
 # metrics=("roc_auc" "f3" "ap")
 metrics=("roc_auc")
@@ -16,7 +17,7 @@ for experiment in "${experiments[@]}"; do
             for region_index in {0..9}; do
                 echo "Running script with experiment: $experiment and metric: $metric"
                 # Set the partition and time based on the experiment
-                if [[ $experiment == "proteins_only" || $experiment == "demographics_and_proteins" ]]; then
+                if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" ]]; then
 
                     if [[ $age_cutoff -eq 0 ]]; then
                         partition="medium"

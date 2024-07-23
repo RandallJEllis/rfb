@@ -74,6 +74,8 @@ def main():
     time_budget = args.time_budget
     metric = args.metric
     age_cutoff = args.age_cutoff
+    if age_cutoff == 0:
+        age_cutoff = None
     # file_suffix = args.file_suffix
     region_index = args.region_index
 
@@ -105,13 +107,13 @@ def main():
         time_budget = 200
     elif experiment == 'all_demographics':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, ['21003-0.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist()]
-        time_budget = 250
-    elif experiment == 'cognitive_tests_only':
+        time_budget = 300
+    elif experiment == 'modality_only':
         X = X.loc[:, cog_vars]
-        time_budget = 550
-    elif experiment == 'demographics_and_cognitive_tests':
+        time_budget = 2000
+    elif experiment == 'demographics_and_modality':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, ['21003-0.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + cog_vars]
-        time_budget = 600
+        time_budget = 2000
 
     if age_cutoff == 65:
         print('Modifying time budget by dividing by 3 for age cutoff of 65') 
@@ -192,20 +194,20 @@ def main():
     test_probas_l.append(test_probas)
         
 
-    ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l)
+    ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{i}')
 
     train_df = pd.concat(train_res_l, axis=1).T
-    train_df.to_csv(f'{directory_path}/training_results.csv')
+    train_df.to_csv(f'{directory_path}/training_results_region_{i}.csv')
 
     test_df = pd.concat(test_res_l, axis=1).T
-    test_df.to_csv(f'{directory_path}/test_results.csv')
+    test_df.to_csv(f'{directory_path}/test_results_region_{i}.csv')
 
 
-    plot_title = {'age_only': 'Age Only', 'all_demographics': 'All Demographics',
-                    'cognitive_tests_only': 'All Cognitive Tests', 'demographics_and_cognitive_tests': 'All Demographics + Cognitive Tests'}
-    fig = plot_results.mean_roc_curve(true_labels_list=test_labels_l, predicted_probs_list=test_probas_l,
-                            individual_label='Region fold', title=plot_title[experiment])
-    fig.savefig(f'{directory_path}/roc_curve.pdf')
+    # plot_title = {'age_only': 'Age Only', 'all_demographics': 'All Demographics',
+    #                 'cognitive_tests_only': 'All Cognitive Tests', 'demographics_and_cognitive_tests': 'All Demographics + Cognitive Tests'}
+    # fig = plot_results.mean_roc_curve(true_labels_list=test_labels_l, predicted_probs_list=test_probas_l,
+    #                         individual_label='Region fold', title=plot_title[experiment])
+    # fig.savefig(f'{directory_path}/roc_curve.pdf')
 
 if __name__ == "__main__":
     main()

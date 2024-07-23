@@ -116,10 +116,10 @@ def main():
     # check if output folder exists
     utils.check_folder_existence(directory_path)
 
-    if experiment == 'proteins_only':
+    if experiment == 'modality_only':
         X = X.loc[:, df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
         time_budget = 32000
-    elif experiment == 'demographics_and_proteins':
+    elif experiment == 'demographics_and_modality':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
         time_budget = 32000
 

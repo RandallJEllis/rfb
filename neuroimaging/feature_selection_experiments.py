@@ -116,10 +116,10 @@ def main():
     utils.check_folder_existence(directory_path)
 
     idp_vars = pickle.load(open('../../tidy_data/dementia/neuroimaging/idp_variables.pkl', 'rb'))
-    if experiment == 'idps_only':
+    if experiment == 'modality_only':
         X = X.loc[:, idp_vars]
         time_budget = 32000
-    elif experiment == 'demographics_and_idps':
+    elif experiment == 'demographics_and_modality':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + idp_vars]
         time_budget = 32000
 

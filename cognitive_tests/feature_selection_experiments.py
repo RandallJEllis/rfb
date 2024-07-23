@@ -110,10 +110,10 @@ def main():
     utils.check_folder_existence(directory_path)
 
     cog_vars = pickle.load(open(f'../../tidy_data/dementia/{data_modality}/cognitive_columns.pkl', 'rb'))
-    if experiment == 'cognitive_tests_only':
+    if experiment == 'modality_only':
         X = X.loc[:, cog_vars]
         time_budget = 550
-    elif experiment == 'demographics_and_cognitive_tests':
+    elif experiment == 'demographics_and_modality':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, ['21003-0.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + cog_vars]
         time_budget = 600
 

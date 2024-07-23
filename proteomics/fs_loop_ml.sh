@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Define the strings for experiment and metric
-# experiments=("proteins_only" "demographics_and_proteins")
-experiments=("demographics_and_proteins")
+# experiments=("modality_only" "demographics_and_modality")
+experiments=("demographics_and_modality")
 # metrics=("roc_auc" "f3" "ap")
 metrics=("roc_auc")
 
@@ -13,7 +13,7 @@ for experiment in "${experiments[@]}"; do
 	    for region_index in 6; do
             echo "Running feature selection with experiment: $experiment and metric: $metric"
             # Set the partition and time based on the experiment
-            if [[ $experiment == "proteins_only" || $experiment == "demographics_and_proteins" ]]; then
+            if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" ]]; then
                 partition="short"
                 time="9:00:00"
             # else

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the strings for experiment and metric
-experiments=("idps_only" "demographics_and_idps")
+experiments=("modality_only" "demographics_and_modality")
 # metrics=("roc_auc" "f3" "ap")
 metrics=("roc_auc")
 
@@ -11,7 +11,7 @@ for experiment in "${experiments[@]}"; do
         for region_index in {0..9}; do
             echo "Running script with experiment: $experiment and metric: $metric"
             #Set the partition and time based on the experiment
-            if [[ $experiment == "idps_only" || $experiment == "demographics_and_idps" ]]; then
+            if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" ]]; then
                 partition="short"
                 time="1:00:00"
                 mem="24G"

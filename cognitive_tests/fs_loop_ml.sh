@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Define the strings for experiment and metric
-experiments=("cognitive_tests_only" "demographics_and_cognitive_tests")
+experiments=("modality_only" "demographics_and_modality")
 metrics=("roc_auc" "f3" "ap")
 
 # Nested loops to iterate over the strings
