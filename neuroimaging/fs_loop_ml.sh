@@ -14,16 +14,9 @@ for experiment in "${experiments[@]}"; do
             for region_index in {0..9}; do
                 echo "Running feature selection with experiment: $experiment and metric: $metric and age cutoff: $age_cutoff and region index: $region_index"
 
-                #Set the partition and time based on the experiment
-                if [[ $age_cutoff -eq 0 ]]; then
-                    partition="short"
-                    time="6:00:00"
-                    mem="24G"
-                elif [[ $age_cutoff -eq 65 ]]; then
-                    partition="short"
-                    time="3:00:00"
-                    mem="24G"
-                fi
+                partition="short"
+                time="0:30:00"
+                mem="24G"
 
                 # Replace the following line with the command you want to run
                 # sbatch --partition="$partition" --time="$time" --mem="$mem" --export=experiment="$experiment",metric="$metric" fs_sh_ml_experiments.sh

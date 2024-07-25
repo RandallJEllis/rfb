@@ -6,7 +6,7 @@
 #SBATCH --nodes=1
 #SBATCH --exclude=compute-f-17-[09-16]
 #SBATCH --time=8:00:00
-#SBATCH --mem=96G
+#SBATCH --mem=4G
 
 # Load modules (modify if necessary)
 module load gcc/9.2.0

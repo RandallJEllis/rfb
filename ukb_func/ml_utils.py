@@ -102,52 +102,59 @@ def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_p
     save_pickle(f'{filepath}/test_true_labels{other_file_info}.pkl', test_labels)
     save_pickle(f'{filepath}/test_probas{other_file_info}.pkl', test_probas)
 
-def get_fold_number(fname):
-    last_underscore = fname.rfind('_')
-    last_period = fname.rfind('.')
-    fold = fname[last_underscore+1:last_period]
-    return fold
+# def get_fold_number(fname):
+#     last_underscore = fname.rfind('_')
+#     last_period = fname.rfind('.')
+#     fold = fname[last_underscore+1:last_period]
+#     return fold
 
-def sort_fold_results(fold_numbers, fold_results):
-    # Pair strings with their corresponding numbers
-    paired_list = list(zip(fold_numbers, fold_results))
+# def sort_fold_results(fold_numbers, fold_results):
+#     # Pair strings with their corresponding numbers
+#     paired_list = list(zip(fold_numbers, fold_results))
 
-    # Sort the paired list based on the numbers
-    sorted_paired_list = sorted(paired_list)
+#     # Sort the paired list based on the numbers
+#     sorted_paired_list = sorted(paired_list)
 
-    # Extract the sorted strings
-    sorted_results = [fold_result for fold_number, fold_result in sorted_paired_list]
-    sorted_results = pd.concat(sorted_results)
+#     # Extract the sorted strings
+#     sorted_results = [fold_result for fold_number, fold_result in sorted_paired_list]
+#     sorted_results = pd.concat(sorted_results)
     
-    return sorted_results
+#     return sorted_results
     
 def concat_results(filepath):
     train_results = []
-    train_fold = []
     test_results = []
-    test_fold = []
+        
+    for i in range(10):
+        train_results.append(pd.read_csv(f'{filepath}/training_results_region_{i}.csv', index_col=0))
+        test_results.append(pd.read_csv(f'{filepath}/test_results_region_{i}.csv', index_col=0))
     
-    file_list = os.listdir(filepath)
-    
-    for fname in file_list:
-        if fname[:2] == '._':
-            continue
-        if '.csv' in fname:
-            if 'training_results' in fname and 'region' in fname:
-                train_results.append(pd.read_csv(f'{filepath}/{fname}', index_col=0))
+    train_results = pd.concat(train_results)
+    test_results = pd.concat(test_results)
+    return train_results, test_results
+    # for fname in file_list:
+    #     if fname[:2] == '._':
+    #         continue
+    #     if '.csv' in fname:
+    #         if 'training_results' in fname and 'region' in fname:
+    #             train_results.append(pd.read_csv(f'{filepath}/{fname}', index_col=0))
                 
-                fold = get_fold_number(fname)
-                train_fold.append(fold)
+    #             fold = get_fold_number(fname)
+    #             train_fold.append(fold)
                 
-            elif 'test_results' in fname and 'region' in fname:
-                test_results.append(pd.read_csv(f'{filepath}/{fname}', index_col=0))
+    #         elif 'test_results' in fname and 'region' in fname:
+    #             test_results.append(pd.read_csv(f'{filepath}/{fname}', index_col=0))
                 
-                fold = get_fold_number(fname)
-                test_fold.append(fold)
+    #             fold = get_fold_number(fname)
+    #             test_fold.append(fold)
     
     
-    train_results = sort_fold_results(train_fold, train_results)
-    test_results = sort_fold_results(test_fold, test_results)
+    # train_results = sort_fold_results(train_fold, train_results)
+    # test_results = sort_fold_results(test_fold, test_results)
+
+def concat_and_save_results(filepath):
+    
+    train_results, test_results = concat_results(filepath)
     
     train_results.to_csv(f'{filepath}/train_results.csv')
     test_results.to_csv(f'{filepath}/test_results.csv')

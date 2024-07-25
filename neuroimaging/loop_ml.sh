@@ -2,14 +2,13 @@
 
 # Define the strings for experiment and metric
 experiments=("age_only" "all_demographics" "modality_only" "demographics_and_modality")
-# experiments=("demographics_and_modality")
-
+# experiments=("modality_only" "demographics_and_modality")
 
 # metrics=("roc_auc" "f3" "ap")
 metrics=("log_loss")
 
 age_cutoffs=(0 65)
-# age_cutoffs=(65)
+# age_cutoffs=(0)
 
 # Nested loops to iterate over the strings
 for experiment in "${experiments[@]}"; do
@@ -18,17 +17,30 @@ for experiment in "${experiments[@]}"; do
             for region_index in {0..9}; do
                 echo "Running script with experiment: $experiment and metric: $metric and age cutoff: $age_cutoff and region index: $region_index"
                 # Set the partition and time based on the experiment
-                if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" ]]; then
+                if [[ $experiment == "demographics_and_modality" ]]; then
                     if [[ $age_cutoff -eq 0 ]]; then
-                        partition="medium"
-                        time="15:00:00"
-                    elif [[ $age_cutoff -eq 65 ]]; then
                         partition="short"
                         time="5:00:00"
+                        # time="1:30:00"
+                    elif [[ $age_cutoff -eq 65 ]]; then
+                        partition="short"
+                        time="2:30:00"
+                        # time="0:30:00"
+                    fi
+                elif [[ $experiment == "modality_only" ]]; then
+                    if [[ $age_cutoff -eq 0 ]]; then
+                        partition="short"
+                        time="4:00:00"
+                        # time="1:30:00"
+                    elif [[ $age_cutoff -eq 65 ]]; then
+                        partition="short"
+                        time="2:00:00"
+                        # time="0:30:00"
                     fi
                 else
                     partition="short"
-                    time="1:00:00"
+                    # time="1:00:00"
+                    time="0:30:00"
                 fi
 
                 # Replace the following line with the command you want to run

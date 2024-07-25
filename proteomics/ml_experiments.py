@@ -103,22 +103,22 @@ def main():
 
     if experiment == 'age_only':
         X = X.loc[:, [f'21003-{data_instance}.0']]
-        time_budget = 400
+        time_budget = 10
     elif experiment == 'all_demographics':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist()]
-        time_budget = 500
+        time_budget = 25
     elif experiment == 'modality_only':
         X = X.loc[:, df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
-        time_budget = 32000
+        time_budget = 8500
     elif experiment == 'demographics_and_modality':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
-        time_budget = 32000
+        time_budget = 9000
 
     if age_cutoff == 65:
-        print('Modifying time budget by dividing by 3 for age cutoff of 65') 
-        time_budget = time_budget/3
+        print('Modifying time budget by dividing by 2 for age cutoff of 65') 
+        time_budget = time_budget/2
 
-    print(f'Running {experiment} experiment, autoML time budget of {time_budget} seconds, {metric} as the metric, and an age cutoff of {age_cutoff} years')
+    print(f'Running {experiment} experiment, region {region_index}, autoML time budget of {time_budget} seconds, {metric} as the metric, and an age cutoff of {age_cutoff} years')
 
     if metric == 'roc_auc':
         pass
@@ -161,12 +161,18 @@ def main():
     print('made train and test split')
 
     automl = AutoML()
-    automl.fit(X_train, y_train, task="classification", time_budget=time_budget, metric=metric, n_jobs=-1,
-                    max_iter=None, early_stop=True, append_log=True, log_file_name=f'{directory_path}/results_log_{i}.json')
+    # automl.fit(X_train, y_train, task="classification", time_budget=time_budget, metric=metric, n_jobs=-1, eval_method='cv', n_splits=10,
+    #                 max_iter=None, early_stop=True, append_log=True, log_file_name=f'{directory_path}/results_log_{i}.json')
+    
+    automl.fit(X_train, y_train, task="classification", time_budget=time_budget, metric=metric,
+                n_jobs=-1, eval_method='cv', n_splits=10, split_type='stratified',
+                log_training_metric=True, early_stop=True,
+                seed=239875, model_history=True, estimator_list=['lgbm'],
+                log_file_name=f'{directory_path}/results_log_{i}.json')
 
     print('Done fitting model')
 
-    series_automl = pd.Series([automl.best_estimator, automl.best_config], index=['model', 'hyperparams'])
+    series_automl = pd.Series([i, r, automl.best_estimator, automl.best_config], index=['region_index', 'region', 'model', 'hyperparams'])
 
     train_probas = automl.predict_proba(X_train)[:,1]
 
@@ -176,7 +182,7 @@ def main():
     #     train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=3)
 
     train_res = pd.concat([series_automl, train_res])
-    train_res_l.append(train_res)
+    # train_res_l.append(train_res)
     train_labels_l.append(y_train)
     train_probas_l.append(train_probas)
 
@@ -188,18 +194,42 @@ def main():
     #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
 
     test_res = pd.concat([series_automl, test_res])
-    test_res_l.append(test_res)
+    # test_res_l.append(test_res)
     test_labels_l.append(y_test)
     test_probas_l.append(test_probas)
         
 
     ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{i}')
 
-    train_df = pd.concat(train_res_l, axis=1).T
-    train_df.to_csv(f'{directory_path}/training_results_region_{i}.csv')
+    # train_df = pd.concat(train_res_l, axis=1).T
+    train_df = pd.DataFrame(train_res).T
+    # Specify the path to your CSV file
+    file_path = f'{directory_path}/training_results.csv'
 
-    test_df = pd.concat(test_res_l, axis=1).T
-    test_df.to_csv(f'{directory_path}/test_results_region_{i}.csv')
+    if os.path.exists(file_path):
+        # If file exists, read it into a DataFrame and append the new data
+        existing_df = pd.read_csv(file_path)
+        combined_df = pd.concat([existing_df, train_df])
+        combined_df.to_csv(file_path, index=False)
+    else:
+        # If file does not exist, simply write the new data to a CSV
+        train_df.to_csv(file_path, index=False)
+    # train_df.to_csv(f'{directory_path}/training_results_region_{i}.csv')
+
+    # test_df = pd.concat(test_res_l, axis=1).T
+    test_df = pd.DataFrame(test_res).T
+    # Specify the path to your CSV file
+    file_path = f'{directory_path}/test_results.csv'
+
+    if os.path.exists(file_path):
+        # If file exists, read it into a DataFrame and append the new data
+        existing_df = pd.read_csv(file_path)
+        combined_df = pd.concat([existing_df, test_df])
+        combined_df.to_csv(file_path, index=False)
+    else:
+        # If file does not exist, simply write the new data to a CSV
+        test_df.to_csv(file_path, index=False)
+    # test_df.to_csv(f'{directory_path}/test_results_region_{i}.csv')
 
 
     # plot_title = {'age_only': 'Age Only', 'all_demographics': 'All Demographics',

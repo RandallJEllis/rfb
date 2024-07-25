@@ -20,16 +20,21 @@ for experiment in "${experiments[@]}"; do
                 if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" ]]; then
 
                     if [[ $age_cutoff -eq 0 ]]; then
-                        partition="medium"
-                        time="15:00:00"
+                        # partition="medium"
+                        # time="15:00:00"
+
+                        partition="short"
+                        time="3:30:00"
                     elif [[ $age_cutoff -eq 65 ]]; then
                         partition="short"
-                        time="5:00:00"
+                        # time="5:00:00"
+                        time="1:45:00"
                     fi
 
                 else
                     partition="short"
-                    time="0:45:00"
+                    # time="0:45:00"
+                    time="0:30:00"
                 fi
 
                 # Replace the following line with the command you want to run

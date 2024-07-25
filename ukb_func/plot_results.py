@@ -21,22 +21,22 @@ def concat_labels_and_probas(dirpath):
 
     # load true labels and probas
     for i in range(10):
+        
+        tl = pickle.load(open(f'{dirpath}/test_true_labels_region_{i}.pkl', 'rb'))
+        true_labels.append(tl[0])
+        
+        p = pickle.load(open(f'{dirpath}/test_probas_region_{i}.pkl', 'rb')) 
+        
         # if analyzing feature selection experiments, find the number of features for best performance
         if 'feature_selection' in dirpath:
             df = pd.read_csv(f'{dirpath}/test_results_region_{i}.csv')
+            df = df.iloc[:20]
             best_idx = df['auroc'].idxmax()
-            
-        tl = pickle.load(open(f'{dirpath}/test_true_labels_region_{i}.pkl', 'rb'))
-        if 'feature_selection' not in dirpath:
-            true_labels.append(tl[0])
-        else:
-            true_labels.append(tl[best_idx])
-        
-        p = pickle.load(open(f'{dirpath}/test_probas_region_{i}.pkl', 'rb'))    
-        if 'feature_selection' not in dirpath:
-            probas.append(p[0])
-        else:
             probas.append(p[best_idx])
+
+        else:
+            probas.append(p[0])
+
             
     return true_labels, probas
 
@@ -112,7 +112,7 @@ def mean_pr_curve(true_labels_list, predicted_probs_list):
         precision_list.append(np.interp(np.linspace(0, 1, 100), recall[::-1], precision[::-1]))
         recall_list.append(np.linspace(0, 1, 100))
 
-        ap = auc(recall, precision) #average_precision_score(true_labels, predicted_probs) #
+        ap = average_precision_score(true_labels, predicted_probs) # auc(recall, precision)
         ap_list.append(ap)
 
     mean_precision = np.mean(precision_list, axis=0)
@@ -181,7 +181,21 @@ def folder_recursive_cv_roc(filepath, metric, image_format):
             fig = cv_roc_curve(true_labels, probas, 'Fold', title)
             fig.savefig(f'{dirpath}/roc_curve.{image_format}')
             plt.close()
-            
+    
+def initialize_roc_plot():
+    fig, ax = plt.subplots(figsize=(8, 6))
+
+    mean_fpr = np.linspace(0, 1, 100)
+
+    # Plot settings
+    ax.plot([0, 1], [0, 1], linestyle='--', lw=2, color='r', alpha=0.8)
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel('False Positive Rate', weight='bold', size=14)
+    ax.set_ylabel('True Positive Rate', weight='bold', size=14)
+    
+    return fig, ax, mean_fpr
+
 def multi_mean_roc_curve(filepath, metric, image_format, age65_cutoff=False):
     '''
     This function plots multiple mean ROC curves in one plot, from experiments:
@@ -197,47 +211,40 @@ def multi_mean_roc_curve(filepath, metric, image_format, age65_cutoff=False):
     - image_format: str - suffix for generated images (pdf, png, jpg)
     '''
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    
-    mean_fpr = np.linspace(0, 1, 100)
-
-    # Plot settings
-    ax.plot([0, 1], [0, 1], linestyle='--', lw=2, color='r', alpha=0.8)
-    ax.set_xlim([0.0, 1.0])
-    ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate', weight='bold', size=14)
-    ax.set_ylabel('True Positive Rate', weight='bold', size=14)
-    
     colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']
-    # for i,expt, in enumerate(['age_only', 'all_demographics', 'modality_only/feature_selection', 'demographics_and_modality/feature_selection', 'modality_only', 'demographics_and_modality', ]):
-    for i,expt, in enumerate(['age_only', 'all_demographics', 'modality_only', 'demographics_and_modality', ]):
-        if age65_cutoff==False:
-            dirpath = f'{filepath}/{expt}/{metric}/'
-        else:
-            dirpath = f'{filepath}/{expt}/{metric}/agecutoff_65/'
+    for age_cutoff in [None, 65]:
+        
+        fig, ax, mean_fpr = initialize_roc_plot()
+        
+        for i,expt, in enumerate(['age_only', 'all_demographics', 'modality_only', 'demographics_and_modality', 'modality_only/feature_selection', 'demographics_and_modality/feature_selection']):
+        
+            if age_cutoff is not None:
+                dirpath = f'{filepath}/{expt}/{metric}/agecutoff_{age_cutoff}/'
+            elif age_cutoff is None:
+                dirpath = f'{filepath}/{expt}/{metric}/'
 
-        true_labels, probas = concat_labels_and_probas(dirpath)
-        title = choose_plot_title(dirpath)
+            true_labels, probas = concat_labels_and_probas(dirpath)
+            title = choose_plot_title(dirpath)
 
-        mean_tpr, std_tpr, mean_auc, std_auc = mean_roc_curve(true_labels, probas)
-        ax.plot(mean_fpr, mean_tpr, color=colors[i], label=f'{title}, AUC: {mean_auc:.2f} $\pm$ {std_auc:.2f}', lw=2, alpha=0.8)
+            mean_tpr, std_tpr, mean_auc, std_auc = mean_roc_curve(true_labels, probas)
+            ax.plot(mean_fpr, mean_tpr, color=colors[i], label=f'{title}, AUC: {mean_auc:.2f} $\pm$ {std_auc:.2f}', lw=2, alpha=0.8)
 
-        # Plot standard deviation
-        tpr_upper = np.minimum(mean_tpr + std_tpr, 1)
-        tpr_lower = np.maximum(mean_tpr - std_tpr, 0)
-        ax.fill_between(mean_fpr, tpr_lower, tpr_upper, color=colors[i], alpha=0.2)#, label=r'$\pm$ 1 std. dev.')
+            # Plot standard deviation
+            tpr_upper = np.minimum(mean_tpr + std_tpr, 1)
+            tpr_lower = np.maximum(mean_tpr - std_tpr, 0)
+            ax.fill_between(mean_fpr, tpr_lower, tpr_upper, color=colors[i], alpha=0.2)
     
-    ax.legend(loc='lower right')
+        ax.legend(loc='lower right')
 
-    fname = f'{filepath}/roc_curve_{metric}_all_expts_mean'
-    if age65_cutoff is True:
-        fname += '_age65cutoff'
-    fname += f'.{image_format}'
+        fname = f'{filepath}/roc_curve_{metric}_all_expts_mean'
+        if age_cutoff is not None:
+            fname += f'_age{age_cutoff}cutoff'
+        fname += f'.{image_format}'
 
-    fig.savefig(fname)
-    plt.close()
+        fig.savefig(fname)
+        plt.close()
 
-def multi_mean_pr_curve(filepath, image_format, age65_cutoff=False):
+def multi_mean_pr_curve(filepath, metric, image_format):
     '''
     This function plots multiple mean PR curves in one plot, from experiments:
     - age only
@@ -252,49 +259,38 @@ def multi_mean_pr_curve(filepath, image_format, age65_cutoff=False):
     - image_format: str - suffix for generated images (pdf, png, jpg)
     '''
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    
-    # mean_fpr = np.linspace(0, 1, 100)
-
-    # Plot settings
-    # ax.plot([0, 1], [0, 1], linestyle='--', lw=2, color='r', alpha=0.8)
-    # ax.set_xlim([0.0, 1.0])
-    # ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('Recall', weight='bold', size=14)
-    ax.set_ylabel('Precision', weight='bold', size=14)
-    
     colors = ['red', 'orange', 'yellow', 'green', 'blue', 'purple']
-    for i,expt, in enumerate(['age_only', 'all_demographics', 'modality_only/feature_selection', 'demographics_and_modality/feature_selection', 'modality_only', 'demographics_and_modality', ]):
-        if age65_cutoff==False:
-            dirpath = f'{filepath}/{expt}/{metric}/'
-        else:
-            dirpath = f'{filepath}/{expt}/{metric}/agecutoff_65/'
+    for age_cutoff in [None, 65]:
+        
+        fig, ax = plt.subplots(figsize=(8, 6))
+        ax.set_xlabel('Recall', weight='bold', size=14)
+        ax.set_ylabel('Precision', weight='bold', size=14)
+        ax.set_xlim([-0.05, 1.05])
+        ax.set_ylim([-0.25, 1.25])
+        
+        for i,expt, in enumerate(['age_only', 'all_demographics', 'modality_only/feature_selection', 'demographics_and_modality/feature_selection', 'modality_only', 'demographics_and_modality', ]):
 
-        true_labels, probas = concat_labels_and_probas(dirpath)
-        title = choose_plot_title(dirpath)
+            if age_cutoff is not None:
+                dirpath = f'{filepath}/{expt}/{metric}/agecutoff_{age_cutoff}/'
+            elif age_cutoff is None:
+                dirpath = f'{filepath}/{expt}/{metric}/'
+            
+            true_labels, probas = concat_labels_and_probas(dirpath)
+            title = choose_plot_title(dirpath)
 
-        # mean_tpr, std_tpr, mean_auc, ci = mean_roc_curve(true_labels, probas)
-        mean_precision, std_precision, mean_recall, mean_ap, std_ap = mean_pr_curve(true_labels, probas)
-        # ax.plot(mean_fpr, mean_tpr, color=colors[i], label=f'{title}, AUC: {mean_auc:.2f} $\pm$ {std_auc:.2f}', lw=2, alpha=0.8)
+            mean_precision, std_precision, mean_recall, mean_ap, std_ap = mean_pr_curve(true_labels, probas)
+            ax.plot(mean_recall, mean_precision, color=colors[i], label=f'{title}, AP: {mean_ap:.2f} $\pm$ {std_ap:.2f})', lw=2, alpha=0.8)
+            ax.fill_between(mean_recall, mean_precision - std_precision, mean_precision + std_precision, color=colors[i], alpha=0.2)
 
+        ax.legend(loc='upper right')
 
-        ax.plot(mean_recall, mean_precision, color=colors[i], label=f'{title}, AP: {mean_ap:.2f} $\pm$ {std_ap:.2f})', lw=2, alpha=0.8)
-        ax.fill_between(mean_recall, mean_precision - std_precision, mean_precision + std_precision, color=colors[i], alpha=0.2)
+        fname = f'{filepath}/pr_curve_all_expts_mean'
+        if age_cutoff is not None:
+            fname += f'_age{age_cutoff}cutoff'
+        fname += f'.{image_format}'
 
-        # Plot standard deviation
-        # tpr_upper = np.minimum(mean_tpr + std_tpr, 1)
-        # tpr_lower = np.maximum(mean_tpr - std_tpr, 0)
-        # ax.fill_between(mean_fpr, tpr_lower, tpr_upper, color=colors[i], alpha=0.2)#, label=r'$\pm$ 1 std. dev.')
-    
-    ax.legend(loc='upper right')
-
-    fname = f'{filepath}/pr_curve_all_expts_mean'
-    if age65_cutoff is True:
-        fname += '_age65cutoff'
-    fname += f'.{image_format}'
-
-    fig.savefig(fname)
-    plt.close()
+        fig.savefig(fname)
+        plt.close()
 
 def plot_calibration_curve(true_labels, probas, n_bins):
 
@@ -390,7 +386,7 @@ def figure_with_subplots(filepath):
         plt.show()
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Run multi_mean_roc_curve with arguments")
+    parser = argparse.ArgumentParser(description="Plot ROC and PR curves")
     parser.add_argument('filepath', type=str, help="filepath")
     parser.add_argument('metric', type=str, help="metric")
     parser.add_argument('image_format', type=str, help="image format")
@@ -398,3 +394,4 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     multi_mean_roc_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
+    multi_mean_pr_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)

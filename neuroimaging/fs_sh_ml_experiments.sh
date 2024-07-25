@@ -7,7 +7,6 @@
 #SBATCH --exclude=compute-f-17-[09-16]
 #SBATCH --time=3:00:00
 #SBATCH --mem=24G
-#SBATCH --cpus-per-task=16
 
 # Load modules (modify if necessary)
 module load gcc/9.2.0
@@ -20,7 +19,7 @@ conda activate pymc_env
 # Set PYTHONUNBUFFERED to ensure immediate flushing of print statements
 export PYTHONUNBUFFERED=1
 
-echo "Running experiment with experiment: $experiment and metric: $metric"
+# echo "Running experiment with experiment: $experiment and metric: $metric"
 python feature_selection_experiments.py --experiment "$experiment" --metric "$metric" --region_index "$region_index" --age_cutoff "$age_cutoff"
 # running a single experiment
 # experiment=$1

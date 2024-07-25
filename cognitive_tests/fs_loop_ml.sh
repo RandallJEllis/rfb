@@ -15,13 +15,8 @@ for experiment in "${experiments[@]}"; do
                 echo "Running feature selection with experiment: $experiment and metric: $metric and age cutoff: $age_cutoff and region index: $region_index"
                     
                 # Set the partition and time based on the experiment
-                if [[ $age_cutoff -eq 0 ]]; then
-                    partition="short"
-                    time="8:00:00"
-                elif [[ $age_cutoff -eq 65 ]]; then
-                    partition="short"
-                    time="4:00:00"
-                fi
+                partition="short"
+                time="0:20:00"
 
                 # Replace the following line with the command you want to run
                 sbatch --partition="$partition" --time="$time" --export=experiment="$experiment",metric="$metric",age_cutoff="$age_cutoff",region_index="$region_index" fs_sh_ml_experiments.sh

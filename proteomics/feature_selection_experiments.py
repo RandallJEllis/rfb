@@ -90,6 +90,8 @@ def main():
     time_budget = args.time_budget
     metric = args.metric
     age_cutoff = args.age_cutoff
+    if age_cutoff == 0:
+        age_cutoff = None
     # file_suffix = args.file_suffix
     region_index = args.region_index
     
@@ -118,21 +120,21 @@ def main():
 
     if experiment == 'modality_only':
         X = X.loc[:, df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
-        time_budget = 32000
+        time_budget = 8500
     elif experiment == 'demographics_and_modality':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
-        time_budget = 32000
+        time_budget = 9000
 
     if age_cutoff == 65:
-        print('Modifying time budget by dividing by 3 for age cutoff of 65') 
-        time_budget = time_budget/3
+        print('Modifying time budget by dividing by 2 for age cutoff of 65') 
+        time_budget = time_budget/2
 
     print(f'Running {experiment} experiment, autoML time budget of {time_budget} seconds, {metric} as the metric, and an age cutoff of {age_cutoff} years')
 
     if metric == 'f3':
         metric = f3.f3_metric
 
-  
+
     print(f'Dimensionality of the dataset: {X.shape}')
 
     region_list = list(region_indices.keys())
@@ -159,8 +161,11 @@ def main():
     print(f'Made train and test split for region {i+1}')
 
     automl = AutoML()
-    automl.retrain_from_log(log_file_name=f'{original_results_directory_path}/results_log_{i}.json', X_train=X_train, y_train=y_train, task='classification',
-        eval_method='holdout', train_best=True)
+    automl.retrain_from_log(log_file_name=f'{original_results_directory_path}/results_log_{i}.json',
+                            X_train=X_train, y_train=y_train, task='classification', 
+                            train_full=True, n_jobs=-1,
+                            #eval_method='cv', n_splits=10, split_type='stratified',
+                            train_best=True)
 
     time_history, best_valid_loss_history, valid_loss_history, config_history, metric_history = get_output_from_log(filename=f'{original_results_directory_path}/results_log_{i}.json', time_budget=time_budget)
 
@@ -174,9 +179,9 @@ def main():
     test_res_l = []
 
     if len(automl.feature_importances_) == 1:
-        top_feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_[0]))[::-1]][:20]
+        top_feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_[0]))[::-1]][:100]
     else:
-        top_feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_))[::-1]][:20]
+        top_feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_))[::-1]][:100]
     
     tflist = []
     for j, tf in enumerate(top_feature_names):
@@ -188,13 +193,16 @@ def main():
         X_test_sub = X_test.loc[:, tflist]
 
         automl = AutoML()
-        automl.retrain_from_log(log_file_name=f'{original_results_directory_path}/results_log_{i}.json', X_train=X_train_sub, y_train=y_train, task='classification',
-            eval_method='holdout', train_best=True)
+        automl.retrain_from_log(log_file_name=f'{original_results_directory_path}/results_log_{i}.json',
+                                X_train=X_train_sub, y_train=y_train, task='classification', 
+                                train_full=True, n_jobs=-1,
+                                #eval_method='cv', n_splits=10, split_type='stratified',
+                                train_best=True)
 
         current_time = datetime.now().time()
         print(f'Done fitting model for region {i+1} with top {j+1} variables. {current_time}')
 
-        series_automl = pd.Series([config_history[-1]['Best Learner'], config_history[-1]['Best Hyper-parameters'], i, tflist], index=['model', 'hyperparams', 'region', 'features'])
+        series_automl = pd.Series([config_history[-1]['Best Learner'], config_history[-1]['Best Hyper-parameters'], i, r, tflist], index=['model', 'hyperparams', 'region_index', 'region', 'features'])
 
         train_probas = automl.predict_proba(X_train_sub)[:,1]
 
@@ -208,7 +216,7 @@ def main():
         
         if j == 0:
             train_labels_l.append(y_train)
-            train_probas_l.append(train_probas)
+        train_probas_l.append(train_probas)
 
         test_probas = automl.predict_proba(X_test_sub)[:,1]
 
@@ -222,7 +230,7 @@ def main():
         
         if j == 0:
             test_labels_l.append(y_test)
-            test_probas_l.append(test_probas)
+        test_probas_l.append(test_probas)
 
     ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{i}')
 
