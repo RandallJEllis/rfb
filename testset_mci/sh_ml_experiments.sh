@@ -19,8 +19,8 @@ conda activate pymc_env
 # Set PYTHONUNBUFFERED to ensure immediate flushing of print statements
 export PYTHONUNBUFFERED=1
 
-echo "Running experiment with experiment: modality: $modality, experiment: $experiment, and metric: $metric"
-python ml_mci.py --modality "$modality" --experiment "$experiment" --metric "$metric" #--age_cutoff 65
+echo "Running experiment with experiment: modality: $modality, experiment: $experiment, and metric: $metric, age cutoff $age_cutoff"
+python ml_mci.py --modality "$modality" --experiment "$experiment" --metric "$metric" --age_cutoff "$age_cutoff"
 
 # running a single experiment
 # experiment=$1

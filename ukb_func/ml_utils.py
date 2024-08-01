@@ -12,6 +12,44 @@ import os
 from utils import save_pickle
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
+def concat_labels_and_probas(dirpath):
+    
+    # In the provided code, `true_labels` is a list that contains the true labels for the data
+    # points in a binary classification problem. These true labels are used with predicted 
+    # probabilities to calculate the True Positive Rate (TPR) and False Positive Rate (FPR)
+    # for generating Receiver Operating Characteristic (ROC) and calibration curves.
+    
+    true_labels = []
+    probas = []
+
+    # load true labels and probas
+    if 'mci' not in dirpath:
+        for i in range(10):
+            
+            tl = pickle.load(open(f'{dirpath}/test_true_labels_region_{i}.pkl', 'rb'))
+            true_labels.append(tl[0])
+            
+            p = pickle.load(open(f'{dirpath}/test_probas_region_{i}.pkl', 'rb')) 
+            
+            # if analyzing feature selection experiments, find the number of features for best performance
+            if 'feature_selection' in dirpath:
+                df = pd.read_csv(f'{dirpath}/test_results_region_{i}.csv')
+                df = df.iloc[:20]
+                best_idx = df['auroc'].idxmax()
+                probas.append(p[best_idx])
+
+            else:
+                probas.append(p[0])
+    else:
+        tl = pickle.load(open(f'{dirpath}/test_true_labels.pkl', 'rb'))
+        true_labels.append(tl[0])
+        
+        p = pickle.load(open(f'{dirpath}/test_probas.pkl', 'rb')) 
+        probas.append(p[0])
+
+            
+    return true_labels, probas
+
 def mcc_from_conf_mtx(tp, fp, tn, fn):
     return (tp * tn - fp * fn) / np.sqrt( (tp + fp) * (tp + fn) * (tn + fp) * (tn + fn) )
 
@@ -58,18 +96,23 @@ def pick_threshold(y_true, y_probas, youden=False, beta=1):
 
     return best_threshold
 
-def calc_results(metric, y_true, y_probas, youden=False, beta=1, threshold=None):
+# def calc_results(metric, y_true, y_probas, youden=False, beta=1, threshold=None):
+def calc_results(y_true, y_probas, youden=False, beta=1, threshold=None, suppress_output=True):    
     auroc = roc_auc_score(y_true, y_probas)
     ap = average_precision_score(y_true, y_probas)
 
-    if metric == 'roc_auc':
-        youden = True
+    # if metric == 'roc_auc':
+    #     youden = True
         
-    return_threshold = False
-    if threshold is None:
-        threshold = pick_threshold(y_true, y_probas, youden, beta)
-        return_threshold = True
+    # return_threshold = False
+    # if threshold is None:
+    #     threshold = pick_threshold(y_true, y_probas, youden, beta)
+    #     return_threshold = True
 
+    if threshold is not None:
+        pass
+    else:
+        threshold = pick_threshold(y_true, y_probas, youden, beta)
     test_pred = (y_probas >= threshold).astype(int)
             
     tn, fp, fn, tp = confusion_matrix(y_true, test_pred).ravel()
@@ -81,19 +124,23 @@ def calc_results(metric, y_true, y_probas, youden=False, beta=1, threshold=None)
     mcc = matthews_corrcoef(y_true, test_pred)
 
     # print(f'AUROC: {auroc}, AP: {ap}, Fscore: {best_fscore}, Accuracy: {acc}, Bal. Acc.: {bal_acc}, Best threshold: {best_threshold}')
-    print(f'AUROC: {np.round(auroc, 4)}, AP: {np.round(ap, 4)}, \nAccuracy: {np.round(acc, 4)}, Bal. Acc.: {np.round(bal_acc, 4)}, \nBest threshold: {np.round(threshold, 4)}')
-    print(f'Precision/Recall/Fscore: {prfs}')
-    print('\n')
+    if suppress_output:
+        pass
+    else:
+        print(f'AUROC: {np.round(auroc, 4)}, AP: {np.round(ap, 4)}, \nAccuracy: {np.round(acc, 4)}, Bal. Acc.: {np.round(bal_acc, 4)}, \nBest threshold: {np.round(threshold, 4)}')
+        print(f'Precision/Recall/Fscore: {prfs}')
+        print('\n')
     res =  pd.Series(data=[auroc, ap, threshold, tp, tn, fp, fn, acc, bal_acc,
                            prfs[0][0], prfs[0][1], prfs[1][0], prfs[1][1],
                             prfs[2][0], prfs[2][1], mcc], 
                             index=['auroc', 'avg_prec', 'threshold', 'TP', 'TN', 'FP', 'FN',
                                    'accuracy', 'bal_acc', 'prec_n', 'prec_p', 'recall_n', 'recall_p',
                                     f'f{beta}_n', f'f{beta}_p', 'mcc'])
-    if return_threshold == True:
-        return res, threshold
-    else:
-        return res
+    # if return_threshold == True:
+    #     return res, threshold
+    # else:
+    #     return res
+    return res
 
 
 def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_probas, other_file_info=''):
@@ -159,7 +206,37 @@ def concat_and_save_results(filepath):
     train_results.to_csv(f'{filepath}/train_results.csv')
     test_results.to_csv(f'{filepath}/test_results.csv')
     
-#def iter_concat_results():
+def probas_to_results(filepath, youden=True, beta=1, threshold=None):
+    res_l = []
+    
+    if 'mci' not in filepath:
+        for i in range(10):
+            true_labels = pickle.load(open(f'{filepath}/test_true_labels_region_{i}.pkl', 'rb'))
+            probas = pickle.load(open(f'{filepath}/test_probas_region_{i}.pkl', 'rb'))
+
+            if 'feature_selection' in filepath:
+                df = pd.read_csv(f'{filepath}/test_results_region_{i}.csv')
+                df = df.iloc[:20]
+                best_idx = df['auroc'].idxmax()
+
+                res = calc_results(true_labels[0], probas[best_idx], youden=youden, beta=beta, threshold=threshold)
+                res_l.append(res)
+
+            else:
+                res = calc_results(true_labels[0], probas[0], youden=youden, beta=beta, threshold=threshold)
+                res_l.append(res)
+
+    else:
+        true_labels = pickle.load(open(f'{filepath}/test_true_labels.pkl', 'rb'))
+        probas = pickle.load(open(f'{filepath}/test_probas.pkl', 'rb'))
+        res = calc_results(true_labels[0], probas[0], youden=youden, beta=beta, threshold=threshold)
+        res_l.append(res)
+    
+    # train_results = pd.concat(train_results)
+    # test_results = pd.concat(test_results)
+    
+    return pd.concat(res_l, axis=1).T
+    
     
     
 #if __name__ == "__main__":
