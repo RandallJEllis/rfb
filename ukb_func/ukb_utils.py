@@ -1,4 +1,34 @@
 import pandas as pd
+import os
+
+def _list_directories(directory):
+    return [d for d in os.listdir(directory) if os.path.isdir(os.path.join(directory, d))]
+    
+def id_loc(list_of_fieldids):
+    main_directory = '/n/groups/patel/uk_biobank/'
+
+    directories = _list_directories(main_directory)
+
+    target_file = 'fields.ukb'
+
+    found = []
+    for d in directories:
+        if '22881' in d:
+            continue
+        dir_files = os.listdir(f'{main_directory}/{d}')
+
+        if target_file in dir_files:
+            df = pd.read_csv(f'{main_directory}/{d}/{target_file}', header=None)
+            # print(df)
+
+            df = df[df.iloc[:,0].isin(list_of_fieldids)]
+            if len(df) > 0:
+                found.extend(list(df.iloc[:,0].values))
+                print(d, df.iloc[:,0].values)
+                print(len(df))
+                print('\n')
+    print('Not found:')
+    print(set(list_of_fieldids).difference(set(found)))
 
 def load_demographics(data_path):
     # import age, sex, education, site, assessment date
@@ -6,7 +36,21 @@ def load_demographics(data_path):
                                    'demographics/demographics_df.parquet'
                                    )
     return df
+
+def remove_participants_full_missing(df, columns_to_check=None):
+    if columns_to_check is None:
+        columns_to_check = [col for col in df.columns.tolist() if col != 'eid']
     
+    df_sub = df.loc[:, columns_to_check]
+    
+    na_counts = df_sub.isna().sum(axis=1)
+
+    keep = na_counts[na_counts < len(columns_to_check)]
+
+    df_keep = df.iloc[keep, :]
+
+    return df_keep
+
 def group_assessment_center(df, data_instance, assessment_centers_lookup):
     # convert region
     assessment_centers = pd.DataFrame(df.loc[:, f'54-{data_instance}.0'])
@@ -39,3 +83,56 @@ def get_last_completed_education(df, instance):
     df['max_educ_complete'] = max_educ
     return df
 
+def binary_encode_column_membership_datacoding2171(df, field_id_columns, new_column_name):
+    '''
+    Binary encode whether a patient has a history of a disease that comes from
+    a source other than only self-report
+
+    ENSURE that the column uses Data coding 2171: https://biobank.ndph.ox.ac.uk/ukb/coding.cgi?id=2171
+    '''
+    member_eid = []
+
+    for fid in field_id_columns:
+        fid_df = df.loc[:, ['eid', fid]]
+        fid_df = fid_df[fid_df[fid] != 50]
+        fid_df.dropna(inplace=True)
+        member_eid.extend(list(fid_df.eid))
+
+    member_eid = list(set(member_eid))
+    df[new_column_name] = df.eid.isin(member_eid).astype(int)
+
+    return df
+
+
+def get_protein(protein_id, annotation_protein):
+    protein_code = pd.read_csv('../../../proj_idp/tidy_data/proteomics/coding143.tsv', sep='\t')
+    
+    # Split the column by semicolon and expand into separate columns
+    split_columns = protein_code['meaning'].str.split(';', expand=True)
+
+    # Rename the new columns (optional)
+    split_columns.columns = [f'part_{i+1}' for i in range(split_columns.shape[1])]
+
+    # Concatenate the new columns with the original DataFrame (optional)
+    protein_code = pd.concat([protein_code, split_columns], axis=1)
+
+    # Drop the original column if no longer needed
+    protein_code = protein_code.drop('meaning', axis=1)
+
+    ticks = []
+
+    for f in top_feature_names[:20]:
+        if f[-2:] == '-0':
+            hyphen_idx = f.index('-')
+            prot_id = f[:hyphen_idx]
+            sym = protein_code.loc[protein_code.coding == int(prot_id), 'part_1'].values[0]
+            
+            ticks.append(sym)
+        elif '21003' in f:
+            ticks.append('Age')
+        elif 'apoe_' in f:
+            allele_num = f[-3]
+            ticks.append(f'APOE$\epsilon$4, {allele_num} alleles')
+        else:
+            ticks.append(f)
+        

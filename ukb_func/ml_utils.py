@@ -33,9 +33,9 @@ def concat_labels_and_probas(dirpath):
             
             # if analyzing feature selection experiments, find the number of features for best performance
             if 'feature_selection' in dirpath:
-                df = pd.read_csv(f'{dirpath}/test_results_region_{i}.csv')
-                df = df.iloc[:20]
-                best_idx = df['auroc'].idxmax()
+                df = pd.read_csv(f'{dirpath}/training_results_region_{i}.csv')
+                # df = df.iloc[:20]
+                best_idx = df['auroc'][:20].idxmax()
                 probas.append(p[best_idx])
 
             else:
@@ -67,7 +67,7 @@ def encode_ordinal_vars(df, ordvars):
                             columns=enc.get_feature_names_out(ordvars))
     return ord_enc
 
-def pick_threshold(y_true, y_probas, youden=False, beta=1):
+def pick_threshold(y_true, y_probas, youden=True, beta=1):
     scores = []
 
     if youden is True:
@@ -97,7 +97,7 @@ def pick_threshold(y_true, y_probas, youden=False, beta=1):
     return best_threshold
 
 # def calc_results(metric, y_true, y_probas, youden=False, beta=1, threshold=None):
-def calc_results(y_true, y_probas, youden=False, beta=1, threshold=None, suppress_output=True):    
+def calc_results(y_true, y_probas, youden=True, beta=1, threshold=None, suppress_output=True):    
     auroc = roc_auc_score(y_true, y_probas)
     ap = average_precision_score(y_true, y_probas)
 
@@ -109,10 +109,13 @@ def calc_results(y_true, y_probas, youden=False, beta=1, threshold=None, suppres
     #     threshold = pick_threshold(y_true, y_probas, youden, beta)
     #     return_threshold = True
 
+    return_threshold = False
     if threshold is not None:
         pass
     else:
         threshold = pick_threshold(y_true, y_probas, youden, beta)
+        return_threshold = True
+
     test_pred = (y_probas >= threshold).astype(int)
             
     tn, fp, fn, tp = confusion_matrix(y_true, test_pred).ravel()
@@ -136,11 +139,11 @@ def calc_results(y_true, y_probas, youden=False, beta=1, threshold=None, suppres
                             index=['auroc', 'avg_prec', 'threshold', 'TP', 'TN', 'FP', 'FN',
                                    'accuracy', 'bal_acc', 'prec_n', 'prec_p', 'recall_n', 'recall_p',
                                     f'f{beta}_n', f'f{beta}_p', 'mcc'])
-    # if return_threshold == True:
-    #     return res, threshold
-    # else:
-    #     return res
-    return res
+    if return_threshold == True:
+        return res, threshold
+    else:
+        return res
+    # return res
 
 
 def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_probas, other_file_info=''):
@@ -207,35 +210,45 @@ def concat_and_save_results(filepath):
     test_results.to_csv(f'{filepath}/test_results.csv')
     
 def probas_to_results(filepath, youden=True, beta=1, threshold=None):
-    res_l = []
-    
+    train_res_l = []
+    test_res_l = []
+
     if 'mci' not in filepath:
         for i in range(10):
-            true_labels = pickle.load(open(f'{filepath}/test_true_labels_region_{i}.pkl', 'rb'))
-            probas = pickle.load(open(f'{filepath}/test_probas_region_{i}.pkl', 'rb'))
+            train_labels = pickle.load(open(f'{filepath}/train_true_labels_region_{i}.pkl', 'rb'))
+            test_labels = pickle.load(open(f'{filepath}/test_true_labels_region_{i}.pkl', 'rb'))
+            train_probas = pickle.load(open(f'{filepath}/train_probas_region_{i}.pkl', 'rb'))
+            test_probas = pickle.load(open(f'{filepath}/test_probas_region_{i}.pkl', 'rb'))
 
             if 'feature_selection' in filepath:
-                df = pd.read_csv(f'{filepath}/test_results_region_{i}.csv')
+                df = pd.read_csv(f'{filepath}/training_results_region_{i}.csv')
                 df = df.iloc[:20]
                 best_idx = df['auroc'].idxmax()
 
-                res = calc_results(true_labels[0], probas[best_idx], youden=youden, beta=beta, threshold=threshold)
-                res_l.append(res)
+                # res = calc_results(test_labels[0], test_probas[best_idx], youden=youden, beta=beta, threshold=threshold)
+                # res_l.append(res)
+
+                train_res, thresh = calc_results(train_labels[0], train_probas[best_idx], youden=youden, beta=beta, threshold=threshold)
+                res = calc_results(test_labels[0], test_probas[best_idx], youden=youden, beta=beta, threshold=thresh)
+                train_res_l.append(train_res)
+                test_res_l.append(res)
 
             else:
-                res = calc_results(true_labels[0], probas[0], youden=youden, beta=beta, threshold=threshold)
-                res_l.append(res)
+                train_res, thresh = calc_results(train_labels[0], train_probas[0], youden=youden, beta=beta, threshold=threshold)
+                res = calc_results(test_labels[0], test_probas[0], youden=youden, beta=beta, threshold=thresh)
+                train_res_l.append(train_res)
+                test_res_l.append(res)
 
     else:
-        true_labels = pickle.load(open(f'{filepath}/test_true_labels.pkl', 'rb'))
-        probas = pickle.load(open(f'{filepath}/test_probas.pkl', 'rb'))
-        res = calc_results(true_labels[0], probas[0], youden=youden, beta=beta, threshold=threshold)
+        test_labels = pickle.load(open(f'{filepath}/test_true_labels.pkl', 'rb'))
+        test_probas = pickle.load(open(f'{filepath}/test_probas.pkl', 'rb'))
+        res = calc_results(test_labels[0], test_probas[0], youden=youden, beta=beta, threshold=threshold)
         res_l.append(res)
     
-    # train_results = pd.concat(train_results)
-    # test_results = pd.concat(test_results)
+    train_results = pd.concat(train_res_l, axis=1).T
+    test_results = pd.concat(test_res_l, axis=1).T
     
-    return pd.concat(res_l, axis=1).T
+    return train_results, test_results
     
     
     

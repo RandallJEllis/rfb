@@ -34,9 +34,7 @@ utils.check_folder_existence(output_path)
 data_instance = 0
 
 df = pd.read_parquet(data_path + 'cognition/cognition.parquet')
-print(df.shape)
 df = df.dropna(subset=df.columns[1:], how='all').reset_index(drop=True)
-print(df.shape)
 
 # subset instance 0 columns
 col_list = df.columns[1:].tolist()
@@ -45,38 +43,45 @@ for col in col_list:
     if '-0' in col:
         keep.append(col)
 df = df.loc[:, ['eid'] + keep]
-print(df.shape)
 
 
 cog_tests = df.columns[1:].tolist()
 
 demo = ukb_utils.load_demographics(data_path)
 df = df.merge(demo, on='eid')
-print(df.shape)
 # import dx dates across dementia diagnosis Field IDs
 acd = pd.read_parquet(data_path + 'acd/allcausedementia.parquet')
 
 df = dementia_utils.remove_pre_instance_dementia(df, data_instance, acd)
-print(df.shape)
 # APOEe4 alleles
 alleles = pd.read_csv(
     f'{data_path}/apoe4_snps/plink_outputs/apoee4_snps.raw',
     sep='\t'
     )
 df = dementia_utils.apoe_alleles(df, alleles)
-print(df.shape)
 # latest education qualification
 df = ukb_utils.get_last_completed_education(df, instance=data_instance)
-print(df.shape)
+
+lancet_vars = pd.read_parquet('../../tidy_data/dementia/lancet2024/lancet2024_preprocessed.parquet')
+keep_lancet_vars = ['eid', '4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0', 'alcohol_consumption', 'hypertension', 'obesity', 
+                                    'diabetes', 'hearing_loss', 'depression', 'freq_friends_family_visit', '2020-0.0', '24012-0.0', '24018-0.0', '24019-0.0', '24006-0.0', 
+                                    '24015-0.0', '24011-0.0']
+                                    
+df = df.merge(lancet_vars.loc[:, keep_lancet_vars], on='eid')
+
 # encode sex, ethnicity, APOEe4 alleles, education qualifications
 catcols = [
         '31-0.0',
+        '2020-0.0',
         '21000-0.0',
         'apoe_polymorphism',
         'max_educ_complete'
         ]
 categ_enc = ml_utils.encode_categorical_vars(df, catcols)
 
+keep_lancet_vars_no2020_or_eid = ['4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0', 'alcohol_consumption', 'hypertension', 'obesity', 
+                                    'diabetes', 'hearing_loss', 'depression', 'freq_friends_family_visit', '24012-0.0', '24018-0.0', '24019-0.0', '24006-0.0', 
+                                    '24015-0.0', '24011-0.0']
 
 # encode ordinal variables
 ordcols = df_utils.pull_columns_by_prefix(df, ['23045', '23046', '23047', '23072', '23076']).columns.tolist()
@@ -84,7 +89,7 @@ ord_enc = ml_utils.encode_ordinal_vars(df, ordcols)
 
 y = df.label.values
 X = df.loc[:,
-            ['eid', f'21003-{data_instance}.0', f'54-{data_instance}.0', '845-0.0'] + list(set(cog_tests).difference(ordcols))].join(categ_enc).join(ord_enc)
+            ['eid', f'21003-{data_instance}.0', f'54-{data_instance}.0', '845-0.0'] + keep_lancet_vars_no2020_or_eid + list(set(cog_tests).difference(ordcols))].join(categ_enc).join(ord_enc)
 
 
 # cv indices based on region

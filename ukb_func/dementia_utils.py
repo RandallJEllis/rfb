@@ -2,6 +2,17 @@ import pandas as pd
 import numpy as np
 import df_utils
 
+def get_first_diagnosis(dementia_df):
+    date_df = df_utils.pull_columns_by_prefix(dementia_df, ['eid', '42018', '42020', '42022', '42024', '131036',
+                                '130836', '130838', '130840', '130842'])
+
+    for col in date_df.columns[1:].tolist():
+        date_df[col] = pd.to_datetime(date_df.loc[:, col])
+    date_df['first_dx'] = date_df.iloc[:, 1:].min(axis=1)
+
+    return date_df
+
+
 def remove_pre_instance_dementia(df, instance, dementia_df):
     '''
     Remove dementia before the UKB visit at a specified instance and create a label column for the cases.
@@ -9,10 +20,12 @@ def remove_pre_instance_dementia(df, instance, dementia_df):
     instance: 0-3, 
     '''
 
+    # Columns specifying algorithmically defined outcomes
     disease_source = df_utils.pull_columns_by_prefix(dementia_df, ['eid', '42019', '42021', '42023', '42025'])
     values_set = [1, 2, 11, 12, 21, 22]
     keep_disease_source = df_utils.pull_rows_with_values(disease_source, values_set)
 
+    # Columns specifying ICD code reports
     icd_source = df_utils.pull_columns_by_prefix(dementia_df, ['eid', '131037', '130837', '130839', '130841', '130843'])
     values_set = [20, 21, 30, 31, 40, 41, 51]
     keep_icd_source = df_utils.pull_rows_with_values(icd_source, values_set)
@@ -20,20 +33,17 @@ def remove_pre_instance_dementia(df, instance, dementia_df):
     both_eid = set(keep_disease_source.eid).union(set(keep_icd_source.eid))
     remove = (set(disease_source.eid).union(set(icd_source.eid))).difference(both_eid)
 
-    date_df = df_utils.pull_columns_by_prefix(dementia_df, ['eid', '42018', '42020', '42022', '42024', '131036',
-                                '130836', '130838', '130840', '130842'])
+    # Columns specifying dates for algorithmically defined outcomes and ICD reports
+    date_df = get_first_diagnosis(dementia_df)
     date_df = date_df[date_df.eid.isin(both_eid)]
 
+    # pull all relevant columns to exclude all EIDs to build controls
     exclude_df = df_utils.pull_columns_by_prefix(dementia_df, ['eid', '42019', '42021', '42023', '42025',
                     '131037', '130837', '130839', '130841', '130843',
                     '42018', '42020', '42022', '42024', '131036',
                                 '130836', '130838', '130840', '130842'])
 
     # remove patients diagnosed with dementia before instance time
-    for col in date_df.columns[1:].tolist():
-        date_df[col] = pd.to_datetime(date_df.loc[:, col])
-    date_df['first_dx'] = date_df.iloc[:, 1:].min(axis=1)
-
     df[f'53-{instance}.0'] = pd.to_datetime(df[f'53-{instance}.0'])
     cases = df.merge(date_df, on='eid')
 
@@ -41,6 +51,7 @@ def remove_pre_instance_dementia(df, instance, dementia_df):
     cases = cases[cases.date_diff > pd.Timedelta(0)]
     cases = cases[cases.eid.isin(both_eid)]
 
+    # build controls and cases
     controls = df[~df.eid.isin(exclude_df.eid)]
     cases = df[df.eid.isin(cases.eid)]
 

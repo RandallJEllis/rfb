@@ -1,37 +1,32 @@
 import sys
 sys.path.append('../ukb_func')
-import icd
 import ml_utils
 import df_utils
 import ukb_utils
 import utils
 import f3
-import plot_results
 
 import pickle
 import argparse
 import os
 import pandas as pd
 import numpy as np
-from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
-from sklearn.model_selection import GridSearchCV, StratifiedKFold, train_test_split, cross_validate, cross_val_score
-from sklearn.metrics import confusion_matrix, roc_auc_score, fbeta_score, RocCurveDisplay, auc, roc_curve, precision_recall_fscore_support, precision_score, recall_score
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.metrics import precision_recall_curve, average_precision_score, confusion_matrix, roc_auc_score, precision_recall_fscore_support, accuracy_score, balanced_accuracy_score
 from lightgbm import LGBMClassifier
 from flaml import AutoML
 
 import sys
 from datetime import datetime
 import pickle
-import matplotlib.pyplot as plt
 
 '''
 Proteomics experiments for:
 Age alone
 All demographics
+Age + Lancet 2024
+All demographics + Lancet 2024
 All proteins
 All demographics + all proteins
+All demographics + Lancet 2024 + all proteins
 
 Input arguments:
 experiment - age_only, all_demographics, proteins_only, demographics_and_proteins
@@ -56,7 +51,7 @@ def main():
     # Add arguments
     # parser.add_argument('njobs', type=str, help='Number of cores')
     parser.add_argument('--experiment', type=str,
-                        help='options: age_only, all_demographics, proteins_only, demographics_and_proteins')
+                        help='options: age_only, all_demographics, lancet2024, proteins_only, demographics_and_proteins')
     parser.add_argument('--time_budget', type=int, default=3600,
                         help='options: seconds to allow FLAML to optimize')
     parser.add_argument('--metric', type=str, default='roc_auc',
@@ -94,12 +89,18 @@ def main():
         
         # cv indices based on region
         region_lookup = pd.read_csv('../../metadata/coding10.tsv', sep='\t')
-        region_indices = ukb_utils.group_assessment_center(X, data_instance, region_lookup)
+        region_indices = ukb_utils.group_assessment_center(
+            X, data_instance, region_lookup)
 
         directory_path = f'{directory_path}/agecutoff_{age_cutoff}'
 
     # check if output folder exists
     utils.check_folder_existence(directory_path)
+
+    lancet_vars = ['4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0', 'alcohol_consumption', 'hypertension', 'obesity', 
+                    'diabetes', 'hearing_loss', 'depression', 'freq_friends_family_visit', '24012-0.0', '24018-0.0', '24019-0.0', '24006-0.0', 
+                    '24015-0.0', '24011-0.0', '2020-0.0_-3.0', '2020-0.0_-1.0',
+                    '2020-0.0_0.0', '2020-0.0_1.0', '2020-0.0_nan']
 
     if experiment == 'age_only':
         X = X.loc[:, [f'21003-{data_instance}.0']]
@@ -107,12 +108,28 @@ def main():
     elif experiment == 'all_demographics':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist()]
         time_budget = 25
+    elif experiment == 'age_and_lancet2024':
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', 'max_educ_complete', '845-0.0']).columns.tolist() + lancet_vars]
+        time_budget = 50
+    elif experiment == 'age_sex_lancet2024':
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + \
+            lancet_vars]
+        time_budget = 75
+    elif experiment == 'demographics_and_lancet2024':
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + \
+            lancet_vars]
+        time_budget = 100
     elif experiment == 'modality_only':
         X = X.loc[:, df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
         time_budget = 8500
     elif experiment == 'demographics_and_modality':
-        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete',\
+                                                 '845-0.0', '21000-0.0']).columns.tolist() + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
         time_budget = 9000
+    elif experiment == 'demographics_modality_lancet2024':
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete',\
+                                                 '845-0.0', '21000-0.0']).columns.tolist() + lancet_vars + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
+        time_budget = 9500
 
     if age_cutoff == 65:
         print('Modifying time budget by dividing by 2 for age cutoff of 65') 
@@ -172,12 +189,22 @@ def main():
 
     print('Done fitting model')
 
+    if len(automl.feature_importances_) == 1:
+        feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_[0]))[::-1]]
+        fi = automl.feature_importances_[0][np.argsort(abs(automl.feature_importances_[0]))[::-1]]
+    else:
+        feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_))[::-1]]
+        fi = automl.feature_importances_[np.argsort(abs(automl.feature_importances_))[::-1]]
+        
+    fi_df = pd.DataFrame({'feature': feature_names, 'importance': fi})
+    fi_df.to_parquet(f'{directory_path}/feature_importance_region_{i}.parquet')
+
     series_automl = pd.Series([i, r, automl.best_estimator, automl.best_config], index=['region_index', 'region', 'model', 'hyperparams'])
 
     train_probas = automl.predict_proba(X_train)[:,1]
 
     # if metric == 'roc_auc':
-    train_res, threshold = ml_utils.calc_results(metric, y_train, train_probas, beta=3)
+    train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=1)
     # elif metric == f3.f3_metric:
     #     train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=3)
 
@@ -189,7 +216,7 @@ def main():
     test_probas = automl.predict_proba(X_test)[:,1]
 
     # if metric == 'roc_auc':
-    test_res = ml_utils.calc_results(metric, y_test, test_probas, beta=3, threshold=threshold)
+    test_res = ml_utils.calc_results(y_test, test_probas, beta=1, threshold=threshold)
     # elif metric == f3.f3_metric:
     #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
 

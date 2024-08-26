@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # Define the strings for experiment and metric
-experiments=("modality_only" "demographics_and_modality")
+# experiments=("modality_only" "demographics_and_modality")
+experiments=("demographics_modality_lancet2024")
+
 # metrics=("roc_auc" "f3" "ap")
 metrics=("log_loss")
 

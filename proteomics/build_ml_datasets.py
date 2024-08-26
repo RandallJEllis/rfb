@@ -62,18 +62,30 @@ df = dementia_utils.apoe_alleles(df, alleles)
 # latest education qualification
 df = ukb_utils.get_last_completed_education(df, instance=data_instance)
 
+lancet_vars = pd.read_parquet('../../tidy_data/dementia/lancet2024/lancet2024_preprocessed.parquet')
+keep_lancet_vars = ['eid', '4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0', 'alcohol_consumption', 'hypertension', 'obesity', 
+                                    'diabetes', 'hearing_loss', 'depression', 'freq_friends_family_visit', '2020-0.0', '24012-0.0', '24018-0.0', '24019-0.0', '24006-0.0', 
+                                    '24015-0.0', '24011-0.0']
+                                    
+df = df.merge(lancet_vars.loc[:, keep_lancet_vars], on='eid')
+
 # encode sex, ethnicity, APOEe4 alleles, education qualifications
 catcols = [
         '31-0.0',
+        '2020-0.0',
         '21000-0.0',
         'apoe_polymorphism',
         'max_educ_complete'
         ]
 categ_enc = ml_utils.encode_categorical_vars(df, catcols)
 
+keep_lancet_vars_no2020_or_eid = ['4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0', 'alcohol_consumption', 'hypertension', 'obesity', 
+                                    'diabetes', 'hearing_loss', 'depression', 'freq_friends_family_visit', '24012-0.0', '24018-0.0', '24019-0.0', '24006-0.0', 
+                                    '24015-0.0', '24011-0.0']
+                                    
 y = df.label.values
 X = df.loc[:,
-            ['eid', f'21003-{data_instance}.0', f'54-{data_instance}.0', '845-0.0'] + prot_keep].join(categ_enc)
+            ['eid', f'21003-{data_instance}.0', f'54-{data_instance}.0', '845-0.0'] + keep_lancet_vars_no2020_or_eid + prot_keep].join(categ_enc)
 
 
 # cv indices based on region

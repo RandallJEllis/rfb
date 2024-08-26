@@ -117,6 +117,11 @@ def main():
     # check if output folder exists
     utils.check_folder_existence(directory_path)
 
+    lancet_vars = ['4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0', 'alcohol_consumption', 'hypertension', 'obesity', 
+                    'diabetes', 'hearing_loss', 'depression', 'freq_friends_family_visit', '24012-0.0', '24018-0.0', '24019-0.0', '24006-0.0', 
+                    '24015-0.0', '24011-0.0', '2020-0.0_-3.0', '2020-0.0_-1.0',
+                    '2020-0.0_0.0', '2020-0.0_1.0', '2020-0.0_nan']
+    
     idp_vars = pickle.load(open('../../tidy_data/dementia/neuroimaging/idp_variables.pkl', 'rb'))
     if experiment == 'modality_only':
         X = X.loc[:, idp_vars]
@@ -124,6 +129,10 @@ def main():
     elif experiment == 'demographics_and_modality':
         X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + idp_vars]
         time_budget = 14000
+    elif experiment == 'demographics_modality_lancet2024':
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete',\
+                                                 '845-0.0', '21000-0.0']).columns.tolist() + lancet_vars + idp_vars]
+        time_budget = 14500
 
     if age_cutoff == 65:
         print('Modifying time budget by dividing by 2 for age cutoff of 65') 
@@ -213,7 +222,7 @@ def main():
             train_probas = automl.predict_proba(X_train_sub)[:,1]
 
             # if metric == 'roc_auc':
-            train_res, threshold = ml_utils.calc_results(metric, y_train, train_probas, beta=3)
+            train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=1)
             # elif metric == f3.f3_metric or metric == 'ap':
             #     train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=3)
 
@@ -227,7 +236,7 @@ def main():
             test_probas = automl.predict_proba(X_test_sub)[:,1]
 
             # if metric == 'roc_auc':
-            test_res = ml_utils.calc_results(metric, y_test, test_probas, beta=3, threshold=threshold)
+            test_res = ml_utils.calc_results(y_test, test_probas, beta=1, threshold=threshold)
                 # test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold)
             # elif metric == f3.f3_metric or metric == 'ap':
             #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
