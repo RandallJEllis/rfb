@@ -18,6 +18,11 @@ from ml_utils import concat_labels_and_probas, probas_to_results
 import seaborn as sns
 import ptitprince as pt
 
+# Set font properties
+plt.rcParams.update({
+    'font.size': 12,       # Set font size
+    'font.weight': 'bold'  # Set font weight to bold
+})
 
 def choose_plot_title(dirpath):
     """
@@ -365,7 +370,7 @@ def plot_pr_curve(true_labels, probas):
     plt.show()
 
 
-def multi_mean_pr_curve(filepath, metric, image_format, save=True):
+def multi_mean_pr_curve(filepath, metric, image_format, save=True, age_cutoffs=[None, 65], experiments=None):
     '''
     This function plots multiple mean Precision-Recall curves in one plot for different experiments.
 
@@ -374,51 +379,39 @@ def multi_mean_pr_curve(filepath, metric, image_format, save=True):
     - metric (str): the metric used for evaluation
     - image_format (str): suffix for generated images (pdf, png, jpg)
     - save (bool): whether to save the plot or not (default: True)
+    - age_cutoffs (list): list of age cutoffs to use (default: [None, 65])
+    - experiments (list): list of experiments to plot (default: None, which uses a predefined list)
 
     The function iterates through different experiments and age cutoffs, plotting PR curves for each.
     '''
-    # Extract modality from filepath
-    final_slash = filepath.rfind('/')
-    modality = filepath[final_slash+1:]
+    modality = filepath.split('/')[-1]
 
-    # Define colors for different experiments
-    colors = ['#ff0000', '#ff7f00', '#ffae00', '#fff500', '#a2ff00', '#00ff29', '#00ffce', '#00c9ff', '#2700ff', '#ab00ff']
+    colors = plt.cm.rainbow(np.linspace(0, 1, 10))
 
-    # Iterate through age cutoffs
-    for age_cutoff in [None, 65]:
-        # Initialize the PR plot
+    if experiments is None:
+        experiments = ['age_only', 'age_sex_lancet2024', 'all_demographics', 'modality_only', 
+                       'demographics_and_lancet2024', 'modality_only/feature_selection', 'demographics_and_modality', 
+                       'demographics_and_modality/feature_selection', 'demographics_modality_lancet2024',
+                       'demographics_modality_lancet2024/feature_selection']
+
+    for age_cutoff in age_cutoffs:
         fig, ax = initialize_pr_plot()
 
-        # Iterate through different experiments
-        for i, expt in enumerate(['age_only', 'age_sex_lancet2024', 'all_demographics',  'modality_only', 
-                                  'demographics_and_lancet2024', 'modality_only/feature_selection', 'demographics_and_modality', 
-                                  'demographics_and_modality/feature_selection', 'demographics_modality_lancet2024',
-                                  'demographics_modality_lancet2024/feature_selection']):
+        for i, expt in enumerate(experiments):
+            dirpath = f'{filepath}/{expt}/{metric}/' + (f'agecutoff_{age_cutoff}/' if age_cutoff is not None else '')
 
-            # Construct directory path based on age cutoff
-            if age_cutoff is not None:
-                dirpath = f'{filepath}/{expt}/{metric}/agecutoff_{age_cutoff}/'
-            else:
-                dirpath = f'{filepath}/{expt}/{metric}/'
-
-            # Get true labels and probabilities
             true_labels, probas = concat_labels_and_probas(dirpath)
             title = choose_plot_title(dirpath)
 
-            # Calculate mean PR curve
             mean_precision, std_precision, mean_recall, mean_ap, std_ap = mean_pr_curve(true_labels, probas)
 
-            # Plot mean PR curve with standard deviation
             ax.plot(mean_recall, mean_precision, color=colors[i], label=f'{title}\nAP: {mean_ap:.3f} $\pm$ {std_ap:.3f}', lw=2, alpha=0.8)
             ax.fill_between(mean_recall, mean_precision - std_precision, mean_precision + std_precision, color=colors[i], alpha=0.2)
 
-        # Set legend properties
-        font_prop = FontProperties(weight='bold', size=10)
-        ax.legend(loc='upper right', prop=font_prop)
+        ax.legend(loc='upper right', prop=FontProperties(weight='bold', size=10))
         
         plt.tight_layout()
 
-        # Save or show the plot
         if save:
             save_plot(fig, f'{modality}_pr', filepath, metric, age_cutoff, image_format)
         else:
@@ -728,7 +721,7 @@ def export_confusion_matrices(filepath):
             cm.savefig(fname)
 
 
-def mcc_raincloud(filepath):
+def mcc_raincloud(filepath, orient='h'):
     """
     Generate a raincloud plot of Matthews Correlation Coefficient (MCC) values for multiple experiments.
 
@@ -757,56 +750,93 @@ def mcc_raincloud(filepath):
             'demographics_and_modality/feature_selection', 'demographics_modality_lancet2024',
             'demographics_modality_lancet2024/feature_selection']
 
-    for age_cutoff in [None, 65]:
-        res_l = []
-        titles_l = []
-        for expt in expts:
-            if age_cutoff is not None:
-                dirpath = f'{filepath}/{expt}/log_loss/agecutoff_{age_cutoff}/'
-            else:
-                dirpath = f'{filepath}/{expt}/log_loss/'
-            # Load test results for each experiment
-            _, test_results = probas_to_results(f'{dirpath}', youden=True)
-            res_l.append(test_results)
-            titles_l.append(choose_plot_title(f'{filepath}/{expt}'))
-    
-        # Extract MCC values for each experiment
-        y = [i.mcc for i in res_l]
-
-        # Prepare the data for plotting
-        data = []
-        for i, category in enumerate(titles_l):
-            for value in y[i]:
-                data.append([category, value])
-        data = pd.DataFrame(data, columns=["", "Matthews Correlation Coefficient"])
-
-        # Create figure and axis objects
-        fig, ax = plt.subplots(figsize=(10, 6))
-
-        # Define color palette for the plot
-        colors = ['#ff0000', '#ff7f00', '#ffae00', '#fff500', '#a2ff00', '#00ff29', '#00ffce', '#00c9ff', '#2700ff', '#ab00ff']    
-
-        # Generate the raincloud plot
-        pt.RainCloud(x="", y="Matthews Correlation Coefficient", data=data, palette=colors, 
-                    bw=.2, width_viol=0.6, ax=None, orient="v", alpha=.65, move=.2)
+    for orient, fig_dimensions in zip(['v', 'h'], [(12, 8), (6, 8)]):
+        if orient == 'h':
+            continue
+        for age_cutoff in [None, 65]:
+            res_l = []
+            titles_l = []
+            for expt in expts:
+                if age_cutoff is not None:
+                    dirpath = f'{filepath}/{expt}/log_loss/agecutoff_{age_cutoff}/'
+                else:
+                    dirpath = f'{filepath}/{expt}/log_loss/'
+                # Load test results for each experiment
+                _, test_results = probas_to_results(f'{dirpath}', youden=True)
+                res_l.append(test_results)
+                titles_l.append(choose_plot_title(f'{filepath}/{expt}'))
         
-        # Customize plot appearance
-        ax.set_ylabel('MCC', fontweight='bold')
-        plt.title('Cross-validation - Matthews Correlation Coefficient', fontweight='bold')
-        plt.tight_layout()
+            # Extract MCC values for each experiment
+            y = [i.mcc for i in res_l]
 
-        # Save the plot as a PDF file
-        # Note: data_modality and age_cutoff are not defined within this function
-        if age_cutoff is not None:
-            fname = f'{filepath}/mcc_raincloud_plot_agecutoff_{age_cutoff}.pdf'
-        else:
-            fname = f'{filepath}/mcc_raincloud_plot.pdf'
-        fig.savefig(fname, dpi=300)
+            # Prepare the data for plotting
+            data = []
+            for i, category in enumerate(titles_l):
+                
+                # insert a newline character after every plus sign
+                if orient == 'v':
+                    category = category.replace(' + ', '\n+\n')
+                
+                for value in y[i]:
+                    data.append([category, value])
+            data = pd.DataFrame(data, columns=["", "Matthews Correlation Coefficient"])
+
+            # Define color palette for the plot
+            colors = ['#ff0000', '#ff7f00', '#ffae00', '#fff500', '#a2ff00', '#00ff29', '#00ffce', '#00c9ff', '#2700ff', '#ab00ff']    
+
+            # Create figure and axis objects
+            fig, ax = plt.subplots(figsize=fig_dimensions)
+        
+            # Define the line width properties
+            # line_width_props = {
+            #     'whiskerprops': {'linewidth': 2},
+            #     'capprops': {'linewidth': 2},
+            #     'boxprops': {'linewidth': 2},
+            # }
+
+            # Generate the raincloud plot
+            pt.RainCloud(x="", y="Matthews Correlation Coefficient", data=data, palette=colors, 
+                        bw=.2, 
+                        ax=ax, orient=orient,
+                        box_linewidth=1,  # Modify the boxplot linewidth
+                        offset=.2,  # Adjust the cloud position
+                        move=.2,  # Adjust the rain position
+                        width_viol=.6,  # Reduce violin width
+                        )
+            
+            # Adjust the plot margins to prevent cutting off the rightmost rain only for vertical orientation
+            if orient == 'v':
+                plt.subplots_adjust(right=0.95)  # Increase right margin for vertical orientation
+
+            # Adjust the y-axis limits to show the full peak
+            if orient == 'v':
+                y_min, y_max = ax.get_ylim()
+                ax.set_ylim(y_min, y_max * 1.1)  # Increase the upper limit by 10%
+            
+            # Customize plot appearance
+            ax.set_ylabel('MCC', fontweight='bold')
+            # plt.title('Cross-validation - Matthews Correlation Coefficient', fontweight='bold')
+            plt.tight_layout()
+
+            # Save the plot as a PDF file
+            # Note: data_modality and age_cutoff are not defined within this function
+            if age_cutoff is not None:
+                fname = f'{filepath}/mcc_raincloud_plot_agecutoff_{age_cutoff}.pdf'
+            else:
+                fname = f'{filepath}/mcc_raincloud_plot.pdf'
+                
+            if orient == 'v':
+                fname = fname.replace('.pdf', '_vertical.pdf')
+            elif orient == 'h':
+                fname = fname.replace('.pdf', '_horizontal.pdf')
+                
+            fig.savefig(fname, dpi=300)
     
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot ROC and PR curves")
     parser.add_argument('filepath', type=str, help="filepath")
+    parser.add_argument('orient', type=str, help="orientation of the plot (h or v)")
     # parser.add_argument('metric', type=str, help="metric")
     # parser.add_argument('image_format', type=str, help="image format")
     # parser.add_argument('age65_cutoff', type=bool, help="use age cutoff of 65 (True/False)")
@@ -819,4 +849,4 @@ if __name__ == "__main__":
     # The function is likely designed to export confusion matrices to a file specified by the
     # `filepath` argument.
     # export_confusion_matrices(args.filepath)
-    mcc_raincloud(args.filepath)
+    mcc_raincloud(args.filepath, args.orient)
