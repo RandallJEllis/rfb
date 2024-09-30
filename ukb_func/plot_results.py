@@ -783,13 +783,16 @@ def mcc_raincloud(filepath, orient='h'):
     # Define list of experiments to analyze
     expts = ['age_only', 'age_sex_lancet2024', 'all_demographics',  'modality_only', 
             'demographics_and_lancet2024',
-            # 'modality_only/feature_selection',
+            'modality_only/feature_selection',
             'demographics_and_modality',
-            # 'demographics_and_modality/feature_selection',
+            'demographics_and_modality/feature_selection',
             'demographics_modality_lancet2024',
-            # 'demographics_modality_lancet2024/feature_selection'
+            'demographics_modality_lancet2024/feature_selection'
             ]
-    
+    # if 'nacc' in filepath, remove experiments with 'feature_selection'
+    if 'nacc' in filepath:
+        expts = [expt for expt in expts if 'feature_selection' not in expt]
+        
     ages = _get_ages(filepath)
         
     for orient, fig_dimensions in zip(['v', 'h'], [(12, 8), (6, 8)]):
