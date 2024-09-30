@@ -24,7 +24,13 @@ plt.rcParams.update({
     'font.weight': 'bold'  # Set font weight to bold
 })
 
-def choose_plot_title(dirpath):
+def _get_ages(filepath):
+    if 'nacc' in filepath:
+        return [None]
+    else:
+        return [None, 65]
+
+def _choose_plot_title(dirpath):
     """
     Choose the appropriate plot title based on the directory path.
 
@@ -34,6 +40,9 @@ def choose_plot_title(dirpath):
     Returns:
     str: The chosen plot title.
     """
+    
+    print(dirpath)
+    
     plot_title = {'age_only': 'Age', 'all_demographics': 'Demo'}
 
     if 'age_only' in dirpath:
@@ -47,6 +56,8 @@ def choose_plot_title(dirpath):
             title = 'Cognitive Tests'
         elif 'neuroimaging' in dirpath:
             title = 'IDPs'
+        elif 'csf' in dirpath:
+            title = 'CSF'
 
         if 'feature_selection' in dirpath:
             title = f'FS {title}'
@@ -58,6 +69,8 @@ def choose_plot_title(dirpath):
             title = 'Demo + Cognitive Tests'
         elif 'neuroimaging' in dirpath:
             title = 'Demo + IDPs'
+        elif 'csf' in dirpath:
+            title = 'Demo + CSF'
 
         if 'feature_selection' in dirpath:
             title = f'FS Demo + {title[7:]}'
@@ -73,13 +86,15 @@ def choose_plot_title(dirpath):
             title = 'Demo + Cognitive Tests + Lancet'
         elif 'neuroimaging' in dirpath:
             title = 'Demo + IDPs + Lancet'
+        elif 'csf' in dirpath:
+            title = 'Demo + CSF + Lancet'
 
         if 'feature_selection' in dirpath:
             title = f'FS Demo + {title[7:]}'
     return title
 
 
-def save_plot(fig, curve_type, filepath, metric, age_cutoff, image_format):
+def _save_plot(fig, curve_type, filepath, metric, age_cutoff, image_format):
     """
     Save the plot figure to a file.
 
@@ -100,7 +115,7 @@ def save_plot(fig, curve_type, filepath, metric, age_cutoff, image_format):
     plt.close()
 
 
-def mean_roc_curve(true_labels_list, predicted_probs_list):
+def _mean_roc_curve(true_labels_list, predicted_probs_list):
     """
     Calculate the mean ROC curve from multiple ROC curves.
 
@@ -137,84 +152,84 @@ def mean_roc_curve(true_labels_list, predicted_probs_list):
     return mean_tpr, std_tpr, mean_auc, std_auc
 
 
-def cv_roc_curve(true_labels_list, predicted_probs_list, individual_label,
-                 title):
-    """
-    Plot ROC curves for cross-validation results.
+# def cv_roc_curve(true_labels_list, predicted_probs_list, individual_label,
+#                  title):
+#     """
+#     Plot ROC curves for cross-validation results.
 
-    Args:
-    true_labels_list (list): List of true label arrays.
-    predicted_probs_list (list): List of predicted probability arrays.
-    individual_label (str): Label for individual ROC curves.
-    title (str): Title for the plot.
+#     Args:
+#     true_labels_list (list): List of true label arrays.
+#     predicted_probs_list (list): List of predicted probability arrays.
+#     individual_label (str): Label for individual ROC curves.
+#     title (str): Title for the plot.
 
-    Returns:
-    matplotlib.figure.Figure: The generated figure.
-    """
-    mean_fpr = np.linspace(0, 1, 100)
-    tprs = []
+#     Returns:
+#     matplotlib.figure.Figure: The generated figure.
+#     """
+#     mean_fpr = np.linspace(0, 1, 100)
+#     tprs = []
 
-    fig, ax = plt.subplots(figsize=(8, 6))
+#     fig, ax = plt.subplots(figsize=(8, 6))
 
-    for i, (true_labels, predicted_probs) in enumerate(zip(
-                                                        true_labels_list,
-                                                        predicted_probs_list)):
-        fpr, tpr, _ = roc_curve(true_labels, predicted_probs)
-        interp_tpr = np.interp(mean_fpr, fpr, tpr)
-        interp_tpr[0] = 0.0
-        tprs.append(interp_tpr)
-        roc_auc = auc(fpr, tpr)
-        ax.plot(fpr, tpr, lw=1, alpha=0.3,
-                label=f'{individual_label} {i+1} (AUC = {roc_auc:.2f})')
+#     for i, (true_labels, predicted_probs) in enumerate(zip(
+#                                                         true_labels_list,
+#                                                         predicted_probs_list)):
+#         fpr, tpr, _ = roc_curve(true_labels, predicted_probs)
+#         interp_tpr = np.interp(mean_fpr, fpr, tpr)
+#         interp_tpr[0] = 0.0
+#         tprs.append(interp_tpr)
+#         roc_auc = auc(fpr, tpr)
+#         ax.plot(fpr, tpr, lw=1, alpha=0.3,
+#                 label=f'{individual_label} {i+1} (AUC = {roc_auc:.2f})')
 
-    # Plot mean ROC curve
-    mean_tpr = np.mean(tprs, axis=0)
-    mean_tpr[-1] = 1.0
-    std_tpr = np.std(tprs, axis=0)
-    mean_auc = auc(mean_fpr, mean_tpr)
-    ax.plot(mean_fpr, mean_tpr, color='b',
-            label=f'Mean ROC (AUC = {mean_auc:.2f})', lw=2, alpha=0.8)
+#     # Plot mean ROC curve
+#     mean_tpr = np.mean(tprs, axis=0)
+#     mean_tpr[-1] = 1.0
+#     std_tpr = np.std(tprs, axis=0)
+#     mean_auc = auc(mean_fpr, mean_tpr)
+#     ax.plot(mean_fpr, mean_tpr, color='b',
+#             label=f'Mean ROC (AUC = {mean_auc:.2f})', lw=2, alpha=0.8)
 
-    # Plot standard deviation
-    tpr_upper = np.minimum(mean_tpr + std_tpr, 1)
-    tpr_lower = np.maximum(mean_tpr - std_tpr, 0)
-    ax.fill_between(mean_fpr, tpr_lower, tpr_upper, color='grey', alpha=0.2,
-                    label=r'$\pm$ 1 std. dev.')
+#     # Plot standard deviation
+#     tpr_upper = np.minimum(mean_tpr + std_tpr, 1)
+#     tpr_lower = np.maximum(mean_tpr - std_tpr, 0)
+#     ax.fill_between(mean_fpr, tpr_lower, tpr_upper, color='grey', alpha=0.2,
+#                     label=r'$\pm$ 1 std. dev.')
 
-    # Set plot attributes
-    ax.plot([0, 1], [0, 1], linestyle='--', lw=2, color='r', alpha=0.8)
-    ax.set_xlim([0.0, 1.0])
-    ax.set_ylim([0.0, 1.05])
-    ax.set_xlabel('False Positive Rate', weight='bold', size=14)
-    ax.set_ylabel('True Positive Rate', weight='bold', size=14)
-    ax.set_title(f'{title}', weight='bold', size=14)
-    ax.legend(loc='lower right')
+#     # Set plot attributes
+#     ax.plot([0, 1], [0, 1], linestyle='--', lw=2, color='r', alpha=0.8)
+#     ax.set_xlim([0.0, 1.0])
+#     ax.set_ylim([0.0, 1.05])
+#     ax.set_xlabel('False Positive Rate', weight='bold', size=14)
+#     ax.set_ylabel('True Positive Rate', weight='bold', size=14)
+#     ax.set_title(f'{title}', weight='bold', size=14)
+#     ax.legend(loc='lower right')
 
-    return fig
-
-
-def folder_recursive_cv_roc(filepath, metric, image_format):
-    """
-    Recursively plot ROC curves for all subdirectories in the given filepath.
-
-    Args:
-    filepath (str): Base filepath to start the recursive search.
-    metric (str): Metric used for evaluation.
-    image_format (str): Format to save the image (e.g., 'pdf', 'png').
-    """
-    for dirpath, dirnames, filenames in os.walk(filepath):
-        if 'test_true_labels_region_0.pkl' in filenames and metric in dirpath:
-            print(f'{dirpath}')
-
-            true_labels, probas = concat_labels_and_probas(dirpath)
-            title = choose_plot_title(dirpath)
-
-            fig = cv_roc_curve(true_labels, probas, 'Fold', title)
-            fig.savefig(f'{dirpath}/roc_curve.{image_format}')
-            plt.close()
+#     return fig
 
 
-def initialize_roc_plot():
+# def folder_recursive_cv_roc(filepath, metric, image_format):
+#     """
+#     Recursively plot ROC curves for all subdirectories in the given filepath.
+
+#     Args:
+#     filepath (str): Base filepath to start the recursive search.
+#     metric (str): Metric used for evaluation.
+#     image_format (str): Format to save the image (e.g., 'pdf', 'png').
+#     """
+#     for dirpath, dirnames, filenames in os.walk(filepath):
+#         if 'test_true_labels_region_0.pkl' in filenames and metric in dirpath:
+#             print(f'{dirpath}')
+
+#             true_labels, probas = concat_labels_and_probas(dirpath)
+#             title = _choose_plot_title(dirpath)
+
+#             fig = cv_roc_curve(true_labels, probas, 'Fold', title)
+#             fig.savefig(f'{dirpath}/roc_curve.{image_format}')
+#             plt.close()
+
+
+def _initialize_roc_plot():
     """
     Initialize a plot for ROC curves.
 
@@ -252,8 +267,9 @@ def multi_mean_roc_curve(filepath, metric, image_format, age65_cutoff=False):
     colors = ['#ff0000', '#ff7f00', '#ffae00', '#fff500', '#a2ff00', '#00ff29',
               '#00ffce', '#00c9ff', '#2700ff', '#ab00ff']
 
-    for age_cutoff in [None, 65]:
-        fig, ax, mean_fpr = initialize_roc_plot()
+    ages = _get_ages(filepath)
+    for age_cutoff in ages:
+        fig, ax, mean_fpr = _initialize_roc_plot()
 
         experiments = ['age_only', 'age_sex_lancet2024', 'all_demographics',
                        'modality_only', 'demographics_and_lancet2024',
@@ -262,6 +278,10 @@ def multi_mean_roc_curve(filepath, metric, image_format, age65_cutoff=False):
                        'demographics_and_modality/feature_selection',
                        'demographics_modality_lancet2024',
                        'demographics_modality_lancet2024/feature_selection']
+        
+        # if 'nacc' in filepath, remove experiments with 'feature_selection'
+        if 'nacc' in filepath:
+            experiments = [expt for expt in experiments if 'feature_selection' not in expt]
 
         for i, expt in enumerate(experiments):
             print(f'Age cutoff: {age_cutoff}, Experiment: {expt}')
@@ -272,9 +292,9 @@ def multi_mean_roc_curve(filepath, metric, image_format, age65_cutoff=False):
                 dirpath = f'{filepath}/{expt}/{metric}/'
 
             true_labels, probas = concat_labels_and_probas(dirpath)
-            title = choose_plot_title(dirpath)
+            title = _choose_plot_title(dirpath)
 
-            mean_tpr, std_tpr, mean_auc, std_auc = mean_roc_curve(true_labels,
+            mean_tpr, std_tpr, mean_auc, std_auc = _mean_roc_curve(true_labels,
                                                                   probas)
 
             label = f'{title}\nAUC: {mean_auc:.3f} $\pm$ {std_auc:.3f}'
@@ -291,11 +311,11 @@ def multi_mean_roc_curve(filepath, metric, image_format, age65_cutoff=False):
         ax.legend(loc='lower right', prop=font_prop)
 
         plt.tight_layout()
-        save_plot(fig, f'{modality}_roc', filepath, metric, age_cutoff,
+        _save_plot(fig, f'{modality}_roc', filepath, metric, age_cutoff,
                   image_format)
 
 
-def initialize_pr_plot():
+def _initialize_pr_plot():
     """
     Initialize a plot for Precision-Recall curves.
 
@@ -314,7 +334,7 @@ def initialize_pr_plot():
     return fig, ax
 
 
-def mean_pr_curve(true_labels_list, predicted_probs_list):
+def _mean_pr_curve(true_labels_list, predicted_probs_list):
     """
     Calculate the mean Precision-Recall curve from multiple PR curves.
 
@@ -349,28 +369,28 @@ def mean_pr_curve(true_labels_list, predicted_probs_list):
     return mean_precision, std_precision, mean_recall, mean_ap, std_ap
 
 
-def plot_pr_curve(true_labels, probas):
-    """
-    Plot a Precision-Recall curve.
+# def plot_pr_curve(true_labels, probas):
+#     """
+#     Plot a Precision-Recall curve.
 
-    Args:
-    true_labels (array-like): True labels.
-    probas (array-like): Predicted probabilities.
-    """
-    fig, ax = initialize_pr_plot()
-    mean_precision, std_precision, mean_recall, mean_ap, std_ap = \
-        mean_pr_curve(true_labels, probas)
-    ax.plot(mean_recall, mean_precision, color='blue',
-            label=f'AP: {mean_ap:.3f} $\pm$ {std_ap:.3f})',
-            lw=2, alpha=0.8)
-    ax.fill_between(mean_recall, mean_precision - std_precision,
-                    mean_precision + std_precision, color='blue', alpha=0.2)
+#     Args:
+#     true_labels (array-like): True labels.
+#     probas (array-like): Predicted probabilities.
+#     """
+#     fig, ax = _initialize_pr_plot()
+#     mean_precision, std_precision, mean_recall, mean_ap, std_ap = \
+#         mean_pr_curve(true_labels, probas)
+#     ax.plot(mean_recall, mean_precision, color='blue',
+#             label=f'AP: {mean_ap:.3f} $\pm$ {std_ap:.3f})',
+#             lw=2, alpha=0.8)
+#     ax.fill_between(mean_recall, mean_precision - std_precision,
+#                     mean_precision + std_precision, color='blue', alpha=0.2)
 
-    ax.legend(loc='upper right')
-    plt.show()
+#     ax.legend(loc='upper right')
+#     plt.show()
 
 
-def multi_mean_pr_curve(filepath, metric, image_format, save=True, age_cutoffs=[None, 65], experiments=None):
+def multi_mean_pr_curve(filepath, metric, image_format, save=True, experiments=None):
     '''
     This function plots multiple mean Precision-Recall curves in one plot for different experiments.
 
@@ -386,24 +406,32 @@ def multi_mean_pr_curve(filepath, metric, image_format, save=True, age_cutoffs=[
     '''
     modality = filepath.split('/')[-1]
 
-    colors = plt.cm.rainbow(np.linspace(0, 1, 10))
+    # colors = plt.cm.rainbow(np.linspace(0, 1, 10))
+    colors = ['#ff0000', '#ff7f00', '#ffae00', '#fff500', '#a2ff00', '#00ff29',
+              '#00ffce', '#00c9ff', '#2700ff', '#ab00ff']
 
     if experiments is None:
         experiments = ['age_only', 'age_sex_lancet2024', 'all_demographics', 'modality_only', 
                        'demographics_and_lancet2024', 'modality_only/feature_selection', 'demographics_and_modality', 
                        'demographics_and_modality/feature_selection', 'demographics_modality_lancet2024',
                        'demographics_modality_lancet2024/feature_selection']
+        
+        # if 'nacc' in filepath, remove experiments with 'feature_selection'
+        if 'nacc' in filepath:
+            experiments = [expt for expt in experiments if 'feature_selection' not in expt]
 
-    for age_cutoff in age_cutoffs:
-        fig, ax = initialize_pr_plot()
+    ages = _get_ages(filepath)
+
+    for age_cutoff in ages:
+        fig, ax = _initialize_pr_plot()
 
         for i, expt in enumerate(experiments):
             dirpath = f'{filepath}/{expt}/{metric}/' + (f'agecutoff_{age_cutoff}/' if age_cutoff is not None else '')
 
             true_labels, probas = concat_labels_and_probas(dirpath)
-            title = choose_plot_title(dirpath)
+            title = _choose_plot_title(dirpath)
 
-            mean_precision, std_precision, mean_recall, mean_ap, std_ap = mean_pr_curve(true_labels, probas)
+            mean_precision, std_precision, mean_recall, mean_ap, std_ap = _mean_pr_curve(true_labels, probas)
 
             ax.plot(mean_recall, mean_precision, color=colors[i], label=f'{title}\nAP: {mean_ap:.3f} $\pm$ {std_ap:.3f}', lw=2, alpha=0.8)
             ax.fill_between(mean_recall, mean_precision - std_precision, mean_precision + std_precision, color=colors[i], alpha=0.2)
@@ -413,12 +441,12 @@ def multi_mean_pr_curve(filepath, metric, image_format, save=True, age_cutoffs=[
         plt.tight_layout()
 
         if save:
-            save_plot(fig, f'{modality}_pr', filepath, metric, age_cutoff, image_format)
+            _save_plot(fig, f'{modality}_pr', filepath, metric, age_cutoff, image_format)
         else:
             plt.show()
 
 
-def initialize_calibration_curve_plot():
+def _initialize_calibration_curve_plot():
     '''
     Initialize a plot for calibration curves.
 
@@ -466,16 +494,23 @@ def multi_calibration_curve(filepath, metric, image_format, n_bins=10):
     colors = ['#ff0000', '#ff7f00', '#ffae00', '#fff500', '#a2ff00', '#00ff29', '#00ffce', '#00c9ff', '#2700ff', '#ab00ff']
     
     # Iterate through age cutoffs
-    for age_cutoff in [None, 65]:
+    ages = _get_ages(filepath)   
+    for age_cutoff in ages:
         pred_l = []
         true_l = []
-        fig, ax = initialize_calibration_curve_plot()
+        fig, ax = _initialize_calibration_curve_plot()
         
+        experiments = ['age_only', 'age_sex_lancet2024', 'all_demographics',  'modality_only', 
+                        'demographics_and_lancet2024', 'modality_only/feature_selection', 'demographics_and_modality', 
+                        'demographics_and_modality/feature_selection', 'demographics_modality_lancet2024',
+                        'demographics_modality_lancet2024/feature_selection']
+        # if 'nacc' in filepath, remove experiments with 'feature_selection'
+        if 'nacc' in filepath:
+            experiments = [expt for expt in experiments if 'feature_selection' not in expt]
+            
+            
         # Iterate through different experiments
-        for i, expt in enumerate(['age_only', 'age_sex_lancet2024', 'all_demographics',  'modality_only', 
-                                  'demographics_and_lancet2024', 'modality_only/feature_selection', 'demographics_and_modality', 
-                                  'demographics_and_modality/feature_selection', 'demographics_modality_lancet2024',
-                                  'demographics_modality_lancet2024/feature_selection']):
+        for i, expt in enumerate(experiments):
             # Construct directory path based on age cutoff
             if age_cutoff is not None:
                 dirpath = f'{filepath}/{expt}/{metric}/agecutoff_{age_cutoff}/'
@@ -489,7 +524,7 @@ def multi_calibration_curve(filepath, metric, image_format, n_bins=10):
             
             # Calculate calibration curve
             prob_true, prob_pred = calibration_curve(true_labels, probas, n_bins=n_bins, strategy='quantile')
-            title = choose_plot_title(dirpath)
+            title = _choose_plot_title(dirpath)
 
             # Remove zero values to avoid log(0) issues
             if min(prob_true) == 0:
@@ -516,35 +551,35 @@ def multi_calibration_curve(filepath, metric, image_format, n_bins=10):
         plt.tight_layout()
         
         # Save the plot
-        save_plot(fig, f'{modality}_calibration', filepath, metric, age_cutoff, image_format)
+        _save_plot(fig, f'{modality}_calibration', filepath, metric, age_cutoff, image_format)
     
 
-def folder_recursive_calibration_curve(filepath, metric, image_format):
-    '''
-    Recursively iterate through folders and save individual ROC curves.
+# def folder_recursive_calibration_curve(filepath, metric, image_format):
+#     '''
+#     Recursively iterate through folders and save individual ROC curves.
 
-    Args:
-    - filepath (str): The root filepath to start the search
-    - metric (str): The metric used for evaluation
-    - image_format (str): The format to save the images (e.g., 'png', 'pdf')
+#     Args:
+#     - filepath (str): The root filepath to start the search
+#     - metric (str): The metric used for evaluation
+#     - image_format (str): The format to save the images (e.g., 'png', 'pdf')
 
-    This function walks through the directory structure, finds relevant files,
-    and generates ROC curves for each set of data found.
-    '''
-    for dirpath, dirnames, filenames in os.walk(filepath):
-        if 'test_true_labels_region_0.pkl' in filenames and metric in dirpath:
-            print(f'Processing: {dirpath}')
+#     This function walks through the directory structure, finds relevant files,
+#     and generates ROC curves for each set of data found.
+#     '''
+#     for dirpath, dirnames, filenames in os.walk(filepath):
+#         if 'test_true_labels_region_0.pkl' in filenames and metric in dirpath:
+#             print(f'Processing: {dirpath}')
             
-            # Get true labels and probabilities
-            true_labels, probas = concat_labels_and_probas(dirpath)
+#             # Get true labels and probabilities
+#             true_labels, probas = concat_labels_and_probas(dirpath)
 
-            # Choose plot title
-            title = choose_plot_title(dirpath)
+#             # Choose plot title
+#             title = _choose_plot_title(dirpath)
 
-            # Generate and save ROC curve
-            fig = mean_roc_curve(true_labels, probas, 'Fold', title)
-            fig.savefig(f'{dirpath}/roc_curve.{image_format}')
-            plt.close()
+#             # Generate and save ROC curve
+#             fig = _mean_roc_curve(true_labels, probas, 'Fold', title)
+#             fig.savefig(f'{dirpath}/roc_curve.{image_format}')
+#             plt.close()
 
 
 def feature_importance_vals(filepath):
@@ -586,7 +621,7 @@ def feature_importance_vals(filepath):
     
     return plot_df
 
-def plot_conf_mtx(dff, title, remove_x_ticks=False):
+def _plot_conf_mtx(dff, title, remove_x_ticks=False):
     """
     Plot a confusion matrix with additional metrics.
 
@@ -692,10 +727,11 @@ def export_confusion_matrices(filepath):
     # List of experiments to process
     expts = [
         'demographics_and_lancet2024',
-        'demographics_modality_lancet2024/feature_selection'
+        'demographics_modality_lancet2024'
     ]
-
-    for age_cutoff in [None, 65]:
+    
+    ages = _get_ages(filepath)
+    for age_cutoff in ages:
         for expt in expts:
             
             if age_cutoff is not None:
@@ -707,7 +743,7 @@ def export_confusion_matrices(filepath):
             _, test_results = probas_to_results(f'{dirpath}', youden=True)
             
             # Create confusion matrix plot
-            cm = plot_conf_mtx(test_results, choose_plot_title(f'{filepath}/{expt}'))
+            cm = _plot_conf_mtx(test_results, _choose_plot_title(f'{filepath}/{expt}'))
 
             # Modify experiment name if it contains '/' for file naming
             if '/' in expt:
@@ -746,14 +782,20 @@ def mcc_raincloud(filepath, orient='h'):
     
     # Define list of experiments to analyze
     expts = ['age_only', 'age_sex_lancet2024', 'all_demographics',  'modality_only', 
-            'demographics_and_lancet2024', 'modality_only/feature_selection', 'demographics_and_modality',
-            'demographics_and_modality/feature_selection', 'demographics_modality_lancet2024',
-            'demographics_modality_lancet2024/feature_selection']
-
+            'demographics_and_lancet2024',
+            # 'modality_only/feature_selection',
+            'demographics_and_modality',
+            # 'demographics_and_modality/feature_selection',
+            'demographics_modality_lancet2024',
+            # 'demographics_modality_lancet2024/feature_selection'
+            ]
+    
+    ages = _get_ages(filepath)
+        
     for orient, fig_dimensions in zip(['v', 'h'], [(12, 8), (6, 8)]):
         if orient == 'h':
             continue
-        for age_cutoff in [None, 65]:
+        for age_cutoff in ages:
             res_l = []
             titles_l = []
             for expt in expts:
@@ -764,7 +806,7 @@ def mcc_raincloud(filepath, orient='h'):
                 # Load test results for each experiment
                 _, test_results = probas_to_results(f'{dirpath}', youden=True)
                 res_l.append(test_results)
-                titles_l.append(choose_plot_title(f'{filepath}/{expt}'))
+                titles_l.append(_choose_plot_title(f'{filepath}/{expt}'))
         
             # Extract MCC values for each experiment
             y = [i.mcc for i in res_l]
@@ -837,16 +879,16 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot ROC and PR curves")
     parser.add_argument('filepath', type=str, help="filepath")
     parser.add_argument('orient', type=str, help="orientation of the plot (h or v)")
-    # parser.add_argument('metric', type=str, help="metric")
-    # parser.add_argument('image_format', type=str, help="image format")
+    parser.add_argument('metric', type=str, help="metric")
+    parser.add_argument('image_format', type=str, help="image format")
     # parser.add_argument('age65_cutoff', type=bool, help="use age cutoff of 65 (True/False)")
     
     args = parser.parse_args()
-    # multi_mean_roc_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
-    # multi_mean_pr_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
-    # multi_calibration_curve(args.filepath, args.metric, args.image_format)
+    multi_mean_roc_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
+    multi_mean_pr_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
+    multi_calibration_curve(args.filepath, args.metric, args.image_format)
     # The code is calling a function `export_confusion_matrices` with the argument `args.filepath`.
     # The function is likely designed to export confusion matrices to a file specified by the
     # `filepath` argument.
-    # export_confusion_matrices(args.filepath)
+    export_confusion_matrices(args.filepath)
     mcc_raincloud(args.filepath, args.orient)

@@ -13,40 +13,39 @@ from utils import save_pickle
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 
 def concat_labels_and_probas(dirpath):
-    
-    # In the provided code, `true_labels` is a list that contains the true labels for the data
-    # points in a binary classification problem. These true labels are used with predicted 
-    # probabilities to calculate the True Positive Rate (TPR) and False Positive Rate (FPR)
-    # for generating Receiver Operating Characteristic (ROC) and calibration curves.
-    
     true_labels = []
     probas = []
 
-    # load true labels and probas
     if 'mci' not in dirpath:
-        for i in range(10):
+        if 'nacc' not in dirpath:
+            for i in range(10):
+                tl = pickle.load(open(f'{dirpath}/test_true_labels_region_{i}.pkl', 'rb'))
+                true_labels.append(tl[0])
+                
+                p = pickle.load(open(f'{dirpath}/test_probas_region_{i}.pkl', 'rb'))
+                
+                if 'feature_selection' in dirpath:
+                    df = pd.read_csv(f'{dirpath}/training_results_region_{i}.csv')
+                    df = df.iloc[:20]
+                    best_idx = df['auroc'].idxmax()
+                    probas.append(p[best_idx])
+                else:
+                    probas.append(p[0])
+        else:
+            # Handle NACC data
+            tl = pickle.load(open(f'{dirpath}/test_true_labels_region_9.pkl', 'rb'))
+            p = pickle.load(open(f'{dirpath}/test_probas_region_9.pkl', 'rb'))
             
-            tl = pickle.load(open(f'{dirpath}/test_true_labels_region_{i}.pkl', 'rb'))
-            true_labels.append(tl[0])
-            
-            p = pickle.load(open(f'{dirpath}/test_probas_region_{i}.pkl', 'rb')) 
-            
-            # if analyzing feature selection experiments, find the number of features for best performance
-            if 'feature_selection' in dirpath:
-                df = pd.read_csv(f'{dirpath}/training_results_region_{i}.csv')
-                # df = df.iloc[:20]
-                best_idx = df['auroc'][:20].idxmax()
-                probas.append(p[best_idx])
-
-            else:
-                probas.append(p[0])
+            for i in range(10):
+                true_labels.append(tl[i])
+                probas.append(p[i])
     else:
+        # Handle MCI data
         tl = pickle.load(open(f'{dirpath}/test_true_labels.pkl', 'rb'))
         true_labels.append(tl[0])
         
         p = pickle.load(open(f'{dirpath}/test_probas.pkl', 'rb')) 
         probas.append(p[0])
-
             
     return true_labels, probas
 
@@ -214,28 +213,41 @@ def probas_to_results(filepath, youden=True, beta=1, threshold=None):
     test_res_l = []
 
     if 'mci' not in filepath:
-        for i in range(10):
-            train_labels = pickle.load(open(f'{filepath}/train_true_labels_region_{i}.pkl', 'rb'))
-            test_labels = pickle.load(open(f'{filepath}/test_true_labels_region_{i}.pkl', 'rb'))
-            train_probas = pickle.load(open(f'{filepath}/train_probas_region_{i}.pkl', 'rb'))
-            test_probas = pickle.load(open(f'{filepath}/test_probas_region_{i}.pkl', 'rb'))
+        
+        if 'nacc' not in filepath:
+            for i in range(10):
+                train_labels = pickle.load(open(f'{filepath}/train_true_labels_region_{i}.pkl', 'rb'))
+                test_labels = pickle.load(open(f'{filepath}/test_true_labels_region_{i}.pkl', 'rb'))
+                train_probas = pickle.load(open(f'{filepath}/train_probas_region_{i}.pkl', 'rb'))
+                test_probas = pickle.load(open(f'{filepath}/test_probas_region_{i}.pkl', 'rb'))
 
-            if 'feature_selection' in filepath:
-                df = pd.read_csv(f'{filepath}/training_results_region_{i}.csv')
-                df = df.iloc[:20]
-                best_idx = df['auroc'].idxmax()
+                if 'feature_selection' in filepath:
+                    df = pd.read_csv(f'{filepath}/training_results_region_{i}.csv')
+                    df = df.iloc[:20]
+                    best_idx = df['auroc'].idxmax()
 
-                # res = calc_results(test_labels[0], test_probas[best_idx], youden=youden, beta=beta, threshold=threshold)
-                # res_l.append(res)
+                    # res = calc_results(test_labels[0], test_probas[best_idx], youden=youden, beta=beta, threshold=threshold)
+                    # res_l.append(res)
 
-                train_res, thresh = calc_results(train_labels[0], train_probas[best_idx], youden=youden, beta=beta, threshold=threshold)
-                res = calc_results(test_labels[0], test_probas[best_idx], youden=youden, beta=beta, threshold=thresh)
-                train_res_l.append(train_res)
-                test_res_l.append(res)
+                    train_res, thresh = calc_results(train_labels[0], train_probas[best_idx], youden=youden, beta=beta, threshold=threshold)
+                    res = calc_results(test_labels[0], test_probas[best_idx], youden=youden, beta=beta, threshold=thresh)
+                    train_res_l.append(train_res)
+                    test_res_l.append(res)
 
-            else:
-                train_res, thresh = calc_results(train_labels[0], train_probas[0], youden=youden, beta=beta, threshold=threshold)
-                res = calc_results(test_labels[0], test_probas[0], youden=youden, beta=beta, threshold=thresh)
+                else:
+                    train_res, thresh = calc_results(train_labels[0], train_probas[0], youden=youden, beta=beta, threshold=threshold)
+                    res = calc_results(test_labels[0], test_probas[0], youden=youden, beta=beta, threshold=thresh)
+                    train_res_l.append(train_res)
+                    test_res_l.append(res)
+        else:
+            train_labels = pickle.load(open(f'{filepath}/train_true_labels_region_9.pkl', 'rb'))
+            test_labels = pickle.load(open(f'{filepath}/test_true_labels_region_9.pkl', 'rb'))
+            train_probas = pickle.load(open(f'{filepath}/train_probas_region_9.pkl', 'rb'))
+            test_probas = pickle.load(open(f'{filepath}/test_probas_region_9.pkl', 'rb'))
+            
+            for i in range(10):
+                train_res, thresh = calc_results(train_labels[i], train_probas[i], youden=youden, beta=beta, threshold=threshold)
+                res = calc_results(test_labels[i], test_probas[i], youden=youden, beta=beta, threshold=thresh)
                 train_res_l.append(train_res)
                 test_res_l.append(res)
 
@@ -243,7 +255,7 @@ def probas_to_results(filepath, youden=True, beta=1, threshold=None):
         test_labels = pickle.load(open(f'{filepath}/test_true_labels.pkl', 'rb'))
         test_probas = pickle.load(open(f'{filepath}/test_probas.pkl', 'rb'))
         res = calc_results(test_labels[0], test_probas[0], youden=youden, beta=beta, threshold=threshold)
-        res_l.append(res)
+        test_res_l.append(res)
     
     train_results = pd.concat(train_res_l, axis=1).T
     test_results = pd.concat(test_res_l, axis=1).T
