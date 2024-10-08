@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 from lightgbm import LGBMClassifier
 from flaml import AutoML
-
+from sklearn.preprocessing import StandardScaler
 import sys
 from datetime import datetime
 import pickle
@@ -51,11 +51,15 @@ def main():
     # Add arguments
     # parser.add_argument('njobs', type=str, help='Number of cores')
     parser.add_argument('--experiment', type=str,
-                        help='options: age_only, all_demographics, lancet2024, proteins_only, demographics_and_proteins')
+                        help='options: age_only, all_demographics, age_and_lancet2024, \
+                        age_sex_lancet2024, demographics_and_lancet2024, modality_only, \
+                        demographics_and_modality, demographics_modality_lancet2024')
     parser.add_argument('--time_budget', type=int, default=3600,
                         help='options: seconds to allow FLAML to optimize')
     parser.add_argument('--metric', type=str, default='roc_auc',
                         help='options: roc_auc, f3, ap')
+    parser.add_argument('--model', type=str, default='lgbm',
+                        help='options: lgbm, lrl1')
     parser.add_argument('--age_cutoff', type=int, default=None,
                         help='age cutoff')
     parser.add_argument('--region_index', type=int, default=None,
@@ -68,6 +72,7 @@ def main():
     experiment = args.experiment
     time_budget = args.time_budget
     metric = args.metric
+    model = args.model
     age_cutoff = args.age_cutoff
     if age_cutoff == 0:
         age_cutoff = None
@@ -79,7 +84,7 @@ def main():
         sys.exit()
 
     # Specify the directory path
-    directory_path = f'../../results/dementia/{data_modality}/{experiment}/{metric}/'
+    directory_path = f'../../results/dementia/{data_modality}/{experiment}/{metric}/{model}/'
  
 
     if age_cutoff is not None:
@@ -97,43 +102,116 @@ def main():
     # check if output folder exists
     utils.check_folder_existence(directory_path)
 
-    lancet_vars = ['4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0', 'alcohol_consumption', 'hypertension', 'obesity', 
-                    'diabetes', 'hearing_loss', 'depression', 'freq_friends_family_visit', '24012-0.0', '24018-0.0', '24019-0.0', '24006-0.0', 
-                    '24015-0.0', '24011-0.0', '2020-0.0_-3.0', '2020-0.0_-1.0',
-                    '2020-0.0_0.0', '2020-0.0_1.0', '2020-0.0_nan']
+    lancet_vars = ['4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0',
+                   'alcohol_consumption', 'hypertension', 'obesity', 'diabetes', 'hearing_loss',
+                   'depression', 'freq_friends_family_visit', '24012-0.0', '24018-0.0',
+                   '24019-0.0', '24006-0.0', '24015-0.0', '24011-0.0', '2020-0.0_-3.0',
+                   '2020-0.0_-1.0', '2020-0.0_0.0', '2020-0.0_1.0', '2020-0.0_nan']
 
     if experiment == 'age_only':
         X = X.loc[:, [f'21003-{data_instance}.0']]
         time_budget = 10
+        
+        # store continuous columns for scaling if using lrl1
+        continuous_cols = [f'21003-{data_instance}.0']
     elif experiment == 'all_demographics':
-        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist()]
-        time_budget = 25
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe',
+                                                         'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist()]
+        
+        if model == 'lgbm':
+            time_budget = 25
+        elif model == 'lrl1':
+            time_budget = 500 
+        
+        # store continuous columns for scaling if using lrl1
+        continuous_cols = df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0']).columns.tolist()
     elif experiment == 'age_and_lancet2024':
-        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', 'max_educ_complete', '845-0.0']).columns.tolist() + lancet_vars]
-        time_budget = 50
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', 'max_educ_complete',
+                                                         '845-0.0']).columns.tolist() + lancet_vars]
+        if model == 'lgbm':
+            time_budget = 50
+        elif model == 'lrl1':
+            time_budget = 400
+        
+        # store continuous columns for scaling if using lrl1
+        continuous_cols = df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0',
+                                                              '4700-0.0', '5901-0.0', '30780-0.0', '22038-0.0',
+                                                              '20161-0.0','24012-0.0', '24018-0.0', '24019-0.0',
+                                                              '24006-0.0', '24015-0.0', '24011-0.0']).columns.tolist()
     elif experiment == 'age_sex_lancet2024':
-        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + \
-            lancet_vars]
-        time_budget = 75
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0',
+                                                         'max_educ_complete', '845-0.0',
+                                                         '21000-0.0']).columns.tolist() + lancet_vars]
+        if model == 'lgbm':
+            time_budget = 75
+        elif model == 'lrl1':
+            time_budget = 700
+        
+        # store continuous columns for scaling if using lrl1
+        continuous_cols = df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0',
+                                                              '4700-0.0', '5901-0.0', '30780-0.0', '22038-0.0',
+                                                              '20161-0.0','24012-0.0', '24018-0.0', '24019-0.0',
+                                                              '24006-0.0', '24015-0.0', '24011-0.0']).columns.tolist()
     elif experiment == 'demographics_and_lancet2024':
-        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete', '845-0.0', '21000-0.0']).columns.tolist() + \
-            lancet_vars]
-        time_budget = 100
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0',
+                                                         'apoe', 'max_educ_complete', '845-0.0',
+                                                         '21000-0.0']).columns.tolist() + lancet_vars]
+        if model == 'lgbm':
+            time_budget = 100
+        elif model == 'lrl1':
+            time_budget = 800
+        
+        # store continuous columns for scaling if using lrl1
+        continuous_cols = df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0',
+                                                              '4700-0.0', '5901-0.0', '30780-0.0', '22038-0.0',
+                                                              '20161-0.0','24012-0.0', '24018-0.0', '24019-0.0',
+                                                              '24006-0.0', '24015-0.0', '24011-0.0']).columns.tolist()
     elif experiment == 'modality_only':
         X = X.loc[:, df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
-        time_budget = 8500
+        
+        if model == 'lgbm':
+            time_budget = 8500
+        elif model == 'lrl1':
+            time_budget = 38000
+        
+        # store continuous columns for scaling if using lrl1
+        continuous_cols = df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()
     elif experiment == 'demographics_and_modality':
-        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete',\
-                                                 '845-0.0', '21000-0.0']).columns.tolist() + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
-        time_budget = 9000
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0',
+                                                         'apoe', 'max_educ_complete', '845-0.0',
+                                                         '21000-0.0']).columns.tolist() + \
+                                                            df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
+        if model == 'lgbm':
+            time_budget = 9000
+        elif model == 'lrl1':
+            time_budget = 40000
+        
+        # store continuous columns for scaling if using lrl1
+        continuous_cols = df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist() + \
+                            df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0']).columns.tolist()
     elif experiment == 'demographics_modality_lancet2024':
-        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe', 'max_educ_complete',\
-                                                 '845-0.0', '21000-0.0']).columns.tolist() + lancet_vars + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
-        time_budget = 9500
-
+        X = X.loc[:, df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0',
+                                                        'apoe', 'max_educ_complete', '845-0.0',
+                                                        '21000-0.0']).columns.tolist() + \
+                                                        lancet_vars + df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()]
+        if model == 'lgbm':
+            time_budget = 9500
+        elif model == 'lrl1':
+            time_budget = 42000
+    
+        # store continuous columns for scaling if using lrl1
+        continuous_cols = df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist() + \
+                            df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0',
+                                                              '4700-0.0', '5901-0.0', '30780-0.0', '22038-0.0',
+                                                              '20161-0.0','24012-0.0', '24018-0.0', '24019-0.0',
+                                                              '24006-0.0', '24015-0.0', '24011-0.0']).columns.tolist()
+                            
     if age_cutoff == 65:
         print('Modifying time budget by dividing by 2 for age cutoff of 65') 
-        time_budget = time_budget/2
+        if model == 'lgbm':
+            time_budget = time_budget/2
+        if model == 'lrl1':
+            time_budget = time_budget/4
 
     print(f'Running {experiment} experiment, region {region_index}, autoML time budget of {time_budget} seconds, {metric} as the metric, and an age cutoff of {age_cutoff} years')
 
@@ -180,14 +258,40 @@ def main():
     automl = AutoML()
     # automl.fit(X_train, y_train, task="classification", time_budget=time_budget, metric=metric, n_jobs=-1, eval_method='cv', n_splits=10,
     #                 max_iter=None, early_stop=True, append_log=True, log_file_name=f'{directory_path}/results_log_{i}.json')
+    automl_settings = {
+    "task": "classification",
+    "time_budget": time_budget,
+    "metric": metric,
+    "n_jobs": -1,
+    "eval_method": 'cv',
+    "n_splits": 10,
+    "split_type": 'stratified',
+    "early_stop": True,
+    "log_training_metric": True,
+    "model_history": True,
+    "seed": 239875,
+    "log_file_name": f'{directory_path}/results_log_{i}.json',
+    "estimator_list": [model]
+    #"max_iter": 0,
+    }
     
-    automl.fit(X_train, y_train, task="classification", time_budget=time_budget, metric=metric,
-                n_jobs=-1, eval_method='cv', n_splits=10, split_type='stratified',
-                log_training_metric=True, early_stop=True,
-                seed=239875, model_history=True, estimator_list=['lgbm'],
-                log_file_name=f'{directory_path}/results_log_{i}.json')
+    if model == 'lrl1':
+        automl_settings['max_iter'] = 100000000
+        
+        print('Scaling data')
+        # Initialize the StandardScaler
+        scaler = StandardScaler()
 
-    print('Done fitting model')
+        # Fit and transform only the continuous columns
+        scaler.fit(X_train[continuous_cols])
+        X_train[continuous_cols] = scaler.transform(X_train[continuous_cols])
+        X_test[continuous_cols] = scaler.transform(X_test[continuous_cols])
+        print('Done scaling data')
+    
+    print(automl_settings)
+    print(f'Fitting model: {datetime.now().time()}')
+    automl.fit(X_train, y_train, **automl_settings)
+    print(f'Done fitting model: {datetime.now().time()}')
 
     if len(automl.feature_importances_) == 1:
         feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_[0]))[::-1]]

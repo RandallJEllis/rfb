@@ -53,7 +53,7 @@ def _choose_plot_title(dirpath):
         if 'proteomics' in dirpath:
             title = 'Proteins'
         elif 'cognitive_test' in dirpath:
-            title = 'Cognitive Tests'
+            title = 'Cog. Tests'
         elif 'neuroimaging' in dirpath:
             title = 'IDPs'
         elif 'csf' in dirpath:
@@ -66,7 +66,7 @@ def _choose_plot_title(dirpath):
         if 'proteomics' in dirpath:
             title = 'Demo + Proteins'
         elif 'cognitive_test' in dirpath:
-            title = 'Demo + Cognitive Tests'
+            title = 'Demo + Cog. Tests'
         elif 'neuroimaging' in dirpath:
             title = 'Demo + IDPs'
         elif 'csf' in dirpath:
@@ -83,7 +83,7 @@ def _choose_plot_title(dirpath):
         if 'proteomics' in dirpath:
             title = 'Demo + Proteins + Lancet'
         elif 'cognitive_test' in dirpath:
-            title = 'Demo + Cognitive Tests + Lancet'
+            title = 'Demo + Cog. Tests + Lancet'
         elif 'neuroimaging' in dirpath:
             title = 'Demo + IDPs + Lancet'
         elif 'csf' in dirpath:
@@ -727,7 +727,7 @@ def export_confusion_matrices(filepath):
     # List of experiments to process
     expts = [
         'demographics_and_lancet2024',
-        'demographics_modality_lancet2024'
+        'demographics_modality_lancet2024/feature_selection'
     ]
     
     ages = _get_ages(filepath)
@@ -798,6 +798,8 @@ def mcc_raincloud(filepath, orient='h'):
     for orient, fig_dimensions in zip(['v', 'h'], [(12, 8), (6, 8)]):
         if orient == 'h':
             continue
+        # if 'cognitive' in filepath:
+        #     fig_dimensions = (15, 8)
         for age_cutoff in ages:
             res_l = []
             titles_l = []
@@ -881,17 +883,17 @@ def mcc_raincloud(filepath, orient='h'):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot ROC and PR curves")
     parser.add_argument('filepath', type=str, help="filepath")
-    parser.add_argument('orient', type=str, help="orientation of the plot (h or v)")
-    parser.add_argument('metric', type=str, help="metric")
-    parser.add_argument('image_format', type=str, help="image format")
+    # parser.add_argument('orient', type=str, help="orientation of the plot (h or v)")
+    # parser.add_argument('metric', type=str, help="metric")
+    # parser.add_argument('image_format', type=str, help="image format")
     # parser.add_argument('age65_cutoff', type=bool, help="use age cutoff of 65 (True/False)")
     
     args = parser.parse_args()
-    multi_mean_roc_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
-    multi_mean_pr_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
-    multi_calibration_curve(args.filepath, args.metric, args.image_format)
+    # multi_mean_roc_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
+    # multi_mean_pr_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
+    # multi_calibration_curve(args.filepath, args.metric, args.image_format)
     # The code is calling a function `export_confusion_matrices` with the argument `args.filepath`.
     # The function is likely designed to export confusion matrices to a file specified by the
     # `filepath` argument.
     export_confusion_matrices(args.filepath)
-    mcc_raincloud(args.filepath, args.orient)
+    # mcc_raincloud(args.filepath, args.orient)
