@@ -303,7 +303,8 @@ def main():
     fi_df = pd.DataFrame({'feature': feature_names, 'importance': fi})
     fi_df.to_parquet(f'{directory_path}/feature_importance_region_{i}.parquet')
 
-    series_automl = pd.Series([i, r, automl.best_estimator, automl.best_config], index=['region_index', 'region', 'model', 'hyperparams'])
+    series_automl = pd.Series([i, r, automl.best_estimator, automl.best_config],
+                              index=['region_index', 'region', 'model', 'hyperparams'])
 
     train_probas = automl.predict_proba(X_train)[:,1]
 
@@ -330,7 +331,8 @@ def main():
     test_probas_l.append(test_probas)
         
 
-    ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{i}')
+    ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l,
+                                test_labels_l, test_probas_l, other_file_info=f'_region_{i}')
 
     # train_df = pd.concat(train_res_l, axis=1).T
     train_df = pd.DataFrame(train_res).T
