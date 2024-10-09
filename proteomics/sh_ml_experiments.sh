@@ -21,7 +21,7 @@ conda activate pymc_env
 export PYTHONUNBUFFERED=1
 
 # Convert SLURM_TIMELIMIT from minutes to HH:MM:SS and print
-time_limit_in_minutes=$SLURM_TIMELIMIT
+time_limit_in_minutes="$time"
 hours=$(($time_limit_in_minutes / 60))
 minutes=$(($time_limit_in_minutes % 60))
 

@@ -121,7 +121,7 @@ def main():
         if model == 'lgbm':
             time_budget = 25
         elif model == 'lrl1':
-            time_budget = 500 
+            time_budget = 400 
         
         # store continuous columns for scaling if using lrl1
         continuous_cols = df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0']).columns.tolist()
@@ -131,7 +131,7 @@ def main():
         if model == 'lgbm':
             time_budget = 50
         elif model == 'lrl1':
-            time_budget = 400
+            time_budget = 500
         
         # store continuous columns for scaling if using lrl1
         continuous_cols = df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0',
@@ -145,7 +145,7 @@ def main():
         if model == 'lgbm':
             time_budget = 75
         elif model == 'lrl1':
-            time_budget = 700
+            time_budget = 600
         
         # store continuous columns for scaling if using lrl1
         continuous_cols = df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0',
@@ -159,7 +159,7 @@ def main():
         if model == 'lgbm':
             time_budget = 100
         elif model == 'lrl1':
-            time_budget = 800
+            time_budget = 00
         
         # store continuous columns for scaling if using lrl1
         continuous_cols = df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0',
@@ -172,7 +172,7 @@ def main():
         if model == 'lgbm':
             time_budget = 8500
         elif model == 'lrl1':
-            time_budget = 38000
+            time_budget = 35000
         
         # store continuous columns for scaling if using lrl1
         continuous_cols = df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist()
@@ -184,7 +184,7 @@ def main():
         if model == 'lgbm':
             time_budget = 9000
         elif model == 'lrl1':
-            time_budget = 40000
+            time_budget = 35000
         
         # store continuous columns for scaling if using lrl1
         continuous_cols = df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist() + \
@@ -197,7 +197,7 @@ def main():
         if model == 'lgbm':
             time_budget = 9500
         elif model == 'lrl1':
-            time_budget = 42000
+            time_budget = 35000
     
         # store continuous columns for scaling if using lrl1
         continuous_cols = df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist() + \

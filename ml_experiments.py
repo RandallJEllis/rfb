@@ -40,9 +40,24 @@ region_index - index of the region to run the experiment on (or CV fold for neur
 '''
 
 
-def main():
-
-    # Create the argument parser
+def parse_args():
+    """
+    Parses command-line arguments for running AutoML experiments.
+    Returns:
+        tuple: A tuple containing the following elements:
+            - data_modality (str): The chosen data modality. Options are 'proteomics', 'neuroimaging', 'cognitive_tests'.
+            - experiment (str): The chosen experiment type. Options include 'age_only', 'all_demographics', 
+              'age_sex_lancet2024', 'demographics_and_lancet2024', 'modality_only', 'demographics_and_modality', 
+              'demographics_modality_lancet2024'.
+            - time_budget (int): The time budget in seconds for FLAML to optimize. Default is 3600 seconds.
+            - metric (str): The evaluation metric to use. Options are 'log_loss', 'roc_auc', 'f3', 'ap'. Default is 'log_loss'.
+            - model (str): The model to use. Options are 'lgbm', 'lrl1'. Default is 'lgbm'.
+            - age_cutoff (int or None): The age cutoff value. Default is None.
+            - region_index (int): The region index. If not provided, the function will print 'NEED REGION INDEX' and exit.
+    Raises:
+        SystemExit: If the region_index is not provided.
+    """
+     # Create the argument parser
     parser = argparse.ArgumentParser(
         description='Run AutoML on chosen feature sets')
 
@@ -55,8 +70,8 @@ def main():
                         demographics_and_modality, demographics_modality_lancet2024')
     parser.add_argument('--time_budget', type=int, default=3600,
                         help='options: seconds to allow FLAML to optimize')
-    parser.add_argument('--metric', type=str, default='roc_auc',
-                        help='options: roc_auc, f3, ap')
+    parser.add_argument('--metric', type=str, default='log_loss',
+                        help='options: log_loss, roc_auc, f3, ap')
     parser.add_argument('--model', type=str, default='lgbm',
                         help='options: lgbm, lrl1')
     parser.add_argument('--age_cutoff', type=int, default=None,
@@ -67,24 +82,11 @@ def main():
     # Parse the arguments
     args = parser.parse_args()
     data_modality = args.modality
-    
-    X = pd.read_parquet(f'../tidy_data/dementia/{data_modality}/X.parquet')
-    X = X.iloc[:,1:]
-    y = np.load(f'../../tidy_data/dementia/{data_modality}/y.npy')
-    
-    # set data instance, import region indices if not neuroimaging, and set modality_vars
-    if data_modality == 'neuroimaging':
-        data_instance = 2
-    else:
-        data_instance = 0
-        region_indices = pickle.load(
-            open(f'../tidy_data/dementia/{data_modality}/region_cv_indices.pickle', 'rb')
-            )
-        
     experiment = args.experiment
     time_budget = args.time_budget
     metric = args.metric
     model = args.model
+    
     age_cutoff = args.age_cutoff
     if age_cutoff == 0:
         age_cutoff = None
@@ -93,28 +95,77 @@ def main():
     if region_index == None:
         print('NEED REGION INDEX')
         sys.exit()
-
-    # Specify the directory path
-    directory_path = f'../results/dementia/{data_modality}/{experiment}/{metric}/{model}/'
- 
-    # subset data by age if there is an age cutoff
-    if age_cutoff is not None:
-        over_age_idx = X[f'21003-{data_instance}.0'] >= age_cutoff
-        X = X[over_age_idx].reset_index(drop=True)
-        y = y[over_age_idx]
         
-        # update region_indices if not neuroimaging
-        if data_modality != 'neuroimaging':
-            region_lookup = pd.read_csv('../metadata/coding10.tsv', sep='\t')
-            region_indices = ukb_utils.group_assessment_center(
-                X, data_instance, region_lookup)
+    return data_modality, experiment, time_budget, metric, model, age_cutoff, region_index 
+        
+def load_datasets(data_modality):
+    """
+    Load datasets for a given data modality.
+    Parameters:
+    data_modality (str): The modality of the data to load. Can be 'neuroimaging' or other modalities.
+    Returns:
+    tuple: A tuple containing:
+        - X (pd.DataFrame): The feature dataset.
+        - y (np.ndarray): The target labels.
+        - data_instance (int): An identifier for the data instance (2 for 'neuroimaging', 0 for other modalities).
+        - region_indices (list or None): Region indices for cross-validation if the modality is not 'neuroimaging', otherwise None.
+    """
+    X = pd.read_parquet(f'../tidy_data/dementia/{data_modality}/X.parquet')
+    X = X.iloc[:,1:]
+    y = np.load(f'../../tidy_data/dementia/{data_modality}/y.npy')
+    
+    # set data instance, import region indices if not neuroimaging, and set modality_vars
+    if data_modality == 'neuroimaging':
+        data_instance = 2
+        return X, y, data_instance, None
+    else:
+        data_instance = 0
+        region_indices = pickle.load(
+            open(f'../tidy_data/dementia/{data_modality}/region_cv_indices.pickle', 'rb')
+            )
+        return X, y, data_instance, region_indices
+                
+def setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_instance):
+    """
+    Filters the dataset based on an age cutoff and updates the directory path accordingly.
+    Parameters:
+    directory_path (str): The base directory path where the results will be stored.
+    X (pd.DataFrame): The feature matrix containing the data.
+    y (pd.Series): The target variable.
+    age_cutoff (int): The age threshold to filter the data.
+    data_modality (str): The type of data modality (e.g., 'neuroimaging').
+    data_instance (int): The specific data instance identifier.
+    Returns:
+    tuple: A tuple containing the updated directory path, filtered feature matrix (X), 
+           filtered target variable (y), and region indices (if applicable, otherwise None).
+    """
+    directory_path = f'{directory_path}/agecutoff_{age_cutoff}'
+    over_age_idx = X[f'21003-{data_instance}.0'] >= age_cutoff
+    X = X[over_age_idx].reset_index(drop=True)
+    y = y[over_age_idx]
+    
+    # update region_indices if not neuroimaging
+    if data_modality != 'neuroimaging':
+        region_lookup = pd.read_csv('../metadata/coding10.tsv', sep='\t')
+        region_indices = ukb_utils.group_assessment_center(
+            X, data_instance, region_lookup)
+        return directory_path, X, y, region_indices
+    
+    else:
+        return directory_path, X, y, None
+ 
+def lancet_vars():
+    """
+    Returns two lists of variables related to a study.
 
-        directory_path = f'{directory_path}/agecutoff_{age_cutoff}'
+    The first list, `lancet_vars`, contains a mix of categorical and continuous variables.
+    The second list, `continuous_lancet_vars`, contains only continuous variables.
 
-    # check if output folder exists
-    utils.check_folder_existence(directory_path)
-
-    # set up experiment variables
+    Returns:
+        tuple: A tuple containing two lists:
+            - lancet_vars (list of str): A list of variable identifiers and names.
+            - continuous_lancet_vars (list of str): A list of continuous variable identifiers.
+    """
     lancet_vars = ['4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0',
                    'alcohol_consumption', 'hypertension', 'obesity', 'diabetes', 'hearing_loss',
                    'depression', 'freq_friends_family_visit', '24012-0.0', '24018-0.0',
@@ -123,6 +174,26 @@ def main():
     continuous_lancet_vars = ['4700-0.0', '5901-0.0', '30780-0.0', '22038-0.0',
                                 '20161-0.0','24012-0.0', '24018-0.0', '24019-0.0',
                                 '24006-0.0', '24015-0.0', '24011-0.0']
+    return lancet_vars, continuous_lancet_vars
+
+def experiment_vars(data_modality, data_instance, X):
+    """
+    Generates a dictionary of experiment variables based on the given data modality and data instance.
+
+    Args:
+        data_modality (str): The modality of the data (e.g., 'proteomics', 'neuroimaging', 'cognitive_tests').
+        data_instance (str): The instance of the data (e.g., '0', '1').
+
+    Returns:
+        dict: A dictionary containing various sets of experiment variables:
+            - 'age_only': List of columns related to age.
+            - 'all_demographics': List of columns related to all demographics.
+            - 'age_sex_lancet2024': List of columns related to age, sex, and additional variables from the Lancet 2024 study.
+            - 'demographics_and_lancet2024': List of columns related to demographics and additional variables from the Lancet 2024 study.
+            - 'modality_only': Dictionary with keys as modalities and values as lists of columns specific to each modality.
+            - 'demographics_and_modality': Dictionary with keys as modalities and values as lists of columns combining demographics and modality-specific columns.
+            - 'demographics_modality_lancet2024': Dictionary with keys as modalities and values as lists of columns combining demographics, modality-specific columns, and additional variables from the Lancet 2024 study.
+    """
     experiment_vars = {
         'age_only': [f'21003-{data_instance}.0'],
         'all_demographics': df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '31-0.0', 'apoe',
@@ -143,7 +214,60 @@ def main():
     experiment_vars['demographics_modality_lancet2024'] = {'proteomics': experiment_vars['demographics_and_modality']['proteomics'] + lancet_vars,
                                                            'neuroimaging': experiment_vars['demographics_and_modality']['neuroimaging'] + lancet_vars,
                                                            'cognitive_tests': experiment_vars['demographics_and_modality']['cognitive_tests'] + lancet_vars}
+    return experiment_vars
 
+def subset_experiment_vars(X, experiment_vars, experiment, data_modality):
+    """
+    Subsets the feature matrix based on the experiment variables.
+
+    Args:
+        X (pd.DataFrame): The feature matrix containing the data.
+        experiment_vars (dict): A dictionary containing various sets of experiment variables.
+        experiment (str): The chosen experiment type.
+        data_modality (str): The type of data modality (e.g., 'proteomics', 'neuroimaging', 'cognitive_tests').
+
+    Returns:
+        pd.DataFrame: The feature matrix with columns subset based on the experiment variables.
+    """
+    if experiment in experiment_vars:
+        if isinstance(experiment_vars[experiment], dict):
+            if data_modality in experiment_vars[experiment]:
+                X = X.loc[:, experiment_vars[experiment][data_modality]]
+            else:
+                # output an error saying data_modality is not in experiment_vars
+                print('Data modality not in experiment_vars')
+                sys.exit()
+        else:
+            X = X.loc[:, experiment_vars[experiment]]
+    else:
+        # output an error saying experiment is not in experiment_vars
+        print('Experiment not in experiment_vars')
+        sys.exit()
+    return X
+
+def _flaml_time_budgets():
+    """
+    Returns a dictionary containing time budgets for various machine learning experiments.
+
+    The time budgets are organized by different experimental setups and modalities. Each setup
+    contains time budgets for different modalities such as 'proteomics', 'neuroimaging', and 
+    'cognitive_tests'. The time budgets are further divided by machine learning models such as 
+    'lgbm' and 'lrl1'.
+
+    The structure of the returned dictionary is as follows:
+    {
+        'experiment_setup': {
+            'modality': {
+                'model': time_budget
+
+    Example:
+    {
+            ...
+        ...
+
+    Returns:
+        dict: A dictionary containing time budgets for various machine learning experiments.
+    """
     time_budgets = {
         'age_only': {
             'proteomics': 10,
@@ -191,10 +315,110 @@ def main():
                 'lgbm': 100,
                 'lrl1': 800
             }
+        },
+        'modality_only': {
+            'proteomics': {
+                'lgbm': 8500,
+                'lrl1': 35000
+            },
+            'neuroimaging': {
+                'lgbm': 100,
+                'lrl1': 800
+            },
+            'cognitive_tests': {
+                'lgbm': 100,
+                'lrl1': 800
+            }
+        },
+        'demographics_and_modality': {
+            'proteomics': {
+                'lgbm': 9000,
+                'lrl1': 35000
+            },
+            'neuroimaging': {
+                'lgbm': 100,
+                'lrl1': 800
+            },
+            'cognitive_tests': {
+                'lgbm': 100,
+                'lrl1': 800
+            }
+        },
+        'demographics_modality_lancet2024': {
+            'proteomics': {
+                'lgbm': 9500,
+                'lrl1': 35000
+            },
+            'neuroimaging': {
+                'lgbm': 100,
+                'lrl1': 800
+            },
+            'cognitive_tests': {
+                'lgbm': 100,
+                'lrl1': 800
+            }
         }
     }
+    return time_budgets
 
-    # set up continuous columns for scaling if using lrl1
+def get_time_budget(experiment, data_modality, model, age_cutoff):
+    """
+    Returns the time budget for a given experiment, data modality, and model.
+
+    Args:
+        experiment (str): The chosen experiment type.
+        data_modality (str): The type of data modality (e.g., 'proteomics', 'neuroimaging', 'cognitive_tests').
+        model (str): The model to use. Options are 'lgbm' and 'lrl1'.
+        time_budgets (dict): A dictionary containing time budgets for various machine learning experiments.
+
+    Returns:
+        int: The time budget in seconds.
+    """
+    
+    time_budgets = _flaml_time_budgets()
+    if experiment in time_budgets:
+        if data_modality in time_budgets[experiment]:
+            if model in time_budgets[experiment][data_modality]:
+                time_budget = time_budgets[experiment][data_modality][model]
+            else:
+                # output an error saying model is not in time_budgets
+                print('Model not in time_budgets')
+                sys.exit()
+        else:
+            # output an error saying data_modality is not in time_budgets
+            print('Data modality not in time_budgets')
+            sys.exit()
+    else:
+        # output an error saying experiment is not in time_budgets
+        print('Experiment not in time_budgets')
+        sys.exit()
+        
+    # modify time budget for age cutoff of 65                        
+    if age_cutoff == 65:
+        print('Modifying time budget for age cutoff of 65') 
+        if model == 'lgbm':
+            time_budget = time_budget/2
+        if model == 'lrl1':
+            time_budget = time_budget/4
+    return time_budget
+        
+def continuous_vars_for_scaling(data_modality, data_instance, experiment, continuous_lancet_vars, X):
+    """
+    Generates a dictionary of continuous columns for scaling based on the specified data modality, 
+    data instance, and continuous Lancet variables.
+
+    Parameters:
+    data_modality (str): The modality of the data (e.g., 'proteomics', 'neuroimaging', 'cognitive_tests').
+    data_instance (int): The instance of the data (e.g., 0, 1, 2).
+    continuous_lancet_vars (list): A list of continuous Lancet variables to be included.
+
+    Returns:
+    dict: A dictionary where keys represent different configurations (e.g., 'age_only', 'all_demographics', 
+          'age_sex_lancet2024', 'demographics_and_lancet2024', 'modality_only', 'demographics_and_modality', 
+          'demographics_modality_lancet2024') and values are lists of column names or dictionaries of column names 
+          for the specified configurations.
+    """
+
     continuous_cols = {
         'age_only': [f'21003-{data_instance}.0'],
         'all_demographics': df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0']).columns.tolist(),
@@ -218,70 +442,37 @@ def main():
         'neuroimaging': continuous_cols['demographics_and_modality']['neuroimaging'] + continuous_lancet_vars,
         'cognitive_tests': continuous_cols['demographics_and_modality']['cognitive_tests'] + continuous_lancet_vars
     }
-
-    # subset data based on experiment and data_modality
-    if experiment in experiment_vars:
-        if isinstance(experiment_vars[experiment], dict):
-            if data_modality in experiment_vars[experiment]:
-                X = X.loc[:, experiment_vars[experiment][data_modality]]
-            else:
-                # output an error saying data_modality is not in experiment_vars
-                print('Data modality not in experiment_vars')
-                sys.exit()
-        else:
-            X = X.loc[:, experiment_vars[experiment]]
-    else:
-        # output an error saying experiment is not in experiment_vars
-        print('Experiment not in experiment_vars')
-        sys.exit()
     
-    # set time budget based on experiment, data_modality, and model    
-    if experiment in time_budgets:
-        time_budget = time_budgets[experiment][data_modality][model]
-    else:
-        # output an error saying experiment is not in time_budgets
-        print('Experiment not in time_budgets')
-        sys.exit()
-    
-    # set continuous columns for scaling if using lrl1
-    if model == 'lrl1':    
-        if experiment in continuous_cols:
-            if isinstance(time_budgets[experiment], dict):
-                continuous_cols = continuous_cols[experiment][data_modality]
-            else:
-                continuous_cols = continuous_cols[experiment]
+    if experiment in continuous_cols:
+        if isinstance(continuous_cols[experiment], dict):
+            continuous_cols = continuous_cols[experiment][data_modality]
         else:
-            # output an error saying experiment is not in continuous_cols
-            print('Experiment not in continuous_cols')
-            sys.exit()
-                
-    # modify time budget for age cutoff of 65                        
-    if age_cutoff == 65:
-        print('Modifying time budget by dividing by 2 for age cutoff of 65') 
-        if model == 'lgbm':
-            time_budget = time_budget/2
-        if model == 'lrl1':
-            time_budget = time_budget/4
+            continuous_cols = continuous_cols[experiment]
+    else:
+        # output an error saying experiment is not in continuous_cols
+        print('Experiment not in continuous_cols')
+        sys.exit()
+        
+    return continuous_cols
 
-    # print experiment details
-    print(f'Running {experiment} experiment, region {region_index}, autoML time budget of {time_budget} seconds, {metric} as the metric, and an age cutoff of {age_cutoff} years')
-
-    # set metric to f3 if using f3
-    if metric == 'roc_auc':
-        pass
-    elif metric == 'f3':
-        metric = f3.f3_metric
-
-    # set up lists to store results
-    train_labels_l = []
-    train_probas_l = []
-
-    test_labels_l = []
-    test_probas_l = []
-
-    print(f'Dimensionality of the dataset: {X.shape}')
-
-    # Split the data into training and testing sets
+def subset_train_test_data(X, y, data_modality, region_index, region_indices):
+    """
+    Splits the dataset into training and testing subsets based on the specified data modality and region index.
+    Parameters:
+    X (pd.DataFrame): The feature matrix.
+    y (pd.Series or np.ndarray): The target vector.
+    data_modality (str): The type of data modality, either 'neuroimaging' or other.
+    region_index (int): The index of the region to be used for splitting the data.
+    region_indices (dict): A dictionary where keys are region names and values are lists of indices corresponding to those regions.
+    Returns:
+    tuple: A tuple containing:
+        - X_train (pd.DataFrame): The training feature matrix.
+        - y_train (pd.Series or np.ndarray): The training target vector.
+        - X_test (pd.DataFrame): The testing feature matrix.
+        - y_test (pd.Series or np.ndarray): The testing target vector.
+        - region (int or str): The region used for the split, either an integer (for 'neuroimaging') or a string (for other modalities).
+    """
+    
     if data_modality == 'neuroimaging':
         skf = StratifiedKFold(n_splits=10)
 
@@ -320,9 +511,42 @@ def main():
         # Step 4: Subset the main array using the mask
         X_train = X.iloc[mask, :]
         y_train = y[mask]
-    print('made train and test split')
+    print('Made train and test split')
+    return X_train, y_train, X_test, y_test, region
 
-    automl = AutoML()
+def scale_continuous_vars(X_train, X_test, continuous_cols):
+    """
+    Scales the continuous variables in the training and test datasets using StandardScaler.
+    Parameters:
+    X_train (pd.DataFrame): The training dataset.
+    X_test (pd.DataFrame): The test dataset.
+    continuous_cols (list of str): List of column names corresponding to continuous variables to be scaled.
+    Returns:
+    tuple: A tuple containing the scaled training and test datasets (X_train, X_test).
+    """
+    
+    scaler = StandardScaler()
+
+    # Fit and transform only the continuous columns
+    scaler.fit(X_train[continuous_cols])
+    X_train[continuous_cols] = scaler.transform(X_train[continuous_cols])
+    X_test[continuous_cols] = scaler.transform(X_test[continuous_cols])
+    
+    return X_train, X_test
+    
+def settings_automl(time_budget, metric, model, directory_path, region_index):
+    """
+    Generate settings for an AutoML classification task.
+    Parameters:
+    time_budget (int): The time budget for the AutoML process in seconds.
+    metric (str): The evaluation metric to be used (e.g., 'log_loss' 'accuracy', 'f1').
+    model (str): The model to be used in the AutoML process (e.g., 'lrl1').
+    directory_path (str): The directory path where the log file will be saved.
+    region_index (int): The index of the region for logging purposes.
+    Returns:
+    dict: A dictionary containing the settings for the AutoML process.
+    """
+    
     automl_settings = {
     "task": "classification",
     "time_budget": time_budget,
@@ -335,28 +559,26 @@ def main():
     "log_training_metric": True,
     "model_history": True,
     "seed": 239875,
-    "log_file_name": f'{directory_path}/results_log_{i}.json',
+    "log_file_name": f'{directory_path}/results_log_{region_index}.json',
     "estimator_list": [model]
     }
     
     if model == 'lrl1':
         automl_settings['max_iter'] = 100000000
-        
-        print('Scaling data')
-        # Initialize the StandardScaler
-        scaler = StandardScaler()
+    return automl_settings
 
-        # Fit and transform only the continuous columns
-        scaler.fit(X_train[continuous_cols])
-        X_train[continuous_cols] = scaler.transform(X_train[continuous_cols])
-        X_test[continuous_cols] = scaler.transform(X_test[continuous_cols])
-        print('Done scaling data')
-    
-    print(automl_settings)
-    print(f'Fitting model: {datetime.now().time()}')
-    automl.fit(X_train, y_train, **automl_settings)
-    print(f'Done fitting model: {datetime.now().time()}')
-
+def save_feature_importance(automl, directory_path, region_index):
+    """
+    Save the feature importance from an AutoML model to a parquet file.
+    Parameters:
+    automl (object): The AutoML model object that contains feature importances and feature names.
+    directory_path (str): The directory path where the parquet file will be saved.
+    region_index (int): The index of the region for which the feature importance is being saved.
+    Returns:
+    None
+    The function extracts feature importances and their corresponding feature names from the AutoML model,
+    sorts them in descending order of importance, and saves the result as a parquet file in the specified directory.
+    """
     if len(automl.feature_importances_) == 1:
         feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_[0]))[::-1]]
         fi = automl.feature_importances_[0][np.argsort(abs(automl.feature_importances_[0]))[::-1]]
@@ -366,7 +588,39 @@ def main():
         
     fi_df = pd.DataFrame({'feature': feature_names, 'importance': fi})
     fi_df.to_parquet(f'{directory_path}/feature_importance_region_{region_index}.parquet')
+    
+def save_results(directory_path, automl, X_train, y_train, X_test, y_test, region, region_index):
+    """
+    Save the results of an AutoML experiment to CSV files.
+    Parameters:
+    directory_path (str): The directory where the results will be saved.
+    automl (object): The AutoML object that contains the trained model and its configurations.
+    X_train (pd.DataFrame): The training feature set.
+    y_train (pd.Series): The training labels.
+    X_test (pd.DataFrame): The test feature set.
+    y_test (pd.Series): The test labels.
+    region (str): The region name or identifier.
+    region_index (int): The index of the region.
+    Returns:
+    None
+    This function performs the following steps:
+    1. Initializes lists to store training and test labels and probabilities.
+    2. Creates a pandas Series with the AutoML model and its best configuration.
+    3. Predicts probabilities for the training set and calculates results.
+    4. Appends the training labels and probabilities to their respective lists.
+    5. Predicts probabilities for the test set and calculates results using the same threshold as the training set.
+    6. Appends the test labels and probabilities to their respective lists.
+    7. Saves the labels and probabilities to files.
+    8. Saves the training results to a CSV file, appending to the file if it already exists.
+    9. Saves the test results to a CSV file, appending to the file if it already exists.
+    """
+    # set up lists to store results
+    train_labels_l = []
+    train_probas_l = []
 
+    test_labels_l = []
+    test_probas_l = []
+    
     series_automl = pd.Series([region_index, region, automl.best_estimator, automl.best_config],
                               index=['region_index', 'region', 'model', 'hyperparams'])
 
@@ -413,6 +667,66 @@ def main():
     else:
         # If file does not exist, simply write the new data to a CSV
         test_df.to_csv(file_path, index=False)
+
+def main():
+
+    # Parse the arguments
+    data_modality, experiment, time_budget, metric, model, age_cutoff, region_index = parse_args()
+    
+    # Load the datasets
+    X, y, data_instance, region_indices = load_datasets(data_modality)
+
+    # Specify the directory path
+    directory_path = f'../results/dementia/{data_modality}/{experiment}/{metric}/{model}/'
+ 
+    # subset data by age if there is an age cutoff
+    if age_cutoff is not None:
+        directory_path, X, y, region_indices = setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_instance)
+
+    # check if output folder exists
+    utils.check_folder_existence(directory_path)
+
+    # set up experiment variables
+    lancet_vars, continuous_lancet_vars = lancet_vars()
+    experiment_vars = experiment_vars(data_modality, data_instance, X)
+    X = subset_experiment_vars(X, experiment_vars, experiment, data_modality)
+    
+    # set time budget based on experiment, data_modality, and model
+    time_budget = get_time_budget(experiment, data_modality, model)
+    
+    # get experiment-specific continuous variables if using lrl1
+    if model == 'lrl1':
+        print('Scaling data for lrl1 classifier')
+        continuous_cols = continuous_vars_for_scaling(data_modality, data_instance, experiment, continuous_lancet_vars, X)
+        print('Done scaling data')
+        
+    # print experiment details
+    print(f'Running {experiment} experiment, region {region_index}, autoML time budget of {time_budget} seconds, {metric} as the metric, and an age cutoff of {age_cutoff} years')
+
+    # set metric to f3 if using f3
+    if metric == 'f3':
+        metric = f3.f3_metric
+
+    print(f'Dimensionality of the dataset: {X.shape}')
+
+    # Split the data into training and testing sets
+    X_train, y_train, X_test, y_test, region = subset_train_test_data(X, y, data_modality, region_index, region_indices)
+    if model == 'lrl1':
+        X_train, X_test = scale_continuous_vars(X_train, X_test, continuous_cols)
+        
+    automl = AutoML()
+    automl_settings = settings_automl(time_budget, metric, model, directory_path, region_index)
+        
+    print(automl_settings)
+    print(f'Fitting model: {datetime.now().time()}')
+    automl.fit(X_train, y_train, **automl_settings)
+    print(f'Done fitting model: {datetime.now().time()}')
+
+    # Save the feature importance
+    save_feature_importance(automl, directory_path, region_index)
+
+    # Collect the results for train and test
+    save_results(directory_path, automl, X_train, y_train, X_test, y_test, region, region_index)
 
 if __name__ == "__main__":
     main()
