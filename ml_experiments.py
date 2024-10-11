@@ -1,5 +1,5 @@
 import sys
-sys.path.append('../ukb_func')
+sys.path.append('./ukb_func')
 import ml_utils
 import df_utils
 import ukb_utils
@@ -11,7 +11,6 @@ import argparse
 import os
 import pandas as pd
 import numpy as np
-from lightgbm import LGBMClassifier
 from flaml import AutoML
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import GridSearchCV, StratifiedKFold
@@ -49,7 +48,7 @@ def parse_args():
             - experiment (str): The chosen experiment type. Options include 'age_only', 'all_demographics', 
               'age_sex_lancet2024', 'demographics_and_lancet2024', 'modality_only', 'demographics_and_modality', 
               'demographics_modality_lancet2024'.
-            - time_budget (int): The time budget in seconds for FLAML to optimize. Default is 3600 seconds.
+            - time_budget (int): The time budget in seconds for FLAML to optimize.
             - metric (str): The evaluation metric to use. Options are 'log_loss', 'roc_auc', 'f3', 'ap'. Default is 'log_loss'.
             - model (str): The model to use. Options are 'lgbm', 'lrl1'. Default is 'lgbm'.
             - age_cutoff (int or None): The age cutoff value. Default is None.
@@ -62,13 +61,13 @@ def parse_args():
         description='Run AutoML on chosen feature sets')
 
     # Add arguments
-    parser.add_argument('--modality', type=str,
+    parser.add_argument('--modality', type=str, required=True,
                         help='options: proteomics, neuroimaging, cognitive_tests')
-    parser.add_argument('--experiment', type=str,
+    parser.add_argument('--experiment', type=str, required=True,
                         help='options: age_only, all_demographics, \
                         age_sex_lancet2024, demographics_and_lancet2024, modality_only, \
                         demographics_and_modality, demographics_modality_lancet2024')
-    parser.add_argument('--time_budget', type=int, default=3600,
+    parser.add_argument('--time_budget', type=int, required=True,
                         help='options: seconds to allow FLAML to optimize')
     parser.add_argument('--metric', type=str, default='log_loss',
                         help='options: log_loss, roc_auc, f3, ap')
@@ -76,12 +75,17 @@ def parse_args():
                         help='options: lgbm, lrl1')
     parser.add_argument('--age_cutoff', type=int, default=None,
                         help='age cutoff')
-    parser.add_argument('--region_index', type=int, default=None,
+    parser.add_argument('--region_index', type=int, required=True,
                         help='region index')
 
     # Parse the arguments
     args = parser.parse_args()
     data_modality = args.modality
+    if data_modality == 'neuroimaging':
+        data_instance = 2
+    else:
+        data_instance = 0
+        
     experiment = args.experiment
     time_budget = args.time_budget
     metric = args.metric
@@ -96,7 +100,7 @@ def parse_args():
         print('NEED REGION INDEX')
         sys.exit()
         
-    return data_modality, experiment, time_budget, metric, model, age_cutoff, region_index 
+    return data_modality, data_instance, experiment, time_budget, metric, model, age_cutoff, region_index 
         
 def load_datasets(data_modality):
     """
@@ -112,18 +116,16 @@ def load_datasets(data_modality):
     """
     X = pd.read_parquet(f'../tidy_data/dementia/{data_modality}/X.parquet')
     X = X.iloc[:,1:]
-    y = np.load(f'../../tidy_data/dementia/{data_modality}/y.npy')
+    y = np.load(f'../tidy_data/dementia/{data_modality}/y.npy')
     
     # set data instance, import region indices if not neuroimaging, and set modality_vars
     if data_modality == 'neuroimaging':
-        data_instance = 2
-        return X, y, data_instance, None
+        return X, y, None
     else:
-        data_instance = 0
         region_indices = pickle.load(
             open(f'../tidy_data/dementia/{data_modality}/region_cv_indices.pickle', 'rb')
             )
-        return X, y, data_instance, region_indices
+        return X, y, region_indices
                 
 def setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_instance):
     """
@@ -154,7 +156,7 @@ def setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_insta
     else:
         return directory_path, X, y, None
  
-def lancet_vars():
+def get_lancet_vars():
     """
     Returns two lists of variables related to a study.
 
@@ -176,7 +178,7 @@ def lancet_vars():
                                 '24006-0.0', '24015-0.0', '24011-0.0']
     return lancet_vars, continuous_lancet_vars
 
-def experiment_vars(data_modality, data_instance, X):
+def get_experiment_vars(data_modality, data_instance, X, lancet_vars):
     """
     Generates a dictionary of experiment variables based on the given data modality and data instance.
 
@@ -206,7 +208,7 @@ def experiment_vars(data_modality, data_instance, X):
                                                          '21000-0.0']).columns.tolist() + lancet_vars,
         'modality_only': {'proteomics': df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist(),\
                           'neuroimaging': pickle.load(open('../tidy_data/dementia/neuroimaging/idp_variables.pkl', 'rb')),\
-                          'cognitive_tests': pickle.load(open(f'../tidy_data/dementia/{data_modality}/cognitive_columns.pkl', 'rb'))}, 
+                          'cognitive_tests': pickle.load(open(f'../tidy_data/dementia/cognitive_tests/cognitive_columns.pkl', 'rb'))}, 
     }
     experiment_vars['demographics_and_modality'] = {'proteomics': experiment_vars['all_demographics'] + experiment_vars['modality_only']['proteomics'],
                                                     'neuroimaging': experiment_vars['all_demographics'] + experiment_vars['modality_only']['neuroimaging'],
@@ -270,9 +272,18 @@ def _flaml_time_budgets():
     """
     time_budgets = {
         'age_only': {
-            'proteomics': 10,
-            'neuroimaging': 10,
-            'cognitive_tests': 10
+            'proteomics': {
+                'lgbm': 10,
+                'lrl1': 10
+            },
+            'neuroimaging': {
+                'lgbm': 10,
+                'lrl1': 10
+            },
+            'cognitive_tests': {
+                'lgbm': 10,
+                'lrl1': 10
+            }
         }, 
         'all_demographics': {
             'proteomics': {
@@ -422,14 +433,14 @@ def continuous_vars_for_scaling(data_modality, data_instance, experiment, contin
     continuous_cols = {
         'age_only': [f'21003-{data_instance}.0'],
         'all_demographics': df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0']).columns.tolist(),
-        'age_sex_lancet2024': df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0']) + \
+        'age_sex_lancet2024': df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0']).columns.tolist() + \
                                             continuous_lancet_vars,
-        'demographics_and_lancet2024': df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0']) + \
+        'demographics_and_lancet2024': df_utils.pull_columns_by_prefix(X, [f'21003-{data_instance}.0', '845-0.0']).columns.tolist() + \
                                             continuous_lancet_vars,
         'modality_only': { # SET THIS UP FOR ALL MODALITIES
             'proteomics': df_utils.pull_columns_by_suffix(X, ['-0']).columns.tolist(),
             'neuroimaging': pickle.load(open('../tidy_data/dementia/neuroimaging/idp_variables.pkl', 'rb')),
-            'cognitive_tests': pickle.load(open(f'../tidy_data/dementia/{data_modality}/cognitive_columns.pkl', 'rb'))
+            'cognitive_tests': pickle.load(open(f'../tidy_data/dementia/cognitive_tests/cognitive_columns.pkl', 'rb'))
         },
     }
     continuous_cols['demographics_and_modality'] = {
@@ -529,8 +540,8 @@ def scale_continuous_vars(X_train, X_test, continuous_cols):
 
     # Fit and transform only the continuous columns
     scaler.fit(X_train[continuous_cols])
-    X_train[continuous_cols] = scaler.transform(X_train[continuous_cols])
-    X_test[continuous_cols] = scaler.transform(X_test[continuous_cols])
+    X_train.loc[continuous_cols] = scaler.transform(X_train[continuous_cols])
+    X_test.loc[continuous_cols] = scaler.transform(X_test[continuous_cols])
     
     return X_train, X_test
     
@@ -671,10 +682,11 @@ def save_results(directory_path, automl, X_train, y_train, X_test, y_test, regio
 def main():
 
     # Parse the arguments
-    data_modality, experiment, time_budget, metric, model, age_cutoff, region_index = parse_args()
+    data_modality, data_instance, experiment, time_budget, metric, model, age_cutoff, region_index = parse_args()
+    print(f'Running {experiment} experiment, modality {data_modality}, instance {data_instance}, region {region_index}, autoML time budget of {time_budget} seconds, model {model}, {metric} as the metric, and an age cutoff of {age_cutoff} years')
     
     # Load the datasets
-    X, y, data_instance, region_indices = load_datasets(data_modality)
+    X, y, region_indices = load_datasets(data_modality)
 
     # Specify the directory path
     directory_path = f'../results/dementia/{data_modality}/{experiment}/{metric}/{model}/'
@@ -687,12 +699,12 @@ def main():
     utils.check_folder_existence(directory_path)
 
     # set up experiment variables
-    lancet_vars, continuous_lancet_vars = lancet_vars()
-    experiment_vars = experiment_vars(data_modality, data_instance, X)
+    lancet_vars, continuous_lancet_vars = get_lancet_vars()
+    experiment_vars = get_experiment_vars(data_modality, data_instance, X, lancet_vars)
     X = subset_experiment_vars(X, experiment_vars, experiment, data_modality)
     
-    # set time budget based on experiment, data_modality, and model
-    time_budget = get_time_budget(experiment, data_modality, model)
+    # set time budget based on experiment, data_modality, model, and age_cutoff
+    time_budget = get_time_budget(experiment, data_modality, model, age_cutoff)
     
     # get experiment-specific continuous variables if using lrl1
     if model == 'lrl1':
