@@ -278,36 +278,36 @@ def _flaml_time_budgets():
                 'lrl1': 10
             },
             'cognitive_tests': {
-                'lgbm': 10,
-                'lrl1': 10
+                'lgbm': 30,
+                'lrl1': 100
             }
         }, 
         'all_demographics': {
             'proteomics': {
                 'lgbm': 25,
-                'lrl1': 500
+                'lrl1': 100
             },
             'neuroimaging': {
-                'lgbm': 25,
+                'lgbm': 30,
                 'lrl1': 500
             },
             'cognitive_tests': {
-                'lgbm': 25,
-                'lrl1': 500
+                'lgbm': 150,
+                'lrl1': 2500
             }
         },
         'age_sex_lancet2024': {
             'proteomics': {
                 'lgbm': 75,
-                'lrl1': 700
+                'lrl1': 500
             },
             'neuroimaging': {
                 'lgbm': 75,
-                'lrl1': 700
+                'lrl1': 600
             },
             'cognitive_tests': {
-                'lgbm': 75,
-                'lrl1': 700
+                'lgbm': 325,
+                'lrl1': 3000
             }
         },
         'demographics_and_lancet2024': {
@@ -320,8 +320,8 @@ def _flaml_time_budgets():
                 'lrl1': 800
             },
             'cognitive_tests': {
-                'lgbm': 100,
-                'lrl1': 800
+                'lgbm': 350,
+                'lrl1': 3500
             }
         },
         'modality_only': {
@@ -330,12 +330,12 @@ def _flaml_time_budgets():
                 'lrl1': 35000
             },
             'neuroimaging': {
-                'lgbm': 100,
-                'lrl1': 800
+                'lgbm': 9500,
+                'lrl1': 36000
             },
             'cognitive_tests': {
-                'lgbm': 100,
-                'lrl1': 800
+                'lgbm': 350,
+                'lrl1': 4500
             }
         },
         'demographics_and_modality': {
@@ -344,12 +344,12 @@ def _flaml_time_budgets():
                 'lrl1': 35000
             },
             'neuroimaging': {
-                'lgbm': 100,
-                'lrl1': 800
+                'lgbm': 14000,
+                'lrl1': 38000
             },
             'cognitive_tests': {
-                'lgbm': 100,
-                'lrl1': 800
+                'lgbm': 400,
+                'lrl1': 5500
             }
         },
         'demographics_modality_lancet2024': {
@@ -358,12 +358,12 @@ def _flaml_time_budgets():
                 'lrl1': 35000
             },
             'neuroimaging': {
-                'lgbm': 100,
-                'lrl1': 800
+                'lgbm': 14500,
+                'lrl1': 40000
             },
             'cognitive_tests': {
-                'lgbm': 100,
-                'lrl1': 800
+                'lgbm': 450,
+                'lrl1': 6500
             }
         }
     }
