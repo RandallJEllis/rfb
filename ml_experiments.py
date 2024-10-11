@@ -67,8 +67,6 @@ def parse_args():
                         help='options: age_only, all_demographics, \
                         age_sex_lancet2024, demographics_and_lancet2024, modality_only, \
                         demographics_and_modality, demographics_modality_lancet2024')
-    parser.add_argument('--time_budget', type=int, required=True,
-                        help='options: seconds to allow FLAML to optimize')
     parser.add_argument('--metric', type=str, default='log_loss',
                         help='options: log_loss, roc_auc, f3, ap')
     parser.add_argument('--model', type=str, default='lgbm',
@@ -87,7 +85,6 @@ def parse_args():
         data_instance = 0
         
     experiment = args.experiment
-    time_budget = args.time_budget
     metric = args.metric
     model = args.model
     
@@ -100,7 +97,7 @@ def parse_args():
         print('NEED REGION INDEX')
         sys.exit()
         
-    return data_modality, data_instance, experiment, time_budget, metric, model, age_cutoff, region_index 
+    return data_modality, data_instance, experiment, metric, model, age_cutoff, region_index 
         
 def load_datasets(data_modality):
     """
@@ -540,8 +537,8 @@ def scale_continuous_vars(X_train, X_test, continuous_cols):
 
     # Fit and transform only the continuous columns
     scaler.fit(X_train[continuous_cols])
-    X_train.loc[continuous_cols] = scaler.transform(X_train[continuous_cols])
-    X_test.loc[continuous_cols] = scaler.transform(X_test[continuous_cols])
+    X_train.loc[:, continuous_cols] = scaler.transform(X_train[continuous_cols])
+    X_test.loc[:, continuous_cols] = scaler.transform(X_test[continuous_cols])
     
     return X_train, X_test
     
@@ -682,8 +679,8 @@ def save_results(directory_path, automl, X_train, y_train, X_test, y_test, regio
 def main():
 
     # Parse the arguments
-    data_modality, data_instance, experiment, time_budget, metric, model, age_cutoff, region_index = parse_args()
-    print(f'Running {experiment} experiment, modality {data_modality}, instance {data_instance}, region {region_index}, autoML time budget of {time_budget} seconds, model {model}, {metric} as the metric, and an age cutoff of {age_cutoff} years')
+    data_modality, data_instance, experiment, metric, model, age_cutoff, region_index = parse_args()
+    print(f'Running {experiment} experiment, modality {data_modality}, instance {data_instance}, region {region_index}, model {model}, {metric} as the metric, and an age cutoff of {age_cutoff} years')
     
     # Load the datasets
     X, y, region_indices = load_datasets(data_modality)

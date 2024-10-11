@@ -1,7 +1,4 @@
 #!/bin/bash
-#SBATCH --job-name=protein
-#SBATCH --output=job_%J.out
-#SBATCH --error=job_%J.err
 #SBATCH --partition=short
 #SBATCH --nodes=1
 #SBATCH --exclude=compute-f-17-[09-16]
@@ -21,11 +18,8 @@ conda activate pymc_env
 export PYTHONUNBUFFERED=1
 
 # Convert SLURM_TIMELIMIT from minutes to HH:MM:SS and print
-time_limit_in_minutes="$timerun"
-hours=$(($time_limit_in_minutes / 60))
-minutes=$(($time_limit_in_minutes % 60))
-
-printf "Time limit for this job is: %02d:%02d:00\n" $hours $minutes
+time_limit_in_minutes="$SBATCH_TIMELIMIT"
+echo "Time limit for this job is: $time_limit_in_minutes"
 
 # echo "Running experiment with experiment: $experiment and metric: $metric"
 python ml_experiments.py --modality "$modality" --experiment "$experiment" --metric "$metric" --model "$model" --region_index "$region_index" --age_cutoff "$age_cutoff"

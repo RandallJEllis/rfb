@@ -2,13 +2,14 @@
 
 modality=$1
 # Define the strings for experiment and metric
-experiments=("age_only")
-# "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024" "modality_only" "demographics_and_modality" "demographics_modality_lancet2024")
+experiments=("modality_only")
+# "age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024"  "demographics_and_modality" "demographics_modality_lancet2024")
 # metrics=("roc_auc" "f3" "ap")
 metrics=("log_loss")
 # ("lrl1" "lgbm")
 models=("lrl1")
-age_cutoffs=(0 65)
+age_cutoffs=(0)
+#  65)
 
 # Nested loops to iterate over the strings
 for experiment in "${experiments[@]}"; do
@@ -89,15 +90,22 @@ for experiment in "${experiments[@]}"; do
                         mem="4G"
                     fi 
 
-                    current_time=$(date +"%Y-%m-%d_%H-%M-%S")
+                    # current_time=$(date +"%Y-%m-%d_%H-%M-%S")
                     job_name="${experiment}_${model}_AgeCutoff${age_cutoff}_Region${region_index}"
-                    output_path="${modality}/${job_name}_$current_time.out"
-                    error_path="${modality}/${job_name}_$current_time.err"
+                    output_path="${modality}/${job_name}"
+                    error_path="${modality}/${job_name}"
 
                     echo "Running script on modality $modality, partition $partition, time limit $time. Experiment: $experiment, metric: $metric, model: $model, age cutoff: $age_cutoff, and region index: $region_index"
                     echo "Output path: $output_path"
                     echo "Error path: $error_path"
-                    sbatch --job-name="$job_name" --partition="$partition" --time="$time" --output="$output_path" --error="$error_path" --mem="$mem" --export=timerun="$time",modality="$modality",experiment="$experiment",metric="$metric",model="$model",age_cutoff="$age_cutoff",region_index="$region_index" sh_ml_experiments.sh
+                    sbatch --job-name="$job_name"_%J \
+                           --output="$output_path"_%J.out \
+                           --error="$error_path"_%J.err \
+                           --partition="$partition" \
+                           --time="$time" \
+                           --mem="$mem" \
+                           --export=modality="$modality",experiment="$experiment",metric="$metric",model="$model",age_cutoff="$age_cutoff",region_index="$region_index"\
+                        sh_ml_experiments.sh
                     # sbatch --export=experiment="$experiment",metric="$metric" sh_ml_experiments.sh
                 done
             done
