@@ -407,7 +407,10 @@ def get_time_budget(experiment, data_modality, model, age_cutoff):
         if model == 'lgbm':
             time_budget = time_budget/2
         if model == 'lrl1':
-            time_budget = time_budget/4
+            if data_modality == 'neuroimaging':
+                time_budget = time_budget/2
+            else:
+                time_budget = time_budget/4
     return time_budget
         
 def continuous_vars_for_scaling(data_modality, data_instance, experiment, continuous_lancet_vars, X):

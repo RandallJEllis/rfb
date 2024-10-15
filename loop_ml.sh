@@ -2,13 +2,14 @@
 
 modality=$1
 # Define the strings for experiment and metric
-experiments=("age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024" "modality_only" "demographics_and_modality" "demographics_modality_lancet2024")
-# )
+# experiments=("age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024" "modality_only" "demographics_and_modality" "demographics_modality_lancet2024")
+experiments=("modality_only" "demographics_and_modality" "demographics_modality_lancet2024")
 # metrics=("roc_auc" "f3" "ap")
 metrics=("log_loss")
 # ("lrl1" "lgbm")
 models=("lrl1")
-age_cutoffs=(0 65)
+age_cutoffs=(65)
+# age_cutoffs=(0 65)
 
 # Nested loops to iterate over the strings
 for experiment in "${experiments[@]}"; do
@@ -50,7 +51,7 @@ for experiment in "${experiments[@]}"; do
                                 if [[ "$model" == "lgbm" ]]; then
                                     time="5:00:00"
                                 else
-                                    time="6:00:00"
+                                    time="12:00:00"
                                 fi
                                 
                             elif [[ $age_cutoff -eq 65 ]]; then
@@ -58,7 +59,7 @@ for experiment in "${experiments[@]}"; do
                                 if [[ "$model" == "lgbm" ]]; then   
                                     time="2:30:00"
                                 else
-                                    time="5:00:00"                            
+                                    time="7:00:00"                            
                                 fi
                             fi 
                            
@@ -88,6 +89,12 @@ for experiment in "${experiments[@]}"; do
                         time="1:30:00"
                         mem="4G"
                     
+                     # separate conditions for neuroimaging when experiment is demographics_and_lancet2024
+                    elif [[ $modality == 'neuroimaging' && $experiment == "demographics_and_lancet2024" ]]; then
+                        partition="short"
+                        time="0:20:00"
+                        mem="8G"
+
                     else
                         partition="short"
                         time="0:12:00"
@@ -96,15 +103,14 @@ for experiment in "${experiments[@]}"; do
 
                     # current_time=$(date +"%Y-%m-%d_%H-%M-%S")
                     job_name="${experiment}_${model}_AgeCutoff${age_cutoff}_Region${region_index}"
-                    output_path="${modality}/job_${job_name}"
-                    error_path="${modality}/job_${job_name}"
+                    output_dir="${modality}/"
+                    error_dir="${modality}/"
 
                     echo "Running script on modality $modality, partition $partition, time limit $time. Experiment: $experiment, metric: $metric, model: $model, age cutoff: $age_cutoff, and region index: $region_index"
-                    echo "Output path: $output_path"
-                    echo "Error path: $error_path"
+
                     sbatch --job-name="$job_name"_%J \
-                           --output="$output_path"_%J.out \
-                           --error="$error_path"_%J.err \
+                           --output="$output_dir"job_%J_$job_name.out \
+                           --error="$error_dir"job_%J_$job_name.err \
                            --partition="$partition" \
                            --time="$time" \
                            --mem="$mem" \
