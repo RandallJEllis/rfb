@@ -12,6 +12,27 @@ path = '../tidy_data'
 
 
 def main():
+    """
+    Main function to execute the random feature baselines pipeline with parallelization.
+
+    This script performs the following steps:
+    1. Reads input data and configuration files.
+    2. Processes the data by encoding categorical variables and normalizing date columns.
+    3. Iterates over a subset of outcomes and performs the following for each outcome:
+        a. Creates labels and subsets the dataframe to include all proteins, demographic variables, and the outcome.
+        b. Splits the data into training and testing sets.
+        c. Iterates over different numbers of features and performs the following for each feature set:
+            i. Randomly selects a subset of proteins.
+            ii. Fits a HistGradientBoostingClassifier to the training set.
+            iii. Saves probability predictions and performs bootstrapping to calculate various metrics.
+    4. Stores the results in a DataFrame and saves it to a parquet file.
+
+    Arguments:
+         --task_id (int): Task ID (i.e., number of jobs / number of outcomes per job).
+
+    Returns:
+         None
+    """
     def bootstrap(true_labels, proba_predict, n_bootstrap, bs_w_replace=False):
         def append_results():
             yhat = proba_predict[bs_index]

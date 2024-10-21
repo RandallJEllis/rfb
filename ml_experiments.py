@@ -12,8 +12,9 @@ import os
 import pandas as pd
 import numpy as np
 from flaml import AutoML
+from flaml.automl.data import get_output_from_log
 from sklearn.preprocessing import StandardScaler
-from sklearn.model_selection import GridSearchCV, StratifiedKFold
+from sklearn.model_selection import StratifiedKFold
 from datetime import datetime
 import pickle
 
@@ -47,7 +48,7 @@ def parse_args():
             - data_modality (str): The chosen data modality. Options are 'proteomics', 'neuroimaging', 'cognitive_tests'.
             - experiment (str): The chosen experiment type. Options include 'age_only', 'all_demographics', 
               'age_sex_lancet2024', 'demographics_and_lancet2024', 'modality_only', 'demographics_and_modality', 
-              'demographics_modality_lancet2024'.
+              'demographics_modality_lancet2024, 'fs_modality', 'fs_demographics_and_modality', 'fs_demographics_modality_lancet2024'.
             - time_budget (int): The time budget in seconds for FLAML to optimize.
             - metric (str): The evaluation metric to use. Options are 'log_loss', 'roc_auc', 'f3', 'ap'. Default is 'log_loss'.
             - model (str): The model to use. Options are 'lgbm', 'lrl1'. Default is 'lgbm'.
@@ -66,7 +67,9 @@ def parse_args():
     parser.add_argument('--experiment', type=str, required=True,
                         help='options: age_only, all_demographics, \
                         age_sex_lancet2024, demographics_and_lancet2024, modality_only, \
-                        demographics_and_modality, demographics_modality_lancet2024')
+                        demographics_and_modality, demographics_modality_lancet2024, \
+                        fs_modality, fs_demographics_and_modality, fs_demographics_modality_lancet2024'
+                        )
     parser.add_argument('--metric', type=str, default='log_loss',
                         help='options: log_loss, roc_auc, f3, ap')
     parser.add_argument('--model', type=str, default='lgbm',
@@ -124,11 +127,10 @@ def load_datasets(data_modality):
             )
         return X, y, region_indices
                 
-def setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_instance):
+def setup_age_cutoff(X, y, age_cutoff, data_modality, data_instance):
     """
     Filters the dataset based on an age cutoff and updates the directory path accordingly.
     Parameters:
-    directory_path (str): The base directory path where the results will be stored.
     X (pd.DataFrame): The feature matrix containing the data.
     y (pd.Series): The target variable.
     age_cutoff (int): The age threshold to filter the data.
@@ -138,7 +140,6 @@ def setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_insta
     tuple: A tuple containing the updated directory path, filtered feature matrix (X), 
            filtered target variable (y), and region indices (if applicable, otherwise None).
     """
-    directory_path = f'{directory_path}/agecutoff_{age_cutoff}'
     over_age_idx = X[f'21003-{data_instance}.0'] >= age_cutoff
     X = X[over_age_idx].reset_index(drop=True)
     y = y[over_age_idx]
@@ -148,10 +149,10 @@ def setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_insta
         region_lookup = pd.read_csv('../metadata/coding10.tsv', sep='\t')
         region_indices = ukb_utils.group_assessment_center(
             X, data_instance, region_lookup)
-        return directory_path, X, y, region_indices
+        return X, y, region_indices
     
     else:
-        return directory_path, X, y, None
+        return X, y, None
  
 def get_lancet_vars():
     """
@@ -519,7 +520,7 @@ def subset_train_test_data(X, y, data_modality, region_index, region_indices):
         mask = np.ones(len(y), dtype=bool)
         mask[indices] = False
 
-        # Step 4: Subset the main array using the mask
+        # Subset the main array using the mask
         X_train = X.iloc[mask, :]
         y_train = y[mask]
     print('Made train and test split')
@@ -528,6 +529,7 @@ def subset_train_test_data(X, y, data_modality, region_index, region_indices):
 def scale_continuous_vars(X_train, X_test, continuous_cols):
     """
     Scales the continuous variables in the training and test datasets using StandardScaler.
+    Used only with lrl1 model.
     Parameters:
     X_train (pd.DataFrame): The training dataset.
     X_test (pd.DataFrame): The test dataset.
@@ -690,10 +692,16 @@ def main():
 
     # Specify the directory path
     directory_path = f'../results/dementia/{data_modality}/{experiment}/{metric}/{model}/'
+    if 'fs_' in experiment: # running a feature selection experiment
+        original_results_directory_path = directory_path
+        directory_path = f'../../results/dementia/{data_modality}/{experiment}/feature_selection/{metric}/{model}/'        
  
     # subset data by age if there is an age cutoff
     if age_cutoff is not None:
-        directory_path, X, y, region_indices = setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_instance)
+        directory_path = f'{directory_path}/agecutoff_{age_cutoff}'
+        if 'fs_' in experiment:
+            original_results_directory_path = f'{original_results_directory_path}/agecutoff_{age_cutoff}'
+        X, y, region_indices = setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_instance)
 
     # check if output folder exists
     utils.check_folder_existence(directory_path)

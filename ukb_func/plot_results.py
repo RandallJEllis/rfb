@@ -252,7 +252,7 @@ def _initialize_roc_plot():
     return fig, ax, mean_fpr
 
 
-def multi_mean_roc_curve(filepath, metric, image_format, age65_cutoff=False):
+def multi_mean_roc_curve(filepath, model, metric, image_format, age65_cutoff=False):
     """
     Plot multiple mean ROC curves for different experiments.
 
@@ -273,11 +273,12 @@ def multi_mean_roc_curve(filepath, metric, image_format, age65_cutoff=False):
 
         experiments = ['age_only', 'age_sex_lancet2024', 'all_demographics',
                        'modality_only', 'demographics_and_lancet2024',
-                       'modality_only/feature_selection',
+                    #    'modality_only/feature_selection',
                        'demographics_and_modality',
-                       'demographics_and_modality/feature_selection',
+                    #    'demographics_and_modality/feature_selection',
                        'demographics_modality_lancet2024',
-                       'demographics_modality_lancet2024/feature_selection']
+                    #    'demographics_modality_lancet2024/feature_selection'
+                    ]
         
         # if 'nacc' in filepath, remove experiments with 'feature_selection'
         if 'nacc' in filepath:
@@ -287,9 +288,9 @@ def multi_mean_roc_curve(filepath, metric, image_format, age65_cutoff=False):
             print(f'Age cutoff: {age_cutoff}, Experiment: {expt}')
 
             if age_cutoff is not None:
-                dirpath = f'{filepath}/{expt}/{metric}/agecutoff_{age_cutoff}/'
+                dirpath = f'{filepath}/{expt}/{metric}/{model}/agecutoff_{age_cutoff}/'
             else:
-                dirpath = f'{filepath}/{expt}/{metric}/'
+                dirpath = f'{filepath}/{expt}/{metric}/{model}'
 
             true_labels, probas = concat_labels_and_probas(dirpath)
             title = _choose_plot_title(dirpath)
@@ -390,7 +391,7 @@ def _mean_pr_curve(true_labels_list, predicted_probs_list):
 #     plt.show()
 
 
-def multi_mean_pr_curve(filepath, metric, image_format, save=True, experiments=None):
+def multi_mean_pr_curve(filepath, model, metric, image_format, save=True, experiments=None):
     '''
     This function plots multiple mean Precision-Recall curves in one plot for different experiments.
 
@@ -412,9 +413,13 @@ def multi_mean_pr_curve(filepath, metric, image_format, save=True, experiments=N
 
     if experiments is None:
         experiments = ['age_only', 'age_sex_lancet2024', 'all_demographics', 'modality_only', 
-                       'demographics_and_lancet2024', 'modality_only/feature_selection', 'demographics_and_modality', 
-                       'demographics_and_modality/feature_selection', 'demographics_modality_lancet2024',
-                       'demographics_modality_lancet2024/feature_selection']
+                       'demographics_and_lancet2024',
+                    #    'modality_only/feature_selection', 
+                       'demographics_and_modality', 
+                    #    'demographics_and_modality/feature_selection', 
+                       'demographics_modality_lancet2024',
+                    #    'demographics_modality_lancet2024/feature_selection'
+                       ]
         
         # if 'nacc' in filepath, remove experiments with 'feature_selection'
         if 'nacc' in filepath:
@@ -426,7 +431,7 @@ def multi_mean_pr_curve(filepath, metric, image_format, save=True, experiments=N
         fig, ax = _initialize_pr_plot()
 
         for i, expt in enumerate(experiments):
-            dirpath = f'{filepath}/{expt}/{metric}/' + (f'agecutoff_{age_cutoff}/' if age_cutoff is not None else '')
+            dirpath = f'{filepath}/{expt}/{metric}/{model}/' + (f'agecutoff_{age_cutoff}/' if age_cutoff is not None else '')
 
             true_labels, probas = concat_labels_and_probas(dirpath)
             title = _choose_plot_title(dirpath)
@@ -473,7 +478,7 @@ def _initialize_calibration_curve_plot():
     return fig, ax 
 
 
-def multi_calibration_curve(filepath, metric, image_format, n_bins=10):
+def multi_calibration_curve(filepath, model, metric, image_format, n_bins=10):
     '''
     Plot calibration curves for multiple experiments in one plot.
 
@@ -501,9 +506,13 @@ def multi_calibration_curve(filepath, metric, image_format, n_bins=10):
         fig, ax = _initialize_calibration_curve_plot()
         
         experiments = ['age_only', 'age_sex_lancet2024', 'all_demographics',  'modality_only', 
-                        'demographics_and_lancet2024', 'modality_only/feature_selection', 'demographics_and_modality', 
-                        'demographics_and_modality/feature_selection', 'demographics_modality_lancet2024',
-                        'demographics_modality_lancet2024/feature_selection']
+                        'demographics_and_lancet2024', 
+                        # 'modality_only/feature_selection', 
+                        'demographics_and_modality', 
+                        # 'demographics_and_modality/feature_selection', 
+                        'demographics_modality_lancet2024',
+                        # 'demographics_modality_lancet2024/feature_selection'
+                        ]
         # if 'nacc' in filepath, remove experiments with 'feature_selection'
         if 'nacc' in filepath:
             experiments = [expt for expt in experiments if 'feature_selection' not in expt]
@@ -513,9 +522,9 @@ def multi_calibration_curve(filepath, metric, image_format, n_bins=10):
         for i, expt in enumerate(experiments):
             # Construct directory path based on age cutoff
             if age_cutoff is not None:
-                dirpath = f'{filepath}/{expt}/{metric}/agecutoff_{age_cutoff}/'
+                dirpath = f'{filepath}/{expt}/{metric}/{model}/agecutoff_{age_cutoff}/'
             else:
-                dirpath = f'{filepath}/{expt}/{metric}/'
+                dirpath = f'{filepath}/{expt}/{metric}/{model}/'
             
             # Get true labels and probabilities
             true_labels, probas = concat_labels_and_probas(dirpath)
@@ -704,7 +713,7 @@ def _plot_conf_mtx(dff, title, remove_x_ticks=False):
     return fig
 
 
-def export_confusion_matrices(filepath):
+def export_confusion_matrices(filepath, model):
     """
     Export confusion matrices as PDF files for specified experiments.
 
@@ -727,7 +736,7 @@ def export_confusion_matrices(filepath):
     # List of experiments to process
     expts = [
         'demographics_and_lancet2024',
-        'demographics_modality_lancet2024/feature_selection'
+        # 'demographics_modality_lancet2024/feature_selection'
     ]
     
     ages = _get_ages(filepath)
@@ -735,9 +744,9 @@ def export_confusion_matrices(filepath):
         for expt in expts:
             
             if age_cutoff is not None:
-                dirpath = f'{filepath}/{expt}/log_loss/agecutoff_{age_cutoff}/'
+                dirpath = f'{filepath}/{expt}/log_loss/{model}/agecutoff_{age_cutoff}/'
             else:
-                dirpath = f'{filepath}/{expt}/log_loss/'
+                dirpath = f'{filepath}/{expt}/log_loss/{model}/'
         
                 # Generate test results for the current experiment
             _, test_results = probas_to_results(f'{dirpath}', youden=True)
@@ -757,7 +766,7 @@ def export_confusion_matrices(filepath):
             cm.savefig(fname)
 
 
-def mcc_raincloud(filepath, orient='h'):
+def mcc_raincloud(filepath, model, orient='v'):
     """
     Generate a raincloud plot of Matthews Correlation Coefficient (MCC) values for multiple experiments.
 
@@ -882,18 +891,16 @@ def mcc_raincloud(filepath, orient='h'):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Plot ROC and PR curves")
-    parser.add_argument('filepath', type=str, help="filepath")
+    parser.add_argument('filepath', type=str, required=True, help="filepath")
+    parser.add_argument('model', type=str, required=True, help="lgbm, lrl1")
     # parser.add_argument('orient', type=str, help="orientation of the plot (h or v)")
-    # parser.add_argument('metric', type=str, help="metric")
-    # parser.add_argument('image_format', type=str, help="image format")
+    parser.add_argument('metric', type=str, help="metric")
+    parser.add_argument('image_format', type=str, help="image format")
     # parser.add_argument('age65_cutoff', type=bool, help="use age cutoff of 65 (True/False)")
     
     args = parser.parse_args()
-    # multi_mean_roc_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
-    # multi_mean_pr_curve(args.filepath, args.metric, args.image_format)#, args.age65_cutoff)
-    # multi_calibration_curve(args.filepath, args.metric, args.image_format)
-    # The code is calling a function `export_confusion_matrices` with the argument `args.filepath`.
-    # The function is likely designed to export confusion matrices to a file specified by the
-    # `filepath` argument.
-    export_confusion_matrices(args.filepath)
-    # mcc_raincloud(args.filepath, args.orient)
+    multi_mean_roc_curve(args.filepath, args.model, args.metric, args.image_format)#, args.age65_cutoff)
+    multi_mean_pr_curve(args.filepath, args.model, args.metric, args.image_format)#, args.age65_cutoff)
+    multi_calibration_curve(args.filepath, args.model, args.metric, args.image_format)
+    export_confusion_matrices(args.filepath, args.model)
+    mcc_raincloud(args.filepath, args.model)
