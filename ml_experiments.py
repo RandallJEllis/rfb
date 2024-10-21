@@ -663,6 +663,69 @@ def save_feature_importance(automl, directory_path, region_index):
     fi_df = pd.DataFrame({'feature': feature_names, 'importance': fi})
     fi_df.to_parquet(f'{directory_path}/feature_importance_region_{region_index}.parquet')
     
+def iterative_fs_inference(automl_settings, config_history, X_train, y_train, X_test, y_test, directory_path, region_index, region):
+    train_labels_l = []
+    train_probas_l = []
+
+    test_labels_l = []
+    test_probas_l = []
+
+    train_res_l = []
+    test_res_l = []
+
+    top_feature_names, _ = get_top_features(automl)
+    
+    tflist = []
+    for j, tf in enumerate(top_feature_names):
+        tflist.append(tf)
+        current_time = datetime.now().time()
+        print(f'Running top {j+1} features: {tflist}, {current_time}')
+        
+        X_train_sub = X_train.loc[:, tflist]
+        X_test_sub = X_test.loc[:, tflist]
+
+        automl = AutoML()
+        automl.retrain_from_log(
+                                X_train=X_train_sub, y_train=y_train,
+                                **automl_settings
+                                )
+
+        current_time = datetime.now().time()
+        print(f'Done fitting model for region {region_index+1} with top {j+1} variables. {current_time}')
+
+        series_automl = pd.Series([config_history[-1]['Best Learner'], config_history[-1]['Best Hyper-parameters'], region_index, region, tflist], index=['model', 'hyperparams', 'region_index', 'region', 'features'])
+
+        train_probas = automl.predict_proba(X_train_sub)[:,1]
+        train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=1)
+        train_res = pd.concat([series_automl, train_res])
+        train_res_l.append(train_res)
+        
+        if j == 0:
+            train_labels_l.append(y_train)
+        train_probas_l.append(train_probas)
+
+        test_probas = automl.predict_proba(X_test_sub)[:,1]
+        test_res = ml_utils.calc_results(y_test, test_probas, beta=1, threshold=threshold)
+        test_res = pd.concat([series_automl, test_res])
+        test_res_l.append(test_res)
+        
+        if j == 0:
+            test_labels_l.append(y_test)
+        test_probas_l.append(test_probas)
+        
+    return train_labels_l, train_probas_l, test_labels_l, test_probas_l, train_res_l, test_res_l
+
+def save_fs_results(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, train_res_l, test_res_l, region_index):
+    
+    ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{region_index}')
+
+    train_df = pd.concat(train_res_l, axis=1).T
+    train_df.to_csv(f'{directory_path}/training_results_region_{region_index}.csv')
+
+    test_df = pd.concat(test_res_l, axis=1).T
+    test_df.to_csv(f'{directory_path}/test_results_region_{region_index}.csv')
+
+    
 def save_results(directory_path, automl, X_train, y_train, X_test, y_test, region, region_index):
     """
     Save the results of an AutoML experiment to CSV files.
@@ -813,73 +876,13 @@ def main():
                 metric_history = get_output_from_log(filename=f'{original_results_directory_path}/results_log_{region_index}.json',
                                                         time_budget=time_budget)
 
-        train_labels_l = []
-        train_probas_l = []
+        train_labels_l, train_probas_l,\
+            test_labels_l, test_probas_l,\
+                train_res_l, test_res_l = iterative_fs_inference(automl_settings, config_history,
+                                                                 X_train, y_train, X_test, y_test,
+                                                                 directory_path, region_index, region)
 
-        test_labels_l = []
-        test_probas_l = []
-
-        train_res_l = []
-        test_res_l = []
-
-        top_feature_names, _ = get_top_features(automl)
-        
-        tflist = []
-        for j, tf in enumerate(top_feature_names):
-            tflist.append(tf)
-            current_time = datetime.now().time()
-            print(f'Running top {j+1} features: {tflist}, {current_time}')
-            
-            X_train_sub = X_train.loc[:, tflist]
-            X_test_sub = X_test.loc[:, tflist]
-
-            automl = AutoML()
-            automl.retrain_from_log(
-                                    X_train=X_train_sub, y_train=y_train,
-                                    **automl_settings
-                                    )
-
-            current_time = datetime.now().time()
-            print(f'Done fitting model for region {region_index+1} with top {j+1} variables. {current_time}')
-
-            series_automl = pd.Series([config_history[-1]['Best Learner'], config_history[-1]['Best Hyper-parameters'], region_index, region, tflist], index=['model', 'hyperparams', 'region_index', 'region', 'features'])
-
-            train_probas = automl.predict_proba(X_train_sub)[:,1]
-
-            # if metric == 'roc_auc':
-            train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=1)
-            # elif metric == f3.f3_metric:
-            #     train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=3)
-
-            train_res = pd.concat([series_automl, train_res])
-            train_res_l.append(train_res)
-            
-            if j == 0:
-                train_labels_l.append(y_train)
-            train_probas_l.append(train_probas)
-
-            test_probas = automl.predict_proba(X_test_sub)[:,1]
-
-            # if metric == 'roc_auc':
-            test_res = ml_utils.calc_results(y_test, test_probas, beta=1, threshold=threshold)
-            # elif metric == f3.f3_metric:
-            #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
-
-            test_res = pd.concat([series_automl, test_res])
-            test_res_l.append(test_res)
-            
-            if j == 0:
-                test_labels_l.append(y_test)
-            test_probas_l.append(test_probas)
-
-        ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{region_index}')
-
-        train_df = pd.concat(train_res_l, axis=1).T
-        train_df.to_csv(f'{directory_path}/training_results_region_{region_index}.csv')
-
-        test_df = pd.concat(test_res_l, axis=1).T
-        test_df.to_csv(f'{directory_path}/test_results_region_{region_index}.csv')
-        
+        save_fs_results(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, train_res_l, test_res_l, region_index)
         
     else:
         automl_settings["log_file_name"] = f'{directory_path}/results_log_{region_index}.json'
