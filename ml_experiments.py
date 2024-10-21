@@ -589,38 +589,62 @@ def scale_continuous_vars(X_train, X_test, continuous_cols):
     
     return X_train, X_test
     
-def settings_automl(time_budget, metric, model, directory_path, region_index):
+def settings_automl(experiment, time_budget, metric, model):
     """
     Generate settings for an AutoML classification task.
     Parameters:
     time_budget (int): The time budget for the AutoML process in seconds.
     metric (str): The evaluation metric to be used (e.g., 'log_loss' 'accuracy', 'f1').
     model (str): The model to be used in the AutoML process (e.g., 'lrl1').
-    directory_path (str): The directory path where the log file will be saved.
     region_index (int): The index of the region for logging purposes.
     Returns:
     dict: A dictionary containing the settings for the AutoML process.
     """
     
-    automl_settings = {
-    "task": "classification",
-    "time_budget": time_budget,
-    "metric": metric,
-    "n_jobs": -1,
-    "eval_method": 'cv',
-    "n_splits": 10,
-    "split_type": 'stratified',
-    "early_stop": True,
-    "log_training_metric": True,
-    "model_history": True,
-    "seed": 239875,
-    "log_file_name": f'{directory_path}/results_log_{region_index}.json',
-    "estimator_list": [model]
-    }
+    if 'fs_' in experiment:
+        automl_settings = {
+            "task": "classification", 
+            "train_full": True,
+            "n_jobs": -1,
+            "train_best": True
+        }
+        
+    else:
+        automl_settings = {
+        "task": "classification",
+        "time_budget": time_budget,
+        "metric": metric,
+        "n_jobs": -1,
+        "eval_method": 'cv',
+        "n_splits": 10,
+        "split_type": 'stratified',
+        "early_stop": True,
+        "log_training_metric": True,
+        "model_history": True,
+        "seed": 239875,
+        "estimator_list": [model]
+        }
     
     if model == 'lrl1':
         automl_settings['max_iter'] = 100000000
     return automl_settings
+
+def get_top_features(automl):
+    """
+    Extracts the top features from an AutoML model.
+    Parameters:
+    automl (object): The AutoML model object.
+    Returns:
+    list: A list of the top features from the AutoML model.
+    """
+    if len(automl.feature_importances_) == 1:
+        feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_[0]))[::-1]]
+        fi = automl.feature_importances_[0][np.argsort(abs(automl.feature_importances_[0]))[::-1]]
+    else:
+        feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_))[::-1]]
+        fi = automl.feature_importances_[np.argsort(abs(automl.feature_importances_))[::-1]]
+        
+    return feature_names, fi
 
 def save_feature_importance(automl, directory_path, region_index):
     """
@@ -634,12 +658,7 @@ def save_feature_importance(automl, directory_path, region_index):
     The function extracts feature importances and their corresponding feature names from the AutoML model,
     sorts them in descending order of importance, and saves the result as a parquet file in the specified directory.
     """
-    if len(automl.feature_importances_) == 1:
-        feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_[0]))[::-1]]
-        fi = automl.feature_importances_[0][np.argsort(abs(automl.feature_importances_[0]))[::-1]]
-    else:
-        feature_names = np.array(automl.feature_names_in_)[np.argsort(abs(automl.feature_importances_))[::-1]]
-        fi = automl.feature_importances_[np.argsort(abs(automl.feature_importances_))[::-1]]
+    feature_names, fi = get_top_features(automl)
         
     fi_df = pd.DataFrame({'feature': feature_names, 'importance': fi})
     fi_df.to_parquet(f'{directory_path}/feature_importance_region_{region_index}.parquet')
@@ -777,18 +796,102 @@ def main():
         X_train, X_test = scale_continuous_vars(X_train, X_test, continuous_cols)
         
     automl = AutoML()
-    automl_settings = settings_automl(time_budget, metric, model, directory_path, region_index)
-        
+    automl_settings = settings_automl(experiment, time_budget, metric, model)
     print(automl_settings)
-    print(f'Fitting model: {datetime.now().time()}')
-    automl.fit(X_train, y_train, **automl_settings)
-    print(f'Done fitting model: {datetime.now().time()}')
 
-    # Save the feature importance
-    save_feature_importance(automl, directory_path, region_index)
+    if 'fs_' in experiment:
+        automl_settings["log_file_name"] = f'{original_results_directory_path}/results_log_{region_index}.json'
+        print(f'Retraining best model to do feature selection: {datetime.now().time()}')
+        automl.retrain_from_log(
+                            X_train=X_train, y_train=y_train, 
+                            **automl_settings
+                            )
+        print(f'Done retraining model: {datetime.now().time()}')
+        
+        time_history, best_valid_loss_history,\
+            valid_loss_history, config_history,\
+                metric_history = get_output_from_log(filename=f'{original_results_directory_path}/results_log_{region_index}.json',
+                                                        time_budget=time_budget)
 
-    # Collect the results for train and test
-    save_results(directory_path, automl, X_train, y_train, X_test, y_test, region, region_index)
+        train_labels_l = []
+        train_probas_l = []
+
+        test_labels_l = []
+        test_probas_l = []
+
+        train_res_l = []
+        test_res_l = []
+
+        top_feature_names, _ = get_top_features(automl)
+        
+        tflist = []
+        for j, tf in enumerate(top_feature_names):
+            tflist.append(tf)
+            current_time = datetime.now().time()
+            print(f'Running top {j+1} features: {tflist}, {current_time}')
+            
+            X_train_sub = X_train.loc[:, tflist]
+            X_test_sub = X_test.loc[:, tflist]
+
+            automl = AutoML()
+            automl.retrain_from_log(
+                                    X_train=X_train_sub, y_train=y_train,
+                                    **automl_settings
+                                    )
+
+            current_time = datetime.now().time()
+            print(f'Done fitting model for region {region_index+1} with top {j+1} variables. {current_time}')
+
+            series_automl = pd.Series([config_history[-1]['Best Learner'], config_history[-1]['Best Hyper-parameters'], region_index, region, tflist], index=['model', 'hyperparams', 'region_index', 'region', 'features'])
+
+            train_probas = automl.predict_proba(X_train_sub)[:,1]
+
+            # if metric == 'roc_auc':
+            train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=1)
+            # elif metric == f3.f3_metric:
+            #     train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=3)
+
+            train_res = pd.concat([series_automl, train_res])
+            train_res_l.append(train_res)
+            
+            if j == 0:
+                train_labels_l.append(y_train)
+            train_probas_l.append(train_probas)
+
+            test_probas = automl.predict_proba(X_test_sub)[:,1]
+
+            # if metric == 'roc_auc':
+            test_res = ml_utils.calc_results(y_test, test_probas, beta=1, threshold=threshold)
+            # elif metric == f3.f3_metric:
+            #     test_res = ml_utils.calc_results(y_test, test_probas, threshold=threshold, beta=3)
+
+            test_res = pd.concat([series_automl, test_res])
+            test_res_l.append(test_res)
+            
+            if j == 0:
+                test_labels_l.append(y_test)
+            test_probas_l.append(test_probas)
+
+        ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{region_index}')
+
+        train_df = pd.concat(train_res_l, axis=1).T
+        train_df.to_csv(f'{directory_path}/training_results_region_{region_index}.csv')
+
+        test_df = pd.concat(test_res_l, axis=1).T
+        test_df.to_csv(f'{directory_path}/test_results_region_{region_index}.csv')
+        
+        
+    else:
+        automl_settings["log_file_name"] = f'{directory_path}/results_log_{region_index}.json'
+        print(f'Fitting model: {datetime.now().time()}')
+        automl.fit(X_train, y_train, **automl_settings)
+        print(f'Done fitting model: {datetime.now().time()}')
+
+        # Save the feature importance
+        save_feature_importance(automl, directory_path, region_index)
+
+        # Collect the results for train and test
+        save_results(directory_path, automl, X_train, y_train, X_test, y_test, region, region_index)
 
 if __name__ == "__main__":
     main()
