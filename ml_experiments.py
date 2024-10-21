@@ -366,6 +366,48 @@ def _flaml_time_budgets():
                 'lgbm': 450,
                 'lrl1': 6500
             }
+        },
+        'fs_modality_only': {
+            'proteomics': {
+                'lgbm': 8500,
+                'lrl1': 35000
+            },
+            'neuroimaging': {
+                'lgbm': 9500,
+                'lrl1': 36000
+            },
+            'cognitive_tests': {
+                'lgbm': 350,
+                'lrl1': 4500
+            }
+        },
+        'fs_demographics_and_modality': {
+            'proteomics': {
+                'lgbm': 9000,
+                'lrl1': 35000
+            },
+            'neuroimaging': {
+                'lgbm': 14000,
+                'lrl1': 38000
+            },
+            'cognitive_tests': {
+                'lgbm': 400,
+                'lrl1': 5500
+            }
+        },
+        'fs_demographics_modality_lancet2024': {
+            'proteomics': {
+                'lgbm': 9500,
+                'lrl1': 35000
+            },
+            'neuroimaging': {
+                'lgbm': 14500,
+                'lrl1': 40000
+            },
+            'cognitive_tests': {
+                'lgbm': 450,
+                'lrl1': 6500
+            }
         }
     }
     return time_budgets
@@ -701,7 +743,7 @@ def main():
         directory_path = f'{directory_path}/agecutoff_{age_cutoff}'
         if 'fs_' in experiment:
             original_results_directory_path = f'{original_results_directory_path}/agecutoff_{age_cutoff}'
-        X, y, region_indices = setup_age_cutoff(directory_path, X, y, age_cutoff, data_modality, data_instance)
+        X, y, region_indices = setup_age_cutoff(X, y, age_cutoff, data_modality, data_instance)
 
     # check if output folder exists
     utils.check_folder_existence(directory_path)
