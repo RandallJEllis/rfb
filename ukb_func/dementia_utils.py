@@ -12,26 +12,29 @@ def get_first_diagnosis(dementia_df):
 
     return date_df
 
-
-def remove_pre_instance_dementia(df, instance, dementia_df):
+def pull_dementia_cases(dementia_df, alzheimers_only=False):
     '''
-    Remove dementia before the UKB visit at a specified instance and create a label column for the cases.
-    df: dataframe with Field IDs related to date of ICD code
-    instance: 0-3, 
+    Pull all cases of dementia from the UKB data
     '''
-
+    
+    if not alzheimers_only:
+        col_disease_source = ['eid', '42019', '42021', '42023', '42025']
+        col_icd_source = ['eid', '131037', '130837', '130839', '130841', '130843']
+    else:
+        col_disease_source = ['eid', '42021']
+        col_icd_source = ['eid', '131037', '130837']
+    
     # Columns specifying algorithmically defined outcomes
-    disease_source = df_utils.pull_columns_by_prefix(dementia_df, ['eid', '42019', '42021', '42023', '42025'])
+    disease_source = df_utils.pull_columns_by_prefix(dementia_df, col_disease_source)
     values_set = [1, 2, 11, 12, 21, 22]
     keep_disease_source = df_utils.pull_rows_with_values(disease_source, values_set)
 
     # Columns specifying ICD code reports
-    icd_source = df_utils.pull_columns_by_prefix(dementia_df, ['eid', '131037', '130837', '130839', '130841', '130843'])
+    icd_source = df_utils.pull_columns_by_prefix(dementia_df, col_icd_source)
     values_set = [20, 21, 30, 31, 40, 41, 51]
     keep_icd_source = df_utils.pull_rows_with_values(icd_source, values_set)
 
     both_eid = set(keep_disease_source.eid).union(set(keep_icd_source.eid))
-    remove = (set(disease_source.eid).union(set(icd_source.eid))).difference(both_eid)
 
     # Columns specifying dates for algorithmically defined outcomes and ICD reports
     date_df = get_first_diagnosis(dementia_df)
@@ -42,6 +45,16 @@ def remove_pre_instance_dementia(df, instance, dementia_df):
                     '131037', '130837', '130839', '130841', '130843',
                     '42018', '42020', '42022', '42024', '131036',
                                 '130836', '130838', '130840', '130842'])
+
+    return both_eid, date_df, exclude_df
+
+def remove_pre_instance_dementia(df, instance, dementia_df):
+    '''
+    Remove dementia before the UKB visit at a specified instance and create a label column for the cases.
+    df: dataframe with Field IDs related to date of ICD code
+    instance: 0-3, 
+    '''
+    both_eid, date_df, exclude_df = pull_dementia_cases(dementia_df)
 
     # remove patients diagnosed with dementia before instance time
     df[f'53-{instance}.0'] = pd.to_datetime(df[f'53-{instance}.0'])

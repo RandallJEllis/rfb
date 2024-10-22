@@ -2,7 +2,7 @@
 
 modality=$1
 # Define the strings for experiment and metric
-experiments=("fs_modality_only" "fs_demographics_and_modality" "fs_demographics_modality_lancet2024")
+experiments=("fs_demographics_and_modality")
 
 # "age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024" 
 # "modality_only" "demographics_and_modality" "demographics_modality_lancet2024"
@@ -20,7 +20,7 @@ for experiment in "${experiments[@]}"; do
     for metric in "${metrics[@]}"; do
         for model in "${models[@]}"; do
             for age_cutoff in "${age_cutoffs[@]}"; do
-                for region_index in {0..9}; do
+                for region_index in 5 7; do
                     if [[ $experiment == *"modality"* ]]; then  
                     # if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" || $experiment == "demographics_modality_lancet2024" ]]; then
 

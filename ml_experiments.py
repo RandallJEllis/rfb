@@ -5,6 +5,7 @@ import df_utils
 import ukb_utils
 import utils
 import f3
+import dementia_utils
 
 import pickle
 import argparse
@@ -102,7 +103,31 @@ def parse_args():
         sys.exit()
         
     return data_modality, data_instance, experiment, metric, model, age_cutoff, region_index 
+ 
+def update_region_indices(X, data_instance):
+    region_lookup = pd.read_csv('../metadata/coding10.tsv', sep='\t')
+    region_indices = ukb_utils.group_assessment_center(
+            X, data_instance, region_lookup)
+    return region_indices
         
+def alzheimers_cases_only(X, y, data_instance):
+    data_path = '../../proj_idp/tidy_data/'
+    acd = pd.read_parquet(data_path + 'acd/allcausedementia.parquet')
+    
+    both_eid, _, _ = dementia_utils.pull_dementia_cases(acd, alzheimers_only=True)
+    y_cases = y[X[X.eid.isin(both_eid)].index]
+    y_controls = y[y == 0]
+
+    X_cases = X[X.eid.isin(both_eid)]
+    X_controls = X[y == 0]
+
+    X_new = pd.concat([X_cases, X_controls])
+    y_new = np.concatenate([y_cases, y_controls])
+    
+    region_indices = update_region_indices(X, data_instance)
+
+    return X_new, y_new, region_indices
+
 def load_datasets(data_modality):
     """
     Load datasets for a given data modality.
@@ -177,9 +202,7 @@ def setup_age_cutoff(directory_path, original_results_directory_path, X, y, age_
     
     # update region_indices if not neuroimaging
     if data_modality != 'neuroimaging':
-        region_lookup = pd.read_csv('../metadata/coding10.tsv', sep='\t')
-        region_indices = ukb_utils.group_assessment_center(
-            X, data_instance, region_lookup)
+        region_indices = update_region_indices(X, data_instance)
         return directory_path, original_results_directory_path, X, y, region_indices
     
     else:
