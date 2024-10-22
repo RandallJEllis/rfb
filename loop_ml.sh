@@ -2,13 +2,17 @@
 
 modality=$1
 # Define the strings for experiment and metric
-# experiments=("age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024" "modality_only" "demographics_and_modality" "demographics_modality_lancet2024")
-experiments=("modality_only" "demographics_and_modality" "demographics_modality_lancet2024")
+experiments=("fs_modality_only" "fs_demographics_and_modality" "fs_demographics_modality_lancet2024")
+
+# "age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024" 
+# "modality_only" "demographics_and_modality" "demographics_modality_lancet2024"
+# "fs_modality_only" "fs_demographics_and_modality" "fs_demographics_modality_lancet2024"
+
 # metrics=("roc_auc" "f3" "ap")
 metrics=("log_loss")
 # ("lrl1" "lgbm")
 models=("lrl1")
-age_cutoffs=(65)
+age_cutoffs=(0 65)
 # age_cutoffs=(0 65)
 
 # Nested loops to iterate over the strings
@@ -17,71 +21,80 @@ for experiment in "${experiments[@]}"; do
         for model in "${models[@]}"; do
             for age_cutoff in "${age_cutoffs[@]}"; do
                 for region_index in {0..9}; do
-                    if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" || $experiment == "demographics_modality_lancet2024" ]]; then
+                    if [[ $experiment == *"modality"* ]]; then  
+                    # if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" || $experiment == "demographics_modality_lancet2024" ]]; then
+
+                        if [[ ! $experiment == *"fs_"* ]]; then
                    
-                        # Set the partition and time based on the modality and experiment
-                        if [[ $modality == 'proteomics' ]]; then
-                            mem="4G"
-                            partition="short"
+                            # Set the partition and time based on the modality and experiment
+                            if [[ $modality == 'proteomics' ]]; then
+                                mem="4G"
+                                partition="short"
 
-                            if [[ $age_cutoff -eq 0 ]]; then
-                                mem="16G"                                
-                                if [[ "$model" == "lgbm" ]]; then
-                                    time="3:30:00"
-                                else
-                                    partition="medium"
-                                    time="14:00:00"
-                                fi
-                                
-                            elif [[ $age_cutoff -eq 65 ]]; then
-                                
-                                if [[ "$model" == "lgbm" ]]; then   
-                                    time="1:45:00"
-                                else
-                                    time="4:30:00"                            
-                                fi
-                            fi 
+                                if [[ $age_cutoff -eq 0 ]]; then
+                                    mem="16G"                                
+                                    if [[ "$model" == "lgbm" ]]; then
+                                        time="3:30:00"
+                                    else
+                                        partition="medium"
+                                        time="14:00:00"
+                                    fi
+                                    
+                                elif [[ $age_cutoff -eq 65 ]]; then
+                                    
+                                    if [[ "$model" == "lgbm" ]]; then   
+                                        time="1:45:00"
+                                    else
+                                        time="4:30:00"                            
+                                    fi
+                                fi 
 
-                        elif [[ $modality == 'neuroimaging' ]]; then
-                            mem="8G"
-                            partition="short"
+                            elif [[ $modality == 'neuroimaging' ]]; then
+                                mem="8G"
+                                partition="short"
 
-                            if [[ $age_cutoff -eq 0 ]]; then
-                                mem="16G"                                
-                                if [[ "$model" == "lgbm" ]]; then
-                                    time="5:00:00"
-                                else
-                                    time="12:00:00"
-                                fi
-                                
-                            elif [[ $age_cutoff -eq 65 ]]; then
-                                
-                                if [[ "$model" == "lgbm" ]]; then   
-                                    time="2:30:00"
-                                else
-                                    time="7:00:00"                            
-                                fi
-                            fi 
-                           
-                        elif [[ $modality == 'cognitive_tests' ]]; then
-                            mem="2G"
-                            partition="short"
+                                if [[ $age_cutoff -eq 0 ]]; then
+                                    mem="16G"                                
+                                    if [[ "$model" == "lgbm" ]]; then
+                                        time="5:00:00"
+                                    else
+                                        time="12:00:00"
+                                    fi
+                                    
+                                elif [[ $age_cutoff -eq 65 ]]; then
+                                    
+                                    if [[ "$model" == "lgbm" ]]; then   
+                                        time="2:30:00"
+                                    else
+                                        time="7:00:00"                            
+                                    fi
+                                fi 
+                            
+                            elif [[ $modality == 'cognitive_tests' ]]; then
+                                mem="2G"
+                                partition="short"
 
-                            if [[ $age_cutoff -eq 0 ]]; then
-                                mem="4G"    
-                                if [[ "$model" == "lgbm" ]]; then
-                                    time="0:30:00"
-                                else
-                                    time="2:00:00"
-                                fi
-                            elif [[ $age_cutoff -eq 65 ]]; then
-                                if [[ "$model" == "lgbm" ]]; then
-                                    time="0:15:00"
-                                else
-                                    time="1:00:00"
+                                if [[ $age_cutoff -eq 0 ]]; then
+                                    mem="4G"    
+                                    if [[ "$model" == "lgbm" ]]; then
+                                        time="0:30:00"
+                                    else
+                                        time="2:00:00"
+                                    fi
+                                elif [[ $age_cutoff -eq 65 ]]; then
+                                    if [[ "$model" == "lgbm" ]]; then
+                                        time="0:15:00"
+                                    else
+                                        time="1:00:00"
+                                    fi
                                 fi
                             fi
-                        fi
+
+                        else
+                            partition="short"
+                            time="0:30:00"
+                            mem="16G"
+                        fi 
                     
                     # separate conditions for cognitive tests when experiment is not age only because it has 4x samples of proteomics and neuroimaging
                     elif [[ $modality == 'cognitive_tests' && $experiment != "age_only" ]]; then

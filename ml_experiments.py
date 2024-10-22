@@ -31,7 +31,8 @@ All demographics + Lancet 2024 + modality
 Input arguments:
 modality - proteomics, neuroimaging, cognitive_tests
 experiment - age_only, all_demographics, age_sex_lancet, demographics_and_lancet2024, 
-            modality_only, demographics_and_modality, demographics_modality_lancet2024
+            modality_only, demographics_and_modality, demographics_modality_lancet2024,
+            fs_modality_only, fs_demographics_and_modality, fs_demographics_modality_lancet2024
 time_budget - number of seconds for AutoML training
 metric - log_loss, roc_auc, or f3 (log_loss is used throughout the project)
 model - lgbm or lrl1
@@ -48,7 +49,7 @@ def parse_args():
             - data_modality (str): The chosen data modality. Options are 'proteomics', 'neuroimaging', 'cognitive_tests'.
             - experiment (str): The chosen experiment type. Options include 'age_only', 'all_demographics', 
               'age_sex_lancet2024', 'demographics_and_lancet2024', 'modality_only', 'demographics_and_modality', 
-              'demographics_modality_lancet2024, 'fs_modality', 'fs_demographics_and_modality', 'fs_demographics_modality_lancet2024'.
+              'demographics_modality_lancet2024, 'fs_modality_only', 'fs_demographics_and_modality', 'fs_demographics_modality_lancet2024'.
             - time_budget (int): The time budget in seconds for FLAML to optimize.
             - metric (str): The evaluation metric to use. Options are 'log_loss', 'roc_auc', 'f3', 'ap'. Default is 'log_loss'.
             - model (str): The model to use. Options are 'lgbm', 'lrl1'. Default is 'lgbm'.
@@ -68,7 +69,7 @@ def parse_args():
                         help='options: age_only, all_demographics, \
                         age_sex_lancet2024, demographics_and_lancet2024, modality_only, \
                         demographics_and_modality, demographics_modality_lancet2024, \
-                        fs_modality, fs_demographics_and_modality, fs_demographics_modality_lancet2024'
+                        fs_modality_only, fs_demographics_and_modality, fs_demographics_modality_lancet2024'
                         )
     parser.add_argument('--metric', type=str, default='log_loss',
                         help='options: log_loss, roc_auc, f3, ap')
@@ -126,8 +127,34 @@ def load_datasets(data_modality):
             open(f'../tidy_data/dementia/{data_modality}/region_cv_indices.pickle', 'rb')
             )
         return X, y, region_indices
-                
-def setup_age_cutoff(X, y, age_cutoff, data_modality, data_instance):
+  
+def get_dir_path(data_modality, experiment, metric, model):
+    """
+    Get the directory path based on the specified parameters.
+
+    Args:
+        data_modality (str): The data modality.
+        experiment (str): The experiment name.
+        metric (str): The metric name.
+        model (str): The model name.
+
+    Returns:
+        tuple: A tuple containing the directory path and the original results directory path.
+    """
+
+    
+    if 'fs_' in experiment: # running a feature selection experiment
+        main_experiment = experiment[3:] # remove 'fs_' from experiment name
+        directory_path = f'../results/dementia/{data_modality}/{main_experiment}/feature_selection/{metric}/{model}/' 
+        original_results_directory_path = f'../results/dementia/{data_modality}/{main_experiment}/{metric}/{model}/' 
+        
+    else:
+        directory_path = f'../results/dementia/{data_modality}/{experiment}/{metric}/{model}/' 
+        original_results_directory_path = None     
+        
+    return directory_path, original_results_directory_path
+                  
+def setup_age_cutoff(directory_path, original_results_directory_path, X, y, age_cutoff, data_modality, data_instance):
     """
     Filters the dataset based on an age cutoff and updates the directory path accordingly.
     Parameters:
@@ -140,6 +167,10 @@ def setup_age_cutoff(X, y, age_cutoff, data_modality, data_instance):
     tuple: A tuple containing the updated directory path, filtered feature matrix (X), 
            filtered target variable (y), and region indices (if applicable, otherwise None).
     """
+    directory_path = f'{directory_path}agecutoff_{age_cutoff}'
+    if original_results_directory_path is not None:
+        original_results_directory_path = f'{original_results_directory_path}agecutoff_{age_cutoff}'
+            
     over_age_idx = X[f'21003-{data_instance}.0'] >= age_cutoff
     X = X[over_age_idx].reset_index(drop=True)
     y = y[over_age_idx]
@@ -149,10 +180,10 @@ def setup_age_cutoff(X, y, age_cutoff, data_modality, data_instance):
         region_lookup = pd.read_csv('../metadata/coding10.tsv', sep='\t')
         region_indices = ukb_utils.group_assessment_center(
             X, data_instance, region_lookup)
-        return X, y, region_indices
+        return directory_path, original_results_directory_path, X, y, region_indices
     
     else:
-        return X, y, None
+        return directory_path, original_results_directory_path, X, y, None
  
 def get_lancet_vars():
     """
@@ -214,6 +245,10 @@ def get_experiment_vars(data_modality, data_instance, X, lancet_vars):
     experiment_vars['demographics_modality_lancet2024'] = {'proteomics': experiment_vars['demographics_and_modality']['proteomics'] + lancet_vars,
                                                            'neuroimaging': experiment_vars['demographics_and_modality']['neuroimaging'] + lancet_vars,
                                                            'cognitive_tests': experiment_vars['demographics_and_modality']['cognitive_tests'] + lancet_vars}
+    experiment_vars['fs_modality_only'] = experiment_vars['modality_only']
+    experiment_vars['fs_demographics_and_modality'] = experiment_vars['demographics_and_modality']
+    experiment_vars['fs_demographics_modality_lancet2024'] = experiment_vars['demographics_modality_lancet2024']
+    
     return experiment_vars
 
 def subset_experiment_vars(X, experiment_vars, experiment, data_modality):
@@ -497,6 +532,10 @@ def continuous_vars_for_scaling(data_modality, data_instance, experiment, contin
         'cognitive_tests': continuous_cols['demographics_and_modality']['cognitive_tests'] + continuous_lancet_vars
     }
     
+    continuous_cols['fs_modality_only'] = continuous_cols['modality_only']
+    continuous_cols['fs_demographics_and_modality'] = continuous_cols['demographics_and_modality']
+    continuous_cols['fs_demographics_modality_lancet2024'] = continuous_cols['demographics_modality_lancet2024']
+    
     if experiment in continuous_cols:
         if isinstance(continuous_cols[experiment], dict):
             continuous_cols = continuous_cols[experiment][data_modality]
@@ -625,8 +664,8 @@ def settings_automl(experiment, time_budget, metric, model):
         "estimator_list": [model]
         }
     
-    if model == 'lrl1':
-        automl_settings['max_iter'] = 100000000
+        if model == 'lrl1':
+            automl_settings['max_iter'] = 100000000
     return automl_settings
 
 def get_top_features(automl):
@@ -663,7 +702,30 @@ def save_feature_importance(automl, directory_path, region_index):
     fi_df = pd.DataFrame({'feature': feature_names, 'importance': fi})
     fi_df.to_parquet(f'{directory_path}/feature_importance_region_{region_index}.parquet')
     
-def iterative_fs_inference(automl_settings, config_history, X_train, y_train, X_test, y_test, directory_path, region_index, region):
+def iterative_fs_inference(automl, automl_settings, config_history, X_train, y_train, X_test, y_test, region_index, region):
+    """
+    Perform iterative feature selection and inference using AutoML.
+
+    Args:
+        automl_settings (dict): Settings for AutoML.
+        config_history (list): List of configuration history.
+        X_train (pandas.DataFrame): Training data features.
+        y_train (pandas.Series): Training data labels.
+        X_test (pandas.DataFrame): Test data features.
+        y_test (pandas.Series): Test data labels.
+        directory_path (str): Path to the directory.
+        region_index (int): Index of the region.
+        region (str): Name of the region.
+
+    Returns:
+        tuple: A tuple containing the following:
+            - train_labels_l (list): List of training data labels for each iteration.
+            - train_probas_l (list): List of training data probabilities for each iteration.
+            - test_labels_l (list): List of test data labels for each iteration.
+            - test_probas_l (list): List of test data probabilities for each iteration.
+            - train_res_l (list): List of training data results for each iteration.
+            - test_res_l (list): List of test data results for each iteration.
+    """
     train_labels_l = []
     train_probas_l = []
 
@@ -676,7 +738,7 @@ def iterative_fs_inference(automl_settings, config_history, X_train, y_train, X_
     top_feature_names, _ = get_top_features(automl)
     
     tflist = []
-    for j, tf in enumerate(top_feature_names):
+    for j, tf in enumerate(top_feature_names[:100]):
         tflist.append(tf)
         current_time = datetime.now().time()
         print(f'Running top {j+1} features: {tflist}, {current_time}')
@@ -693,7 +755,10 @@ def iterative_fs_inference(automl_settings, config_history, X_train, y_train, X_
         current_time = datetime.now().time()
         print(f'Done fitting model for region {region_index+1} with top {j+1} variables. {current_time}')
 
-        series_automl = pd.Series([config_history[-1]['Best Learner'], config_history[-1]['Best Hyper-parameters'], region_index, region, tflist], index=['model', 'hyperparams', 'region_index', 'region', 'features'])
+        series_automl = pd.Series([config_history[-1]['Best Learner'], 
+                                   config_history[-1]['Best Hyper-parameters'],
+                                   region_index, region, tflist],
+                                  index=['model', 'hyperparams', 'region_index', 'region', 'features'])
 
         train_probas = automl.predict_proba(X_train_sub)[:,1]
         train_res, threshold = ml_utils.calc_results(y_train, train_probas, beta=1)
@@ -716,7 +781,23 @@ def iterative_fs_inference(automl_settings, config_history, X_train, y_train, X_
     return train_labels_l, train_probas_l, test_labels_l, test_probas_l, train_res_l, test_res_l
 
 def save_fs_results(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, train_res_l, test_res_l, region_index):
-    
+    """
+    Save the results of a machine learning experiment to files.
+
+    Parameters:
+    - directory_path (str): The path to the directory where the files will be saved.
+    - train_labels_l (list): A list of training labels.
+    - train_probas_l (list): A list of training probabilities.
+    - test_labels_l (list): A list of test labels.
+    - test_probas_l (list): A list of test probabilities.
+    - train_res_l (list): A list of training results.
+    - test_res_l (list): A list of test results.
+    - region_index (int): The index of the region.
+
+    Returns:
+    None
+    """
+
     ml_utils.save_labels_probas(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, other_file_info=f'_region_{region_index}')
 
     train_df = pd.concat(train_res_l, axis=1).T
@@ -725,7 +806,6 @@ def save_fs_results(directory_path, train_labels_l, train_probas_l, test_labels_
     test_df = pd.concat(test_res_l, axis=1).T
     test_df.to_csv(f'{directory_path}/test_results_region_{region_index}.csv')
 
-    
 def save_results(directory_path, automl, X_train, y_train, X_test, y_test, region, region_index):
     """
     Save the results of an AutoML experiment to CSV files.
@@ -814,18 +894,13 @@ def main():
     # Load the datasets
     X, y, region_indices = load_datasets(data_modality)
 
-    # Specify the directory path
-    directory_path = f'../results/dementia/{data_modality}/{experiment}/{metric}/{model}/'
-    if 'fs_' in experiment: # running a feature selection experiment
-        original_results_directory_path = directory_path
-        directory_path = f'../../results/dementia/{data_modality}/{experiment}/feature_selection/{metric}/{model}/'        
+    directory_path, original_results_directory_path = get_dir_path(data_modality, experiment, metric, model)
  
     # subset data by age if there is an age cutoff
     if age_cutoff is not None:
-        directory_path = f'{directory_path}/agecutoff_{age_cutoff}'
-        if 'fs_' in experiment:
-            original_results_directory_path = f'{original_results_directory_path}/agecutoff_{age_cutoff}'
-        X, y, region_indices = setup_age_cutoff(X, y, age_cutoff, data_modality, data_instance)
+        directory_path, original_results_directory_path,\
+            X, y,\
+                region_indices = setup_age_cutoff(directory_path, original_results_directory_path, X, y, age_cutoff, data_modality, data_instance)
 
     # check if output folder exists
     utils.check_folder_existence(directory_path)
@@ -878,9 +953,9 @@ def main():
 
         train_labels_l, train_probas_l,\
             test_labels_l, test_probas_l,\
-                train_res_l, test_res_l = iterative_fs_inference(automl_settings, config_history,
+                train_res_l, test_res_l = iterative_fs_inference(automl, automl_settings, config_history,
                                                                  X_train, y_train, X_test, y_test,
-                                                                 directory_path, region_index, region)
+                                                                 region_index, region)
 
         save_fs_results(directory_path, train_labels_l, train_probas_l, test_labels_l, test_probas_l, train_res_l, test_res_l, region_index)
         
