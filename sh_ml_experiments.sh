@@ -18,11 +18,11 @@ conda activate pymc_env
 export PYTHONUNBUFFERED=1
 
 # Convert SLURM_TIMELIMIT from minutes to HH:MM:SS and print
-time_limit_in_minutes="$SLURM_JOB_END_TIME"
-echo "Projected end time for this job is: $time_limit_in_minutes"
+# time_limit_in_minutes="$SLURM_JOB_END_TIME"
+# echo "Projected end time for this job is: $time_limit_in_minutes"
 
 # echo "Running experiment with experiment: $experiment and metric: $metric"
-python ml_experiments.py --modality "$modality" --experiment "$experiment" --metric "$metric" --model "$model" --region_index "$region_index" --age_cutoff "$age_cutoff"
+python ml_experiments.py --modality "$modality" --experiment "$experiment" --metric "$metric" --model "$model" --region_index "$region_index" --age_cutoff "$age_cutoff" --predict_alzheimers_only "$predict_alzheimers_only"
 
 # running a single experiment
 # experiment=$1

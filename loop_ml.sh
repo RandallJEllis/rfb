@@ -1,8 +1,10 @@
 #!/bin/bash
 
 modality=$1
+predict_alzheimers_only=$2
+
 # Define the strings for experiment and metric
-experiments=("fs_demographics_and_modality")
+experiments=("age_only")
 
 # "age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024" 
 # "modality_only" "demographics_and_modality" "demographics_modality_lancet2024"
@@ -12,7 +14,7 @@ experiments=("fs_demographics_and_modality")
 metrics=("log_loss")
 # ("lrl1" "lgbm")
 models=("lrl1")
-age_cutoffs=(0 65)
+age_cutoffs=(0)
 # age_cutoffs=(0 65)
 
 # Nested loops to iterate over the strings
@@ -20,7 +22,7 @@ for experiment in "${experiments[@]}"; do
     for metric in "${metrics[@]}"; do
         for model in "${models[@]}"; do
             for age_cutoff in "${age_cutoffs[@]}"; do
-                for region_index in 5 7; do
+                for region_index in {0..0}; do
                     if [[ $experiment == *"modality"* ]]; then  
                     # if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" || $experiment == "demographics_modality_lancet2024" ]]; then
 
@@ -119,7 +121,13 @@ for experiment in "${experiments[@]}"; do
                     output_dir="${modality}/"
                     error_dir="${modality}/"
 
-                    echo "Running script on modality $modality, partition $partition, time limit $time. Experiment: $experiment, metric: $metric, model: $model, age cutoff: $age_cutoff, and region index: $region_index"
+                    echo "Running script on modality $modality, \
+                    partition $partition, time limit $time. \
+                    Experiment: $experiment, \
+                    metric: $metric, \
+                    model: $model, \
+                    age cutoff: $age_cutoff, and region index: $region_index. \
+                    Predict Alzheimer's only: $predict_alzheimers_only"
 
                     sbatch --job-name="$job_name"_%J \
                            --output="$output_dir"job_%J_$job_name.out \
@@ -127,7 +135,7 @@ for experiment in "${experiments[@]}"; do
                            --partition="$partition" \
                            --time="$time" \
                            --mem="$mem" \
-                           --export=modality="$modality",experiment="$experiment",metric="$metric",model="$model",age_cutoff="$age_cutoff",region_index="$region_index"\
+                           --export=modality="$modality",experiment="$experiment",metric="$metric",model="$model",age_cutoff="$age_cutoff",region_index="$region_index",predict_alzheimers_only="$predict_alzheimers_only" \
                         sh_ml_experiments.sh
                     # sbatch --export=experiment="$experiment",metric="$metric" sh_ml_experiments.sh
                 done

@@ -19,6 +19,9 @@ from sklearn.model_selection import StratifiedKFold
 from datetime import datetime
 import pickle
 
+from pyarrow.parquet import ParquetFile
+import pyarrow as pa 
+
 '''
 Machine learning experiments for:
 Age alone
@@ -80,6 +83,8 @@ def parse_args():
                         help='age cutoff')
     parser.add_argument('--region_index', type=int, required=True,
                         help='region index')
+    parser.add_argument('--predict_alzheimers_only', type=int, default=0,
+                        help='predict alzheimers outcomes only')
 
     # Parse the arguments
     args = parser.parse_args()
@@ -97,38 +102,87 @@ def parse_args():
     if age_cutoff == 0:
         age_cutoff = None
     region_index = args.region_index
+    
+    if args.predict_alzheimers_only == 0:
+        alzheimers_only = False
+    elif args.predict_alzheimers_only == 1:
+        alzheimers_only = True
+    else:
+        print('predict_alzheimers_only must be 0 or 1')
+        sys.exit()        
+        
 
     if region_index == None:
         print('NEED REGION INDEX')
         sys.exit()
         
-    return data_modality, data_instance, experiment, metric, model, age_cutoff, region_index 
+    return data_modality, data_instance, experiment, metric, model, age_cutoff, region_index, alzheimers_only 
  
 def update_region_indices(X, data_instance):
+    """
+    Updates the region indices for the given data instance.
+
+    This function reads a region lookup table from a TSV file and uses it to 
+    group the assessment center data in the provided dataset. It returns the 
+    updated region indices.
+
+    Args:
+        X (pd.DataFrame): The dataset containing the data to be updated.
+        data_instance (int): The specific instance of data to be processed.
+
+    Returns:
+        pd.GroupBy: A grouped dataframe containing the updated region indices.
+    """
     region_lookup = pd.read_csv('../metadata/coding10.tsv', sep='\t')
     region_indices = ukb_utils.group_assessment_center(
             X, data_instance, region_lookup)
     return region_indices
         
-def alzheimers_cases_only(X, y, data_instance):
+def alzheimers_cases_only(X, y):
+    """
+    Filters the input dataset to include only Alzheimer's disease cases and controls.
+    Parameters:
+    X (pd.DataFrame): The input features dataframe containing participant data.
+    y (np.ndarray or pd.Series): The target array indicating the presence or absence of dementia.
+    Returns:
+    tuple: A tuple containing:
+        - X_new (pd.DataFrame): The filtered features dataframe with only Alzheimer's cases and controls.
+        - y_new (np.ndarray): The filtered target array with only Alzheimer's cases and controls.
+    """
     data_path = '../../proj_idp/tidy_data/'
-    acd = pd.read_parquet(data_path + 'acd/allcausedementia.parquet')
+    
+    # the allcausedementia file is large, so we will import the first row to get the columns we need
+    pf = ParquetFile(data_path + 'acd/allcausedementia.parquet') 
+    first_rows = next(pf.iter_batches(batch_size = 2)) 
+    acd = pa.Table.from_batches([first_rows]).to_pandas() 
+    acd = df_utils.pull_columns_by_prefix(acd, ['eid', '42019', '42021', '42023', '42025',
+                                '131037', '130837', '130839', '130841', '130843',
+                                '42018', '42020', '42022', '42024', '131036',
+                                '130836', '130838', '130840', '130842'])
+    cols_import = acd.columns.tolist()
+    
+    acd = pd.read_parquet(data_path + 'acd/allcausedementia.parquet', columns=cols_import)
+    acd = acd[acd.eid.isin(X.eid)]
     
     both_eid, _, _ = dementia_utils.pull_dementia_cases(acd, alzheimers_only=True)
+    del acd
+    
     y_cases = y[X[X.eid.isin(both_eid)].index]
     y_controls = y[y == 0]
 
     X_cases = X[X.eid.isin(both_eid)]
     X_controls = X[y == 0]
 
-    X_new = pd.concat([X_cases, X_controls])
-    y_new = np.concatenate([y_cases, y_controls])
+    X = pd.concat([X_cases, X_controls])
+    y = np.concatenate([y_cases, y_controls])
     
-    region_indices = update_region_indices(X, data_instance)
+    print('Alzheimer\'s cases:', len(y_cases))
+    print('Controls:', len(y_controls))
+    print('Data shape:', X.shape)
+    
+    return X, y
 
-    return X_new, y_new, region_indices
-
-def load_datasets(data_modality):
+def load_datasets(data_modality, data_instance, alzheimers_only=False):
     """
     Load datasets for a given data modality.
     Parameters:
@@ -141,19 +195,25 @@ def load_datasets(data_modality):
         - region_indices (list or None): Region indices for cross-validation if the modality is not 'neuroimaging', otherwise None.
     """
     X = pd.read_parquet(f'../tidy_data/dementia/{data_modality}/X.parquet')
-    X = X.iloc[:,1:]
+    
     y = np.load(f'../tidy_data/dementia/{data_modality}/y.npy')
+        
+    if alzheimers_only:
+        X, y = alzheimers_cases_only(X, y)
+    
+    X = X.drop(columns=['eid'])
     
     # set data instance, import region indices if not neuroimaging, and set modality_vars
     if data_modality == 'neuroimaging':
         return X, y, None
-    else:
-        region_indices = pickle.load(
-            open(f'../tidy_data/dementia/{data_modality}/region_cv_indices.pickle', 'rb')
-            )
+    else:       
+        region_indices = update_region_indices(X, data_instance)     
+        # region_indices = pickle.load(
+        #     open(f'../tidy_data/dementia/{data_modality}/region_cv_indices.pickle', 'rb')
+        #     )
         return X, y, region_indices
   
-def get_dir_path(data_modality, experiment, metric, model):
+def get_dir_path(data_modality, experiment, metric, model, alzheimers_only=False):
     """
     Get the directory path based on the specified parameters.
 
@@ -166,15 +226,18 @@ def get_dir_path(data_modality, experiment, metric, model):
     Returns:
         tuple: A tuple containing the directory path and the original results directory path.
     """
-
+    if alzheimers_only:
+        base_path = '../results/alzheimers'
+    else:
+        base_path = '../results/dementia'
     
     if 'fs_' in experiment: # running a feature selection experiment
         main_experiment = experiment[3:] # remove 'fs_' from experiment name
-        directory_path = f'../results/dementia/{data_modality}/{main_experiment}/feature_selection/{metric}/{model}/' 
-        original_results_directory_path = f'../results/dementia/{data_modality}/{main_experiment}/{metric}/{model}/' 
+        directory_path = f'{base_path}/{data_modality}/{main_experiment}/feature_selection/{metric}/{model}/' 
+        original_results_directory_path = f'{base_path}/{data_modality}/{main_experiment}/{metric}/{model}/' 
         
     else:
-        directory_path = f'../results/dementia/{data_modality}/{experiment}/{metric}/{model}/' 
+        directory_path = f'{base_path}/{data_modality}/{experiment}/{metric}/{model}/' 
         original_results_directory_path = None     
         
     return directory_path, original_results_directory_path
@@ -230,13 +293,14 @@ def get_lancet_vars():
                                 '24006-0.0', '24015-0.0', '24011-0.0']
     return lancet_vars, continuous_lancet_vars
 
-def get_experiment_vars(data_modality, data_instance, X, lancet_vars):
+def _get_experiment_vars(data_instance, X, lancet_vars):
     """
     Generates a dictionary of experiment variables based on the given data modality and data instance.
 
     Args:
-        data_modality (str): The modality of the data (e.g., 'proteomics', 'neuroimaging', 'cognitive_tests').
         data_instance (str): The instance of the data (e.g., '0', '1').
+        X (pd.DataFrame): The feature matrix containing the data.
+        lancet_vars (list): A list of variables related to the Lancet 2024 study
 
     Returns:
         dict: A dictionary containing various sets of experiment variables:
@@ -274,19 +338,24 @@ def get_experiment_vars(data_modality, data_instance, X, lancet_vars):
     
     return experiment_vars
 
-def subset_experiment_vars(X, experiment_vars, experiment, data_modality):
+def subset_experiment_vars(data_modality, data_instance, experiment, X, lancet_vars):
     """
     Subsets the feature matrix based on the experiment variables.
 
     Args:
-        X (pd.DataFrame): The feature matrix containing the data.
-        experiment_vars (dict): A dictionary containing various sets of experiment variables.
-        experiment (str): The chosen experiment type.
         data_modality (str): The type of data modality (e.g., 'proteomics', 'neuroimaging', 'cognitive_tests').
-
+        data_instance (int): The instance of the data (e.g., 0, 1, 2).
+        experiment (str): The chosen experiment type.
+        X (pd.DataFrame): The feature matrix containing the data.
+        lancet_vars (list): A list of variables related to the Lancet 2024 study.
+        
     Returns:
         pd.DataFrame: The feature matrix with columns subset based on the experiment variables.
     """
+    
+    experiment_vars = _get_experiment_vars(data_instance, X, lancet_vars)
+    print('got experiment vars')
+    
     if experiment in experiment_vars:
         if isinstance(experiment_vars[experiment], dict):
             if data_modality in experiment_vars[experiment]:
@@ -911,28 +980,34 @@ def save_results(directory_path, automl, X_train, y_train, X_test, y_test, regio
 def main():
 
     # Parse the arguments
-    data_modality, data_instance, experiment, metric, model, age_cutoff, region_index = parse_args()
-    print(f'Running {experiment} experiment, modality {data_modality}, instance {data_instance}, region {region_index}, model {model}, {metric} as the metric, and an age cutoff of {age_cutoff} years')
+    data_modality, data_instance, experiment, metric, model, age_cutoff, region_index, alzheimers_only = parse_args()
+    print(f'Running {experiment} experiment, modality {data_modality}, instance {data_instance}, region {region_index}, model {model}, {metric} as the metric, and an age cutoff of {age_cutoff} years. Predicting Alzheimer\'s only: {alzheimers_only}')
     
     # Load the datasets
-    X, y, region_indices = load_datasets(data_modality)
+    X, y, region_indices = load_datasets(data_modality, data_instance, alzheimers_only)
+    print('loaded data')
 
-    directory_path, original_results_directory_path = get_dir_path(data_modality, experiment, metric, model)
- 
+    directory_path, original_results_directory_path = get_dir_path(data_modality, experiment, metric, model, alzheimers_only)
+    print('got directories')
+    
     # subset data by age if there is an age cutoff
     if age_cutoff is not None:
         directory_path, original_results_directory_path,\
             X, y,\
                 region_indices = setup_age_cutoff(directory_path, original_results_directory_path, X, y, age_cutoff, data_modality, data_instance)
-
+    print('made age cutoff')
+    
     # check if output folder exists
     utils.check_folder_existence(directory_path)
 
     # set up experiment variables
     lancet_vars, continuous_lancet_vars = get_lancet_vars()
-    experiment_vars = get_experiment_vars(data_modality, data_instance, X, lancet_vars)
-    X = subset_experiment_vars(X, experiment_vars, experiment, data_modality)
+    print('got lancet vars')
+    # experiment_vars = get_experiment_vars(data_modality, data_instance, X, lancet_vars)
     
+    X = subset_experiment_vars(data_modality, data_instance, experiment, X, lancet_vars, experiment_vars)
+    print('subsetted experiment vars')
+
     # set time budget based on experiment, data_modality, model, and age_cutoff
     time_budget = get_time_budget(experiment, data_modality, model, age_cutoff)
     
