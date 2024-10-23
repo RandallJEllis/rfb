@@ -160,24 +160,18 @@ def alzheimers_cases_only(X, y):
                                 '42018', '42020', '42022', '42024', '131036',
                                 '130836', '130838', '130840', '130842'])
     cols_import = acd.columns.tolist()
-    
+        
     acd = pd.read_parquet(data_path + 'acd/allcausedementia.parquet', columns=cols_import)
     acd = acd[acd.eid.isin(X.eid)]
-    
+        
     both_eid, _, _ = dementia_utils.pull_dementia_cases(acd, alzheimers_only=True)
-    del acd
-    
-    y_cases = y[X[X.eid.isin(both_eid)].index]
-    y_controls = y[y == 0]
 
-    X_cases = X[X.eid.isin(both_eid)]
-    X_controls = X[y == 0]
-
-    X = pd.concat([X_cases, X_controls])
-    y = np.concatenate([y_cases, y_controls])
+    indices_keep = X.loc[(y == 0) | (X['eid'].isin(both_eid))].index
+    X = X.loc[indices_keep]
+    y = y[indices_keep]
     
-    print('Alzheimer\'s cases:', len(y_cases))
-    print('Controls:', len(y_controls))
+    print('Alzheimer\'s cases:', sum(y))
+    print('Controls:', len(y[y==0]))
     print('Data shape:', X.shape)
     
     return X, y
@@ -195,9 +189,8 @@ def load_datasets(data_modality, data_instance, alzheimers_only=False):
         - region_indices (list or None): Region indices for cross-validation if the modality is not 'neuroimaging', otherwise None.
     """
     X = pd.read_parquet(f'../tidy_data/dementia/{data_modality}/X.parquet')
-    
     y = np.load(f'../tidy_data/dementia/{data_modality}/y.npy')
-        
+
     if alzheimers_only:
         X, y = alzheimers_cases_only(X, y)
     
@@ -355,6 +348,7 @@ def subset_experiment_vars(data_modality, data_instance, experiment, X, lancet_v
     
     experiment_vars = _get_experiment_vars(data_instance, X, lancet_vars)
     print('got experiment vars')
+    print(f"size of experiment_vars: {sys.getsizeof(experiment_vars)}")
     
     if experiment in experiment_vars:
         if isinstance(experiment_vars[experiment], dict):
@@ -985,28 +979,21 @@ def main():
     
     # Load the datasets
     X, y, region_indices = load_datasets(data_modality, data_instance, alzheimers_only)
-    print('loaded data')
 
     directory_path, original_results_directory_path = get_dir_path(data_modality, experiment, metric, model, alzheimers_only)
-    print('got directories')
     
     # subset data by age if there is an age cutoff
     if age_cutoff is not None:
         directory_path, original_results_directory_path,\
             X, y,\
                 region_indices = setup_age_cutoff(directory_path, original_results_directory_path, X, y, age_cutoff, data_modality, data_instance)
-    print('made age cutoff')
     
     # check if output folder exists
     utils.check_folder_existence(directory_path)
 
     # set up experiment variables
-    lancet_vars, continuous_lancet_vars = get_lancet_vars()
-    print('got lancet vars')
-    # experiment_vars = get_experiment_vars(data_modality, data_instance, X, lancet_vars)
-    
-    X = subset_experiment_vars(data_modality, data_instance, experiment, X, lancet_vars, experiment_vars)
-    print('subsetted experiment vars')
+    lancet_vars, continuous_lancet_vars = get_lancet_vars()    
+    X = subset_experiment_vars(data_modality, data_instance, experiment, X, lancet_vars)
 
     # set time budget based on experiment, data_modality, model, and age_cutoff
     time_budget = get_time_budget(experiment, data_modality, model, age_cutoff)
