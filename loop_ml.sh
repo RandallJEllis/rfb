@@ -4,7 +4,7 @@ modality=$1
 predict_alzheimers_only=$2
 
 # Define the strings for experiment and metric
-experiments=("age_only")
+experiments=("demographics_and_lancet2024")
 
 # "age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024" 
 # "modality_only" "demographics_and_modality" "demographics_modality_lancet2024"
@@ -22,9 +22,9 @@ for experiment in "${experiments[@]}"; do
     for metric in "${metrics[@]}"; do
         for model in "${models[@]}"; do
             for age_cutoff in "${age_cutoffs[@]}"; do
-                for region_index in {0..0}; do
+                for region_index in {0..9}; do
                     if [[ $experiment == *"modality"* ]]; then  
-                    # if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" || $experiment == "demographics_modality_lancet2024" ]]; then
+                        # if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" || $experiment == "demographics_modality_lancet2024" ]]; then
 
                         if [[ ! $experiment == *"fs_"* ]]; then
                    
@@ -104,11 +104,17 @@ for experiment in "${experiments[@]}"; do
                         time="1:30:00"
                         mem="4G"
                     
-                     # separate conditions for neuroimaging when experiment is demographics_and_lancet2024
-                    elif [[ $modality == 'neuroimaging' && $experiment == "demographics_and_lancet2024" ]]; then
+                    
+                    elif [[ $experiment == "demographics_and_lancet2024" ]]; then
                         partition="short"
                         time="0:20:00"
-                        mem="8G"
+
+                        # separate conditions for neuroimaging when experiment is demographics_and_lancet2024
+                        if [[ $modality == 'neuroimaging' ]]; then
+                            mem="8G"
+                        else
+                            mem="4G"
+                        fi
 
                     else
                         partition="short"
@@ -121,12 +127,12 @@ for experiment in "${experiments[@]}"; do
                     output_dir="${modality}/"
                     error_dir="${modality}/"
 
-                    echo "Running script on modality $modality, \
-                    partition $partition, time limit $time. \
-                    Experiment: $experiment, \
-                    metric: $metric, \
-                    model: $model, \
-                    age cutoff: $age_cutoff, and region index: $region_index. \
+                    echo "Running script on modality $modality,\
+                    partition $partition, time limit $time.\
+                    Experiment: $experiment,\
+                    metric: $metric,\
+                    model: $model,\
+                    age cutoff: $age_cutoff, and region index: $region_index.\
                     Predict Alzheimer's only: $predict_alzheimers_only"
 
                     sbatch --job-name="$job_name"_%J \
