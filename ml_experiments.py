@@ -1050,8 +1050,9 @@ def main():
         automl.fit(X_train, y_train, **automl_settings)
         print(f'Done fitting model: {datetime.now().time()}')
 
-        # Save the feature importance
-        save_feature_importance(automl, directory_path, region_index)
+        if experiment != 'age_only':
+            # Save the feature importance
+            save_feature_importance(automl, directory_path, region_index)
 
         # Collect the results for train and test
         save_results(directory_path, automl, X_train, y_train, X_test, y_test, region, region_index)
