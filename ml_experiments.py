@@ -204,7 +204,7 @@ def load_datasets(data_modality, data_instance, alzheimers_only=False):
         #     )
         return X, y, region_indices
   
-def get_dir_path(data_modality, experiment, metric, model, alzheimers_only=False):
+def get_dir_path(data_modality, experiment, metric, model, alzheimers_only=False, survival=False):
     """
     Get the directory path based on the specified parameters.
 
@@ -221,6 +221,9 @@ def get_dir_path(data_modality, experiment, metric, model, alzheimers_only=False
         base_path = '../results/alzheimers'
     else:
         base_path = '../results/dementia'
+        
+    if survival:
+        base_path = f'{base_path}/survival'
     
     if 'fs_' in experiment: # running a feature selection experiment
         main_experiment = experiment[3:] # remove 'fs_' from experiment name

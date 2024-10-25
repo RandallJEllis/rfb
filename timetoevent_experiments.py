@@ -1,12 +1,12 @@
 import sys
 sys.path.append('./ukb_func')
-import ml_utils
+from ml_utils import save_labels_probas
 import df_utils
 import ukb_utils
-import utils
+from utils import save_pickle
 import f3
 import dementia_utils
-from .ml_experiments import *
+from ml_experiments import *
 
 import pickle
 import argparse
@@ -23,13 +23,8 @@ import pickle
 from pyarrow.parquet import ParquetFile
 import pyarrow as pa 
 
-from sksurv.datasets import load_breast_cancer
-from sksurv.ensemble import ComponentwiseGradientBoostingSurvivalAnalysis, RandomSurvivalForest
-from sksurv.ensemble import GradientBoostingSurvivalAnalysis
-from sksurv.preprocessing import OneHotEncoder
-from sksurv.metrics import brier_score, concordance_index_ipcw, cumulative_dynamic_auc, integrated_brier_score, as_cumulative_dynamic_auc_scorer
-from sksurv.functions import StepFunction
-from sksurv.nonparametric import kaplan_meier_estimator
+from sksurv.ensemble import RandomSurvivalForest
+from sksurv.metrics import concordance_index_ipcw, concordance_index_censored, cumulative_dynamic_auc, integrated_brier_score
 
 '''
 Time to event experiments for:
@@ -85,7 +80,7 @@ def main():
     y = X.label
     region_indices = update_region_indices(X, data_instance)
 
-    directory_path, original_results_directory_path = get_dir_path(data_modality, experiment, metric, model, alzheimers_only)
+    directory_path, original_results_directory_path = get_dir_path(data_modality, experiment, metric, model, alzheimers_only, survival=True)
     
     # subset data by age if there is an age cutoff
     if age_cutoff is not None:
@@ -129,8 +124,8 @@ def main():
     y_train = np.array(list(X_train.loc[:, ['label', 'time2event']].itertuples(index=False, name=None)), dtype=dtype)
     y_test = np.array(list(X_test.loc[:, ['label', 'time2event']].itertuples(index=False, name=None)), dtype=dtype)
 
-    X_train = X_train.drop(columns=['eid', '53-0.0', 'first_dx', 'label', 'time2event'])
-    X_test = X_test.drop(columns=['eid', '53-0.0', 'first_dx', 'label', 'time2event'])
+    X_train = X_train.drop(columns=['label', 'time2event'])
+    X_test = X_test.drop(columns=['label', 'time2event'])
     
     random_state = 20
     rsf = RandomSurvivalForest(
@@ -140,20 +135,48 @@ def main():
     
     times = [x[1] for x in y_test]
     # lower, upper = min(times), max(times)
-    lower, upper = np.percentile(times, [10, 90])
+    lower, upper = np.percentile(times, [5, 95])
     times = np.arange(lower, upper)
-    
+
+    train_pred = rsf.predict(X_train)
+    test_pred = rsf.predict(X_test)
+
     train_prob = np.vstack([fn(times) for fn in rsf.predict_survival_function(X_train)])
     test_prob = np.vstack([fn(times) for fn in rsf.predict_survival_function(X_test)])
-    
+
     train_int_brier = integrated_brier_score(y_train, y_train, train_prob, times)        
     test_int_brier = integrated_brier_score(y_train, y_test, test_prob, times)
-    
-    train_ci_ipcw = concordance_index_ipcw(y_train, y_train, X_train, tau=times)
-    test_ci_ipcw = concordance_index_ipcw(y_train, y_test, X_test, tau=times)
 
+    train_auc = cumulative_dynamic_auc(y_train, y_train, train_pred, times)
+    test_auc = cumulative_dynamic_auc(y_train, y_test, test_pred, times)
 
+    train_ci_ipcw = concordance_index_ipcw(y_train, y_train, train_pred, tau=times[-1])
+    test_ci_ipcw = concordance_index_ipcw(y_train, y_test, test_pred, tau=times[-1])
 
+    train_ci_harrell = concordance_index_censored([x[0] for x in y_train], [x[1] for x in y_train], train_pred)
+    test_ci_harrell = concordance_index_censored([x[0] for x in y_test], [x[1] for x in y_test], test_pred)
+
+    print(f'Train integrated Brier score: {train_int_brier}')
+    print(f'Test integrated Brier score: {test_int_brier}')
+    print(f'Train C-index IPCW: {train_ci_ipcw}')
+    print(f'Test C-index IPCW: {test_ci_ipcw}')
+    print(f'Train C-index Harrell: {train_ci_harrell}')
+    print(f'Test C-index Harrell: {test_ci_harrell}')
+    print(f'Train AUC: {train_auc}')
+    print(f'Test AUC: {test_auc}')
+
+    save_labels_probas(directory_path, y_train, train_pred, y_test, test_pred,
+                       other_file_info=f'_region_{region_index}', survival=True,
+                       surv_model=rsf, train_surv_fn=train_prob, test_surv_fn=test_prob)
+
+    save_pickle(f'{directory_path}/train_int_brier_{region_index}.pkl', train_int_brier)
+    save_pickle(f'{directory_path}/test_int_brier_{region_index}.pkl', test_int_brier)
+    save_pickle(f'{directory_path}/train_ci_ipcw_{region_index}.pkl', train_ci_ipcw)
+    save_pickle(f'{directory_path}/test_ci_ipcw_{region_index}.pkl', test_ci_ipcw)
+    save_pickle(f'{directory_path}/train_ci_harrell_{region_index}.pkl', train_ci_harrell)
+    save_pickle(f'{directory_path}/test_ci_harrell_{region_index}.pkl', test_ci_harrell)
+    save_pickle(f'{directory_path}/train_auc_{region_index}.pkl', train_auc)
+    save_pickle(f'{directory_path}/test_auc_{region_index}.pkl', test_auc)
     
     
     # if model == 'lrl1':

@@ -145,12 +145,17 @@ def calc_results(y_true, y_probas, youden=True, beta=1, threshold=None, suppress
     # return res
 
 
-def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_probas, other_file_info=''):
+def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_probas, other_file_info='', survival=False, surv_model=None, train_surv_fn=None, test_surv_fn=None):
     save_pickle(f'{filepath}/train_true_labels{other_file_info}.pkl', train_labels)
     save_pickle(f'{filepath}/train_probas{other_file_info}.pkl', train_probas)
     save_pickle(f'{filepath}/test_true_labels{other_file_info}.pkl', test_labels)
     save_pickle(f'{filepath}/test_probas{other_file_info}.pkl', test_probas)
-
+    
+    if survival is True:
+        save_pickle(f'{filepath}/rsf_model.pkl', surv_model)
+        save_pickle(f'{filepath}/train_survival_fns.pkl', train_surv_fn)
+        save_pickle(f'{filepath}/test_survival_fns.pkl', test_surv_fn)
+        
 # def get_fold_number(fname):
 #     last_underscore = fname.rfind('_')
 #     last_period = fname.rfind('.')
