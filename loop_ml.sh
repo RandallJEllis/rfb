@@ -4,7 +4,7 @@ modality=$1
 predict_alzheimers_only=$2
 
 # Define the strings for experiment and metric
-experiments=("age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024")
+experiments=("fs_modality_only" "fs_demographics_and_modality" "fs_demographics_modality_lancet2024")
 
 # "age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024"
 # "modality_only" "demographics_and_modality" "demographics_modality_lancet2024"
@@ -13,7 +13,7 @@ experiments=("age_only" "age_sex_lancet2024" "all_demographics" "demographics_an
 # metrics=("roc_auc" "f3" "ap")
 metrics=("log_loss")
 # ("lrl1" "lgbm")
-models=("lgbm")
+models=("lrl1" "lgbm")
 age_cutoffs=(0 65)
 # age_cutoffs=(0 65)
 
@@ -52,11 +52,11 @@ for experiment in "${experiments[@]}"; do
                                 fi 
 
                             elif [[ $modality == 'neuroimaging' ]]; then
-                                mem="8G"
+                                mem="12G"
                                 partition="short"
 
                                 if [[ $age_cutoff -eq 0 ]]; then
-                                    mem="16G"                                
+                                    mem="20G"                                
                                     if [[ "$model" == "lgbm" ]]; then
                                         time="5:00:00"
                                     else

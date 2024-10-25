@@ -194,8 +194,6 @@ def load_datasets(data_modality, data_instance, alzheimers_only=False):
     if alzheimers_only:
         X, y = alzheimers_cases_only(X, y)
     
-    X = X.drop(columns=['eid'])
-    
     # set data instance, import region indices if not neuroimaging, and set modality_vars
     if data_modality == 'neuroimaging':
         return X, y, None
@@ -331,7 +329,7 @@ def _get_experiment_vars(data_instance, X, lancet_vars):
     
     return experiment_vars
 
-def subset_experiment_vars(data_modality, data_instance, experiment, X, lancet_vars):
+def subset_experiment_vars(data_modality, data_instance, experiment, X, lancet_vars, survival=False):
     """
     Subsets the feature matrix based on the experiment variables.
 
@@ -341,25 +339,29 @@ def subset_experiment_vars(data_modality, data_instance, experiment, X, lancet_v
         experiment (str): The chosen experiment type.
         X (pd.DataFrame): The feature matrix containing the data.
         lancet_vars (list): A list of variables related to the Lancet 2024 study.
+        survival (bool): Are you running survival analysis? Default is False.
         
     Returns:
         pd.DataFrame: The feature matrix with columns subset based on the experiment variables.
     """
     
     experiment_vars = _get_experiment_vars(data_instance, X, lancet_vars)
-    print('got experiment vars')
-    print(f"size of experiment_vars: {sys.getsizeof(experiment_vars)}")
     
+    if survival:
+        t2e_features = ['time2event', 'label']
+    else:
+        t2e_features = []
+        
     if experiment in experiment_vars:
         if isinstance(experiment_vars[experiment], dict):
             if data_modality in experiment_vars[experiment]:
-                X = X.loc[:, experiment_vars[experiment][data_modality]]
+                X = X.loc[:, experiment_vars[experiment][data_modality] + t2e_features]
             else:
                 # output an error saying data_modality is not in experiment_vars
                 print('Data modality not in experiment_vars')
                 sys.exit()
         else:
-            X = X.loc[:, experiment_vars[experiment]]
+            X = X.loc[:, experiment_vars[experiment] + t2e_features]
     else:
         # output an error saying experiment is not in experiment_vars
         print('Experiment not in experiment_vars')
@@ -690,8 +692,9 @@ def subset_train_test_data(X, y, data_modality, region_index, region_indices):
         # Subset the main array using the mask
         X_train = X.iloc[mask, :]
         y_train = y[mask]
+        
     print('Made train and test split')
-    return X_train, y_train, X_test, y_test, region
+    return X_train.reset_index(drop=True), y_train, X_test.reset_index(drop=True), y_test, region
 
 def scale_continuous_vars(X_train, X_test, continuous_cols):
     """
