@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 import os
 from utils import save_pickle
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
+import pyarrow as pa
 
 def concat_labels_and_probas(dirpath):
     true_labels = []
@@ -152,10 +153,23 @@ def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_p
     save_pickle(f'{filepath}/test_probas{other_file_info}.pkl', test_probas)
     
     if survival is True:
-        save_pickle(f'{filepath}/rsf_model.pkl', surv_model)
-        save_pickle(f'{filepath}/train_survival_fns.pkl', train_surv_fn)
-        save_pickle(f'{filepath}/test_survival_fns.pkl', test_surv_fn)
+        save_pickle(f'{filepath}/rsf_model{other_file_info}.pkl', surv_model)
         
+        train_surv_fn = pd.DataFrame(train_surv_fn)
+        test_surv_fn = pd.DataFrame(test_surv_fn)
+        
+        train_surv_fn.to_parquet(f"{filepath}/train_survival_fns{other_file_info}.parquet")
+        test_surv_fn.to_parquet(f"{filepath}/test_survival_fns{other_file_info}.parquet")
+        
+        # pa_table = pa.table({"train_survival_functions": train_surv_fn})
+        # pa.parquet.write_table(pa_table, f"{filepath}/train_survival_fns{other_file_info}.parquet")
+        
+        # pa_table = pa.table({"test_survival_functions": test_surv_fn})
+        # pa.parquet.write_table(pa_table, f"{filepath}/test_survival_fns{other_file_info}.parquet")
+        # np.save(f'{filepath}/train_survival_fns{other_file_info}.npy', train_surv_fn, allow_pickle=False)
+        # np.save(f'{filepath}/test_survival_fns{other_file_info}.npy', test_surv_fn, allow_pickle=False)
+        
+
 # def get_fold_number(fname):
 #     last_underscore = fname.rfind('_')
 #     last_period = fname.rfind('.')

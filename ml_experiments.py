@@ -231,7 +231,10 @@ def get_dir_path(data_modality, experiment, metric, model, alzheimers_only=False
         original_results_directory_path = f'{base_path}/{data_modality}/{main_experiment}/{metric}/{model}/' 
         
     else:
-        directory_path = f'{base_path}/{data_modality}/{experiment}/{metric}/{model}/' 
+        if survival:
+            directory_path = f'{base_path}/{data_modality}/{experiment}/{model}/' 
+        else:
+            directory_path = f'{base_path}/{data_modality}/{experiment}/{metric}/{model}/' 
         original_results_directory_path = None     
         
     return directory_path, original_results_directory_path
@@ -255,7 +258,7 @@ def setup_age_cutoff(directory_path, original_results_directory_path, X, y, age_
             
     over_age_idx = X[f'21003-{data_instance}.0'] >= age_cutoff
     X = X[over_age_idx].reset_index(drop=True)
-    y = y[over_age_idx]
+    y = y[over_age_idx].reset_index(drop=True)
     
     # update region_indices if not neuroimaging
     if data_modality != 'neuroimaging':
