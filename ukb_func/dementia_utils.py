@@ -122,3 +122,18 @@ def apoe_alleles(df, alleles, genotype=False):
 
     return df
 
+def merge_alleles(df, chr19, chr11, genotype=False):
+    
+    df = apoe_alleles(df, chr19, genotype=genotype)
+    
+    chr19 = df_utils.pull_columns_by_prefix(chr19, ['IID', 'rs'])
+    chr19 = chr19.drop(columns=['rs7412_T', 'rs429358_C'])
+    chr11 = df_utils.pull_columns_by_prefix(chr11, ['IID', 'rs'])
+    
+    df = df.merge(chr19, left_on='eid', right_on='IID', how='left')
+    df = df.merge(chr11, left_on='eid',
+                    right_on='IID', how='left')
+
+    return df
+
+

@@ -50,11 +50,15 @@ acd = pd.read_parquet(data_path + 'acd/allcausedementia.parquet')
 df = dementia_utils.remove_pre_instance_dementia(df, data_instance, acd)
 
 # APOEe4 alleles
-alleles = pd.read_csv(
-    f'{data_path}/apoe4_snps/plink_outputs/apoee4_snps.raw',
+chr19 = pd.read_csv(
+    f'{data_path}/apoe4_snps/plink_outputs/chr19_snps.raw',
     sep='\t'
     )
-df = dementia_utils.apoe_alleles(df, alleles)
+chr11 = pd.read_csv(
+    f'{data_path}/apoe4_snps/plink_outputs/chr11_snps.raw',
+    sep='\t'
+    )
+df = dementia_utils.merge_alleles(df, chr19, chr11)
 
 # latest education qualification
 df = ukb_utils.get_last_completed_education(df, instance=data_instance)
