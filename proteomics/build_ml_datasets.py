@@ -54,11 +54,11 @@ df = dementia_utils.remove_pre_instance_dementia(df, data_instance, acd)
 
 # APOEe4 alleles
 chr19 = pd.read_csv(
-    f'{data_path}/apoe4_snps/plink_outputs/chr19_snps.raw',
+    f'{data_path}/snps/plink_outputs/chr19_snps.raw',
     sep='\t'
     )
 chr11 = pd.read_csv(
-    f'{data_path}/apoe4_snps/plink_outputs/chr11_snps.raw',
+    f'{data_path}/snps/plink_outputs/chr11_snps.raw',
     sep='\t'
     )
 df = dementia_utils.merge_alleles(df, chr19, chr11)
