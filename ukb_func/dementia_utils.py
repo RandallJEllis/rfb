@@ -99,40 +99,53 @@ def apoe_alleles(df, alleles, genotype=False):
     alleles['apoe_polymorphism'] = np.nan
 
     if genotype == True:
-        alleles.loc[(alleles.rs429358_C == 0) &
-                    (alleles.rs7412_T == 0), 'apoe_polymorphism'] = 'e3/e3'
-        alleles.loc[(alleles.rs429358_C == 1) &
-                    (alleles.rs7412_T == 0), 'apoe_polymorphism'] = 'e3/e4'
-        alleles.loc[(alleles.rs429358_C == 0) &
-                    (alleles.rs7412_T == 1), 'apoe_polymorphism'] = 'e2/e3'
-        alleles.loc[(alleles.rs429358_C == 1) &
-                    (alleles.rs7412_T == 1), 'apoe_polymorphism'] = 'e2/e4'
-        alleles.loc[(alleles.rs429358_C == 2) &
-                    (alleles.rs7412_T == 0), 'apoe_polymorphism'] = 'e4/e4'
-        alleles.loc[(alleles.rs429358_C == 0) &
-                    (alleles.rs7412_T == 2), 'apoe_polymorphism'] = 'e2/e2'
+        alleles.loc[(alleles.rs429358_T == 0) &
+                    (alleles.rs7412_C == 0), 'apoe_polymorphism'] = 'e3/e3'
+        alleles.loc[(alleles.rs429358_T == 1) &
+                    (alleles.rs7412_C == 0), 'apoe_polymorphism'] = 'e3/e4'
+        alleles.loc[(alleles.rs429358_T == 0) &
+                    (alleles.rs7412_C == 1), 'apoe_polymorphism'] = 'e2/e3'
+        alleles.loc[(alleles.rs429358_T == 1) &
+                    (alleles.rs7412_C == 1), 'apoe_polymorphism'] = 'e2/e4'
+        alleles.loc[(alleles.rs429358_T == 2) &
+                    (alleles.rs7412_C == 0), 'apoe_polymorphism'] = 'e4/e4'
+        alleles.loc[(alleles.rs429358_T == 0) &
+                    (alleles.rs7412_C == 2), 'apoe_polymorphism'] = 'e2/e2'
 
     else:
-        alleles.loc[(alleles.rs429358_C == 0), 'apoe_polymorphism'] = 0
-        alleles.loc[(alleles.rs429358_C == 1), 'apoe_polymorphism'] = 1
-        alleles.loc[(alleles.rs429358_C == 2), 'apoe_polymorphism'] = 2
+        alleles.loc[(alleles.rs429358_T == 0), 'apoe_polymorphism'] = 0
+        alleles.loc[(alleles.rs429358_T == 1), 'apoe_polymorphism'] = 1
+        alleles.loc[(alleles.rs429358_T == 2), 'apoe_polymorphism'] = 2
 
     df = df.merge(alleles[['IID', 'apoe_polymorphism']], left_on='eid',
                     right_on='IID', how='left')
 
     return df
 
-def merge_alleles(df, chr19, chr11, genotype=False):
+# def merge_chr19_chr11_alleles(df, chr19, chr11, genotype=False):
     
-    df = apoe_alleles(df, chr19, genotype=genotype)
+#     df = apoe_alleles(df, chr19, genotype=genotype)
     
-    chr19 = df_utils.pull_columns_by_prefix(chr19, ['IID', 'rs'])
-    chr19 = chr19.drop(columns=['rs7412_T', 'rs429358_C'])
-    chr11 = df_utils.pull_columns_by_prefix(chr11, ['IID', 'rs'])
+#     chr19 = df_utils.pull_columns_by_prefix(chr19, ['IID', 'rs'])
+#     chr19 = chr19.drop(columns=['rs7412_T', 'rs429358_C'])
+#     chr11 = df_utils.pull_columns_by_prefix(chr11, ['IID', 'rs'])
     
-    df = df.merge(chr19, left_on='eid', right_on='IID', how='left')
-    df = df.merge(chr11, left_on='eid',
-                    right_on='IID', how='left')
+#     df = df.merge(chr19, left_on='eid', right_on='IID', how='left')
+#     df = df.merge(chr11, left_on='eid',
+#                     right_on='IID', how='left')
+
+#     return df
+
+def merge_alleles(df, alleles, genotype=False):
+    
+    apoe_allele_cols = df_utils.pull_columns_by_prefix(alleles, ['rs429358','rs7412']).columns.tolist()
+    apoe = df_utils.pull_columns_by_prefix(alleles, ['IID'] + apoe_allele_cols)
+    df = apoe_alleles(df, apoe, genotype=genotype)
+        
+    alleles = alleles.drop(columns = apoe_allele_cols)
+    alleles = df_utils.pull_columns_by_prefix(alleles, ['IID', 'rs'])
+    
+    df = df.merge(alleles, left_on='eid', right_on='IID', how='left')
 
     return df
 

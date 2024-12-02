@@ -21,8 +21,8 @@ parser = argparse.ArgumentParser(
 
 # Add arguments
 # parser.add_argument('njobs', type=str, help='Number of cores')
-parser.add_argument('--data_path', type=str)
-parser.add_argument('--output_path', type=str)
+parser.add_argument('--data_path', type=str, default="../../../proj_idp/tidy_data/")
+parser.add_argument('--output_path', type=str, default="../../tidy_data/dementia/proteomics/")
 
 # Parse the arguments
 args = parser.parse_args()
@@ -53,15 +53,15 @@ acd = pd.read_parquet(data_path + 'acd/allcausedementia.parquet')
 df = dementia_utils.remove_pre_instance_dementia(df, data_instance, acd)
 
 # APOEe4 alleles
-chr19 = pd.read_csv(
-    f'{data_path}/snps/plink_outputs/chr19.raw',
+snps = pd.read_csv(
+    f'{data_path}/snps/plink_outputs/snps_aging_dementia_AD.raw',
     sep='\t'
     )
-chr11 = pd.read_csv(
-    f'{data_path}/snps/plink_outputs/chr11.raw',
-    sep='\t'
-    )
-df = dementia_utils.merge_alleles(df, chr19, chr11)
+# chr11 = pd.read_csv(
+#     f'{data_path}/snps/plink_outputs/chr11.raw',
+#     sep='\t'
+#     )
+df = dementia_utils.merge_alleles(df, snps)
 
 # latest education qualification
 df = ukb_utils.get_last_completed_education(df, instance=data_instance)
@@ -81,6 +81,9 @@ catcols = [
         'apoe_polymorphism',
         'max_educ_complete'
         ]
+alleles = df_utils.pull_columns_by_prefix(df, 'rs').columns.tolist()
+catcols.extend(alleles)
+
 categ_enc = ml_utils.encode_categorical_vars(df, catcols)
 
 keep_lancet_vars_no2020_or_eid = ['4700-0.0', '5901-0.0', '30780-0.0', 'head_injury', '22038-0.0', '20161-0.0', 'alcohol_consumption', 'hypertension', 'obesity', 

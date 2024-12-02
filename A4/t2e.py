@@ -1,0 +1,725 @@
+import argparse
+import pandas as pd
+import matplotlib.pyplot as plt
+import numpy as np
+from sklearn.model_selection import train_test_split, StratifiedKFold
+from sklearn.ensemble import HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
+import sys
+sys.path.append('../ukb_func')
+from ml_utils import save_labels_probas, calc_results
+import plot_results
+import df_utils
+import ukb_utils
+from utils import save_pickle, check_folder_existence
+from flaml import AutoML
+import pickle
+from datetime import datetime
+
+from sklearn.metrics import RocCurveDisplay, roc_curve, auc, roc_auc_score, d2_absolute_error_score,\
+    d2_pinball_score, d2_tweedie_score, explained_variance_score, max_error,\
+        mean_absolute_error, mean_squared_error, mean_squared_log_error, median_absolute_error, r2_score,\
+            mean_absolute_percentage_error, mean_poisson_deviance, mean_gamma_deviance, mean_tweedie_deviance,\
+                mean_pinball_loss, root_mean_squared_error, root_mean_squared_log_error
+from sklearn.preprocessing import OneHotEncoder
+
+from sklearn.metrics import (
+    f1_score, 
+    matthews_corrcoef, 
+    confusion_matrix, 
+)
+from itertools import product
+import seaborn as sns
+
+from pyarrow.parquet import ParquetFile
+import pyarrow as pa 
+
+from sksurv.ensemble import RandomSurvivalForest
+from sksurv.metrics import concordance_index_ipcw, concordance_index_censored, cumulative_dynamic_auc, integrated_brier_score
+
+from sklearn import set_config
+from sklearn.model_selection import GridSearchCV, KFold
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import StandardScaler
+
+from sksurv.datasets import load_breast_cancer
+from sksurv.linear_model import CoxnetSurvivalAnalysis, CoxPHSurvivalAnalysis
+from sksurv.metrics import brier_score
+from lifelines import CoxTimeVaryingFitter
+
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+import ptitprince as pt
+
+from lifelines import CoxTimeVaryingFitter
+from sklearn.model_selection import StratifiedKFold
+from sklearn.metrics import (roc_curve, f1_score, matthews_corrcoef, 
+                           confusion_matrix, roc_auc_score)
+from lifelines.utils import concordance_index
+import numpy as np
+import pandas as pd
+from itertools import product
+from datetime import datetime
+
+# Set global font weight to bold
+mpl.rcParams['font.weight'] = 'bold'
+mpl.rcParams['axes.labelweight'] = 'bold'  # For axis labels
+mpl.rcParams['axes.titleweight'] = 'bold'  # For plot titles
+
+def parse_args():
+    predictors_l = ['demographics', 'ptau217', 'demographics_ptau217', 'demographics_ptau217_no_apoe', 
+              'demographics_no_apoe']
+    
+    parser = argparse.ArgumentParser(description='Run time-to-event analysis.')
+    parser.add_argument('--predictor', type=str,  choices=predictors_l,
+                        help='Predictor to use for analysis')
+    parser.add_argument('--fold', type=int, help='Fold number')
+
+    # retrieve predictors
+    predictors = parser.parse_args().predictor
+    if predictors not in predictors_l:
+        raise ValueError(f'Predictor {predictors} not recognized.')
+    fold = parser.parse_args().fold
+
+    return predictors, fold
+
+def vectorized_age_calculation(data):
+    # Fill NaN with 0 first
+    data['AGEYR'] = data['AGEYR'].fillna(0)
+    
+    # Create a mask for rows with the same BID as the previous row
+    same_bid_mask = data['BID'] == data['BID'].shift(1)
+    
+    # Calculate age increments for rows with the same BID
+    age_increments = np.where(same_bid_mask, 
+                               (data['COLLECTION_DATE_DAYS_T0'] - data['COLLECTION_DATE_DAYS_T0'].shift(1)) / 365.25, 
+                               0)
+    
+    # Cumulative sum of age increments
+    cumulative_age_increments = np.cumsum(age_increments)
+    
+    # Add cumulative increments to original AGEYR
+    data['AGEYR'] = data['AGEYR'] + cumulative_age_increments
+    
+    return data
+
+def preprocess_data():
+    data = pd.read_parquet('../../tidy_data/A4/ptau217_allvisits.parquet')
+
+    # incorrect value; correct value pulled from /raw_data/A4_oct302024/clinical/Derived Data/SV.csv
+    data.loc[(data['BID'] == 'B69890108') & (data.COLLECTION_DATE_DAYS_T0 == 84), 'COLLECTION_DATE_DAYS_T0'] = 2450
+
+    data = data.sort_values(by=['BID', 'VISCODE']).reset_index(drop=True)
+    data.drop(columns=['TESTCD', 'TEST', 'STAT', 'REASND', 'NAM', 'SPEC', 'METHOD', 'COMMENT', 'COMMENT2'], inplace=True)
+
+    stop = data.COLLECTION_DATE_DAYS_T0.shift(-1)
+    stop.iloc[-1] = data.final_visit.iloc[-1]
+    stop = np.where(data.BID != data.BID.shift(-1), data.final_visit, stop)
+
+    data['start'] = data.COLLECTION_DATE_DAYS_T0
+    data['stop'] = stop
+
+    print(data.shape)
+    # Drop rows where start is greater than stop (rare but possible in unusual datasets)
+    data = data[data['start'] <= data['stop']].reset_index(drop=True)
+    data['label'] = (data.stop >= data.time_to_event).astype(int)
+    print(data.shape)
+
+    # drop rows where start == stop. for patients with no events, this is all that's needed. for patients with events, if the previous time step does not have an event, change the label to 1
+    rows_drop = data[(data.start == data.stop) & (data.label == 0)].index
+    data.drop(rows_drop, inplace=True)
+    data = data.reset_index(drop=True)
+    print(data.shape)
+
+    rows = data[(data.start == data.stop)].index
+    for r in rows:
+        if data.label[r-1] != data.label[r]:
+            # overwrite value at previous index to 1
+            data.loc[r-1, 'label'] = 1
+    data = data[data.start < data.stop].reset_index(drop=True)
+    print(data.shape)
+
+
+    print(data.shape)
+    # Drop rows where start is greater than stop (rare but possible in unusual datasets)
+    data = data[data['start'] <= data['stop']].reset_index(drop=True)
+    data['label'] = (data.stop > data.time_to_event).astype(int)
+    print(data.shape)
+
+    # drop rows where start == stop. for patients with no events, this is all that's needed. for patients with events, if the previous time step does not have an event, change the label to 1
+    rows_drop = data[(data.start == data.stop) & (data.label == 0)].index
+    data.drop(rows_drop, inplace=True)
+    data = data.reset_index(drop=True)
+
+    rows = data[(data.start == data.stop)].index
+    for r in rows:
+        if data.label[r-1] != data.label[r]:
+            # overwrite value at previous index to 1
+            data.loc[r-1, 'label'] = 1
+    data = data[data.start < data.stop].reset_index(drop=True)
+
+    data = vectorized_age_calculation(data)
+    return data
+
+def get_X(df, predictor, model=None, time_vary=False, binary_outcome=False):
+    if model is None:
+        # raise an error
+        raise ValueError('Model is not specified.')
+    else:
+        if binary_outcome:
+            directory_path = f'../../../results/A4/CDR_functional_impairment/{predictor}/{model}/'
+        else:
+            directory_path = f'../../../results/A4/CDR_functional_impairment/time_to_event/{predictor}/{model}/'
+    check_folder_existence(directory_path)
+        
+    if predictor == 'ptau217':
+        X = df[['ORRESRAW', 'label', 'time_to_event']]
+    elif predictor == 'demographics':
+        X = df_utils.pull_columns_by_prefix(df, ['AGEYR', 'EDCCNTU', 'SEX',
+            'RACE', 'ETHNIC', 'APOEGN', 'label', 'time_to_event'])
+    elif predictor == 'demographics_no_apoe':
+        X = df_utils.pull_columns_by_prefix(df, ['AGEYR', 'EDCCNTU', 'SEX',
+            'RACE', 'ETHNIC', 'label', 'time_to_event'])
+    elif predictor == 'demographics_ptau217':
+        X = df_utils.pull_columns_by_prefix(df, ['ORRESRAW', 'AGEYR', 'EDCCNTU', 'SEX',
+            'RACE', 'ETHNIC', 'APOEGN', 'label', 'time_to_event'])
+    elif predictor == 'demographics_ptau217_no_apoe':
+        X = df_utils.pull_columns_by_prefix(df, ['ORRESRAW', 'AGEYR', 'EDCCNTU', 'SEX',
+            'RACE', 'ETHNIC', 'label', 'time_to_event'])
+    else:
+        raise ValueError(f'Predictor {predictor} not recognized.')
+    
+    if time_vary:
+        X = pd.concat([df[['BID', 'start', 'stop']], X], axis=1)
+
+    print(X.columns)
+    
+    return X, directory_path
+
+def preprocess_cats(X):
+    cat_cols_l = ['SEX', 'RACE', 'ETHNIC', 'APOEGN']
+    cat_cols = [col for col in X.columns if col in cat_cols_l]
+    
+    if len(cat_cols) > 0:
+        encoder = OneHotEncoder(sparse_output=False)
+        encoder.fit(X.loc[:, cat_cols])
+        X_cat = encoder.transform(X.loc[:, cat_cols])
+        X_cat = pd.DataFrame(
+            X_cat, 
+            columns=encoder.get_feature_names_out(cat_cols)
+        )
+        
+        X = X.drop(columns=cat_cols)
+        X = pd.concat([X, X_cat], axis=1)
+    
+    return X
+
+def preprocess_xtrain_xtest(X_train, X_test, time_vary=False, binary_outcome=False):
+    
+    if binary_outcome:
+        y_train = X_train['label']
+        y_test = X_test['label']
+    else:
+        # Convert the DataFrame to a NumPy structured array
+        dtype = [('label', 'bool'), ('stop', 'int16')]  # U10 for strings of length up to 10 characters
+        y_train = np.array(list(X_train.loc[:, ['label', 'stop']].itertuples(index=False, name=None)), dtype=dtype)
+        y_test = np.array(list(X_test.loc[:, ['label', 'stop']].itertuples(index=False, name=None)), dtype=dtype)
+
+    if time_vary == False:
+        X_train = X_train.drop(columns=['label', 'stop'])
+        X_test = X_test.drop(columns=['label', 'stop'])
+
+    if 'ORRESRAW' in X_train.columns:
+        # zscore age and education using StandardScaler
+        scaler = StandardScaler()
+        scaler.fit(X_train['ORRESRAW'].values.reshape(-1, 1))
+        X_train['ORRESRAW'] = scaler.transform(X_train['ORRESRAW'].values.reshape(-1, 1))
+        X_test['ORRESRAW'] = scaler.transform(X_test['ORRESRAW'].values.reshape(-1, 1))
+    
+    
+    if 'AGEYR' in X_train.columns:
+        
+        # zscore age and education using StandardScaler
+        scaler = StandardScaler()
+        scaler.fit(X_train['AGEYR'].values.reshape(-1, 1))
+        X_train['AGEYR'] = scaler.transform(X_train['AGEYR'].values.reshape(-1, 1))
+        X_test['AGEYR'] = scaler.transform(X_test['AGEYR'].values.reshape(-1, 1))
+        
+        # add quadratic and cubic age, and interactions with apoe for age, quadratic age, and cubic age
+        X_train['AGEYR2'] = X_train['AGEYR'] ** 2
+        X_train['AGEYR3'] = X_train['AGEYR'] ** 3
+        
+        X_test['AGEYR2'] = X_test['AGEYR'] ** 2
+        X_test['AGEYR3'] = X_test['AGEYR'] ** 3
+
+        if len(df_utils.pull_columns_by_prefix(X_train, ['APOEGN']).columns.to_list()) > 0:
+            # Create interaction variables
+            for col in df_utils.pull_columns_by_prefix(X_train, ['APOEGN']).columns.to_list():
+                for age_col in ['AGEYR', 'AGEYR2', 'AGEYR3']:
+                    X_train[f'interaction_{col}_{age_col}'] = X_train[col] * X_train[age_col]
+                    X_test[f'interaction_{col}_{age_col}'] = X_test[col] * X_test[age_col]
+        
+        # add interaction of age and education
+        if 'EDCCNTU' in X_train.columns:
+            scaler = StandardScaler()
+            scaler.fit(X_train['EDCCNTU'].values.reshape(-1, 1))
+            X_train['EDCCNTU'] = scaler.transform(X_train['EDCCNTU'].values.reshape(-1, 1))
+            X_test['EDCCNTU'] = scaler.transform(X_test['EDCCNTU'].values.reshape(-1, 1))
+        
+            X_train['interaction_AGEYR_EDCCNTU'] = X_train['AGEYR'] * X_train['EDCCNTU']
+            X_train['interaction_AGEYR2_EDCCNTU'] = X_train['AGEYR2'] * X_train['EDCCNTU']
+            X_train['interaction_AGEYR3_EDCCNTU'] = X_train['AGEYR3'] * X_train['EDCCNTU']
+            
+            X_test['interaction_AGEYR_EDCCNTU'] = X_test['AGEYR'] * X_test['EDCCNTU']
+            X_test['interaction_AGEYR2_EDCCNTU'] = X_test['AGEYR2'] * X_test['EDCCNTU']
+            X_test['interaction_AGEYR3_EDCCNTU'] = X_test['AGEYR3'] * X_test['EDCCNTU']
+            
+    return X_train, y_train, X_test, y_test
+
+def get_prediction_times(X, y):
+    skf = StratifiedKFold(n_splits=10)
+    starts = []
+    ends = []
+    all_times = []
+    for fold, (train_index, test_index) in enumerate(skf.split(X, y)):
+        X_train = X.loc[train_index].reset_index(drop=True)
+        X_test = X.loc[test_index].reset_index(drop=True)
+
+        X_train, y_train, X_test, y_test = preprocess_xtrain_xtest(X_train, X_test)
+
+        times = [x[1] for x in y_test]
+        starts.append(min(times))
+        ends.append(max(times))
+        all_times.extend(times)
+    time_range = sorted(list(set(all_times)))
+    time_range = [t for t in time_range if t >= max(starts) and t < min(ends)]
+    return time_range
+
+def save_metrics(directory_path, model, times, X_train, y_train, X_test, y_test, fold):
+    # times = [x[1] for x in y_test]
+        
+    # # lower, upper = min(times), max(times)
+    # lower, upper = np.percentile(times, [5, 95])
+    # times = np.arange(lower, upper)
+
+    train_pred = model.predict(X_train)
+    test_pred = model.predict(X_test)
+
+    train_prob = np.vstack([fn(times) for fn in model.predict_survival_function(X_train)])
+    test_prob = np.vstack([fn(times) for fn in model.predict_survival_function(X_test)])
+
+    train_brier = brier_score(y_train, y_train, train_prob, times)           
+    test_brier = brier_score(y_train, y_test, test_prob, times)
+
+    train_int_brier = integrated_brier_score(y_train, y_train, train_prob, times)           
+    test_int_brier = integrated_brier_score(y_train, y_test, test_prob, times)
+
+    train_auc = cumulative_dynamic_auc(y_train, y_train, train_pred, times)
+    test_auc = cumulative_dynamic_auc(y_train, y_test, test_pred, times)
+
+    train_ci_ipcw = concordance_index_ipcw(y_train, y_train, train_pred, tau=times[-1])
+    test_ci_ipcw = concordance_index_ipcw(y_train, y_test, test_pred, tau=times[-1])
+
+    train_ci_harrell = concordance_index_censored([x[0] for x in y_train], [x[1] for x in y_train], train_pred)
+    test_ci_harrell = concordance_index_censored([x[0] for x in y_test], [x[1] for x in y_test], test_pred)
+    
+    print('Saving results...')
+    save_labels_probas(directory_path, y_train, train_pred, y_test, test_pred,
+                        other_file_info=f'_fold_{fold}', survival=True,
+                        surv_model=model, train_surv_fn=train_prob, test_surv_fn=test_prob)
+    save_pickle(f'{directory_path}/times_{fold}.pkl', times)
+    save_pickle(f'{directory_path}/train_brier_{fold}.pkl', train_brier)
+    save_pickle(f'{directory_path}/test_brier_{fold}.pkl', test_brier)
+    save_pickle(f'{directory_path}/train_int_brier_{fold}.pkl', train_int_brier)
+    save_pickle(f'{directory_path}/test_int_brier_{fold}.pkl', test_int_brier)
+    save_pickle(f'{directory_path}/train_ci_ipcw_{fold}.pkl', train_ci_ipcw)
+    save_pickle(f'{directory_path}/test_ci_ipcw_{fold}.pkl', test_ci_ipcw)
+    save_pickle(f'{directory_path}/train_ci_harrell_{fold}.pkl', train_ci_harrell)
+    save_pickle(f'{directory_path}/test_ci_harrell_{fold}.pkl', test_ci_harrell)
+    save_pickle(f'{directory_path}/train_auc_{fold}.pkl', train_auc)
+    save_pickle(f'{directory_path}/test_auc_{fold}.pkl', test_auc)
+
+def calculate_survival_probability(ctv, X, time_point):
+    """
+    Calculate survival probability at a specific time point
+    
+    Parameters:
+    -----------
+    ctv : CoxTimeVaryingFitter
+        Fitted Cox model
+    X : DataFrame
+        Design matrix
+    time_point : float
+        Time point to calculate survival probability
+    
+    Returns:
+    --------
+    risk_scores : array
+        Risk scores (1 - survival probability) for each subject
+    """
+    # Calculate baseline cumulative hazard
+    baseline_cumulative_hazard = ctv.baseline_cumulative_hazard_
+    
+    # Get the partial hazards for the given design matrix
+    partial_hazards = ctv.predict_partial_hazard(X)
+    
+    # Find the cumulative hazard at the specified time point
+    cumulative_hazard_at_time = baseline_cumulative_hazard.loc[
+        baseline_cumulative_hazard.index <= time_point
+    ].max()
+    
+    # Calculate survival probabilities
+    survival_probs = np.exp(-cumulative_hazard_at_time.values * partial_hazards.values)
+    
+    # Return risk scores (1 - survival probability)
+    risk_scores = 1 - pd.Series(np.array(survival_probs).flatten(), index=X.index)
+    return risk_scores
+
+def calculate_time_dependent_metrics(X_train, X_test, y_train, y_test, ctv):
+    """Calculate time-dependent metrics for Cox model."""
+    # Get unique time points in the baseline_cumulative_hazard
+    baseline_time_points = ctv.baseline_cumulative_hazard_.index
+
+    # Filter time points to only include those where events occurred
+    all_time_points = np.unique(np.concatenate([
+        X_train[X_train['label'] == 1]['stop'].unique(), 
+        X_test[X_test['label'] == 1]['stop'].unique()
+    ]))
+    all_time_points = all_time_points[
+        (all_time_points >= baseline_time_points.min()) & 
+        (all_time_points <= baseline_time_points.max())
+    ]
+
+    # Initialize results
+    results_list = []
+    
+    for i, time_point in enumerate(all_time_points):
+        if i % 100 == 0:
+            print(f"Processing time point {i} of {len(all_time_points)}. Time: {datetime.now()}")
+
+        # Create time-specific labels
+        train_labels = (y_train['stop'] <= time_point) & (y_train['label'] == 1)
+        test_labels = (y_test['stop'] <= time_point) & (y_test['label'] == 1)
+
+        # Calculate risk scores
+        risk_scores_at_time = calculate_survival_probability(ctv, X_test, time_point)
+        train_risk_scores_at_time = calculate_survival_probability(ctv, X_train, time_point)
+        
+        # Threshold finding methods
+        def find_optimal_threshold_youdens_j(y_true, y_scores):
+            fpr, tpr, thresholds = roc_curve(y_true, y_scores)
+            j_statistic = tpr - fpr
+            optimal_idx = np.argmax(j_statistic)
+            return thresholds[optimal_idx]
+        
+        def find_optimal_threshold_f1(y_true, y_scores):
+            thresholds = np.linspace(0, 1, 100)
+            f1_scores = [f1_score(y_true, y_scores > threshold) for threshold in thresholds]
+            return thresholds[np.argmax(f1_scores)]
+        
+        def find_optimal_threshold_mcc(y_true, y_scores):
+            thresholds = np.linspace(0, 1, 100)
+            mcc_scores = [matthews_corrcoef(y_true, y_scores > threshold) for threshold in thresholds]
+            return thresholds[np.argmax(mcc_scores)]
+
+        threshold_methods = {
+            'Youden_J': find_optimal_threshold_youdens_j,
+            'Max_F1': find_optimal_threshold_f1,
+            'Max_MCC': find_optimal_threshold_mcc
+        }
+
+        for method_name, threshold_func in threshold_methods.items():
+            try:
+                optimal_threshold = threshold_func(train_labels, train_risk_scores_at_time)
+                binary_predictions = (risk_scores_at_time > optimal_threshold).astype(int)
+                
+                tn, fp, fn, tp = confusion_matrix(test_labels, binary_predictions).ravel()
+                
+                sensitivity = tp / (tp + fn) if (tp + fn) > 0 else 0
+                specificity = tn / (tn + fp) if (tn + fp) > 0 else 0
+                f1 = f1_score(test_labels, binary_predictions)
+                mcc = matthews_corrcoef(test_labels, binary_predictions)
+                balanced_accuracy = (sensitivity + specificity) / 2
+                ppv = tp / (tp + fp) if (tp + fp) > 0 else 0
+                npv = tn / (tn + fn) if (tn + fn) > 0 else 0
+                
+                auc = roc_auc_score(test_labels, risk_scores_at_time)
+                c_index = concordance_index(test_labels, risk_scores_at_time)
+                brier_score = np.mean((risk_scores_at_time - test_labels)**2)
+                
+                results_list.append({
+                    'time_point': time_point,
+                    'method': method_name,
+                    'threshold': optimal_threshold,
+                    'sensitivity': sensitivity,
+                    'specificity': specificity,
+                    'f1_score': f1,
+                    'mcc': mcc,
+                    'auc': auc,
+                    'c_index': c_index,
+                    'brier_score': brier_score,
+                    'balanced_accuracy': balanced_accuracy,
+                    'ppv': ppv,
+                    'npv': npv
+                })
+                
+            except Exception as e:
+                print(f"Error at time point {time_point}, method {method_name}: {str(e)}")
+                continue
+    
+    return pd.DataFrame(results_list)
+
+def inner_cross_validation(X_train_outer, y_train_outer, param_grid, n_inner_splits=5):
+    """Perform inner cross-validation for hyperparameter optimization."""
+    unique_train_bids = X_train_outer['BID'].unique()
+    y_train_outer_grouped = X_train_outer.groupby('BID')['label'].max().reset_index()
+    
+    results_list = []
+    
+    for penalizer, l1_ratio in product(param_grid['penalizer'], param_grid['l1_ratio']):
+        print(f"Testing penalizer={penalizer}, l1_ratio={l1_ratio}")
+        
+        inner_cv = StratifiedKFold(n_splits=n_inner_splits, shuffle=True, random_state=42)
+        for fold, (train_idx, val_idx) in enumerate(inner_cv.split(unique_train_bids, y_train_outer_grouped['label'])):
+            print(f"Processing inner fold {fold + 1} of {n_inner_splits}. Time: {datetime.now()}")
+            
+            train_bids = unique_train_bids[train_idx]
+            val_bids = unique_train_bids[val_idx]
+            
+            X_train_inner = X_train_outer[X_train_outer['BID'].isin(train_bids)].reset_index(drop=True)
+            X_val_inner = X_train_outer[X_train_outer['BID'].isin(val_bids)].reset_index(drop=True)
+            
+            X_train_inner, y_train_inner, X_val_inner, y_val_inner = preprocess_xtrain_xtest(
+                X_train_inner, X_val_inner, time_vary=True
+            )
+            
+            try:
+                ctv = CoxTimeVaryingFitter(penalizer=penalizer, l1_ratio=l1_ratio)
+                ctv.fit(X_train_inner, id_col="BID", start_col="start", 
+                       stop_col="stop", event_col="label")
+                
+                metrics_df = calculate_time_dependent_metrics(
+                    X_train_inner, X_val_inner, y_train_inner, y_val_inner, ctv
+                )
+                
+                # Add parameters and fold information
+                metrics_df['fold'] = fold
+                metrics_df['penalizer'] = penalizer
+                metrics_df['l1_ratio'] = l1_ratio
+                
+                results_list.append(metrics_df)
+                
+            except Exception as e:
+                print(f"Error in fold {fold}: {str(e)}")
+                continue
+    
+    # Combine all results
+    if not results_list:
+        raise ValueError("No valid results obtained from inner cross-validation")
+    
+    all_results = pd.concat(results_list, ignore_index=True)
+    
+    # Calculate average performance for each parameter combination
+    avg_results = (all_results.groupby(['penalizer', 'l1_ratio', 'method'])
+                             .agg({
+                                 'c_index': 'mean',
+                                 'auc': 'mean',
+                                 'brier_score': 'mean'
+                             })
+                             .reset_index())
+    
+    # Find best parameters (using c-index as primary metric)
+    best_params_idx = avg_results.groupby(['penalizer', 'l1_ratio'])['c_index'].mean().idxmax()
+    # best_params = pd.Series(best_params_idx, name='value').to_dict()
+    best_params = {
+        'penalizer': best_params_idx[0],
+        'l1_ratio': best_params_idx[1]
+    }
+    
+    return {
+        'best_params': best_params,
+        'detailed_results': all_results,
+        'averaged_results': avg_results
+    }
+
+def run_analysis(data, predictors, fold_num, param_grid):
+    """Run complete analysis with nested cross-validation."""
+    # full_results = []
+    
+    # for predictor in predictors:
+    print(f"\nAnalyzing predictor: {predictors}")
+    
+    X, directory_path = get_X(df=data, predictor=predictors, model='coxtimevary', time_vary=True)
+    X = preprocess_cats(X)
+    if 'APOEGN_None' in X.columns:
+        X = X.drop(columns=['APOEGN_None'])
+    
+    predictor_results = []
+    unique_bids = X['BID'].unique()
+    y = X.groupby('BID')['label'].max().reset_index()
+    
+    outer_cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=2345678)
+    
+    for fold, (train_bids_index, test_bids_index) in enumerate(outer_cv.split(unique_bids, y['label'])):
+        if fold != fold_num:
+            continue
+        print(f"Processing outer fold {fold + 1}/{10}")
+        
+        train_bids = unique_bids[train_bids_index]
+        test_bids = unique_bids[test_bids_index]
+        
+        X_train_outer = X[X['BID'].isin(train_bids)].reset_index(drop=True)
+        X_test = X[X['BID'].isin(test_bids)].reset_index(drop=True)
+        
+        # Inner cross-validation
+        cv_results = inner_cross_validation(X_train_outer, y, param_grid)
+        print(cv_results)
+        best_params = cv_results['best_params']
+        print(best_params)
+
+        # Train final model with best parameters
+        X_train_outer, y_train, X_test, y_test = preprocess_xtrain_xtest(
+            X_train_outer, X_test, time_vary=True
+        )
+        
+        ctv = CoxTimeVaryingFitter(
+            penalizer=best_params['penalizer'],
+            l1_ratio=best_params['l1_ratio']
+        )
+        ctv.fit(X_train_outer, id_col="BID", start_col="start", 
+                stop_col="stop", event_col="label")
+        
+        # Calculate test metrics
+        test_metrics = calculate_time_dependent_metrics(
+            X_train_outer, X_test, y_train, y_test, ctv
+        )
+        
+        # Add fold information
+        test_metrics['outer_fold'] = fold
+        test_metrics['predictor'] = predictors
+        test_metrics['best_penalizer'] = best_params['penalizer']
+        test_metrics['best_l1_ratio'] = best_params['l1_ratio']
+        
+        predictor_results.append(test_metrics)
+    
+    # Combine results for this predictor
+    predictor_df = pd.concat(predictor_results, ignore_index=True)
+    
+    # Calculate summary statistics
+    summary_stats = (predictor_df.groupby(['predictor', 'method'])
+                                .agg({
+                                    'c_index': ['mean', 'std'],
+                                    'auc': ['mean', 'std'],
+                                    'brier_score': ['mean', 'std']
+                                })
+                                .reset_index())
+    
+    full_results = {
+        'predictor': predictors,
+        'detailed_results': predictor_df,
+        'summary_stats': summary_stats
+    }
+    
+    # save full_results
+    predictor_df.to_parquet(f'{directory_path}/detailed_results_fold_{fold_num}.parquet', index=False)
+    summary_stats.to_parquet(f'{directory_path}/summary_stats_fold_{fold_num}.parquet', index=False)
+
+   
+
+
+# Example usage
+param_grid = {
+    'penalizer': [0.001, 0.01, 0.1, 1.0],
+    'l1_ratio': [0.0, 0.25, 0.5, 0.75, 1.0]
+}
+
+predictors, fold = parse_args()
+data = preprocess_data()
+run_analysis(data, predictors, fold, param_grid)
+
+# predictors = ['demographics', 'ptau217', 'demographics_ptau217', 'demographics_ptau217_no_apoe', 
+#               'demographics_no_apoe']
+
+# for predictor in predictors:
+# results = run_analysis(data, predictors, param_grid)
+
+# Save results
+# for result in results:
+#     predictor = result['predictor']
+#     result['detailed_results'].to_parquet(f'{predictor}_detailed_results.csv', index=False)
+#     result['summary_stats'].to_parquet(f'{predictor}_summary_stats.csv', index=False)
+
+
+
+
+# Main execution loop with nested cross-validation
+# full_tdm_l = []
+
+# for predictor in ['demographics', 'ptau217', 'demographics_ptau217', 'demographics_ptau217_no_apoe', 
+#                  'demographics_no_apoe']:
+    
+#     X, directory_path = get_X(df=data, predictor=predictor, model='coxtimevary', time_vary=True)
+#     X = preprocess_cats(X)
+#     if 'APOEGN_None' in X.columns:
+#         X = X.drop(columns=['APOEGN_None'])
+    
+#     # Parameter grid
+#     param_grid = {
+#         'penalizer': [0.001, 0.01, 0.1, 1.0],
+#         'l1_ratio': [0.0, 0.25, 0.5, 0.75, 1.0]
+#     }
+    
+#     # Outer cross-validation loop
+#     tdm_l = []
+#     unique_bids = X['BID'].unique()
+#     y = X.groupby('BID')['label'].max().reset_index()
+    
+#     outer_cv = StratifiedKFold(n_splits=10, shuffle=True, random_state=765849)
+    
+#     for fold, (train_bids_index, test_bids_index) in enumerate(outer_cv.split(unique_bids, y['label'])):
+#         train_bids = unique_bids[train_bids_index]
+#         test_bids = unique_bids[test_bids_index]
+        
+#         # Split outer training/test data
+#         X_train_outer = X[X['BID'].isin(train_bids)].reset_index(drop=True)
+#         X_test = X[X['BID'].isin(test_bids)].reset_index(drop=True)
+        
+#         # Find best parameters using inner cross-validation on training data only
+#         best_params = inner_cross_validation(X_train_outer, param_grid)
+        
+#         # Train final model with best parameters on full training set
+#         X_train_outer, y_train, X_test, y_test = preprocess_xtrain_xtest(
+#             X_train_outer, X_test, time_vary=True
+#         )
+#         X_train_outer = X_train_outer.drop(columns=['time_to_event'])
+#         X_test = X_test.drop(columns=['time_to_event'])
+        
+#         ctv = CoxTimeVaryingFitter(
+#             penalizer=best_params['penalizer'],
+#             l1_ratio=best_params['l1_ratio']
+#         )
+#         ctv.fit(X_train_outer, id_col="BID", start_col="start", 
+#                stop_col="stop", event_col="label")
+        
+#         # Calculate metrics on test set
+#         time_dependent_metrics = calculate_time_dependent_metrics(
+#             X_train_outer, X_test, y_train, y_test, ctv
+#         )
+#         time_dependent_metrics['best_params'] = best_params
+#         tdm_l.append(time_dependent_metrics)
+        
+#         print(f"\nFold {fold + 1} Results for {predictor}:")
+#         print(f"Best parameters: {best_params}")
+#         print(f"Test C-index: {time_dependent_metrics['c_index']:.3f}")
+    
+#     full_tdm_l.append(tdm_l)
+    
+#     # Print average results across all folds
+#     avg_c_index = np.mean([m['c_index'] for m in tdm_l])
+#     avg_brier = np.mean([m['brier_score'] for m in tdm_l])
+#     avg_auc = np.mean([m['auc'] for m in tdm_l])
+    
+#     print(f"\nOverall Results for {predictor}:")
+#     print(f"Average C-index: {avg_c_index:.3f}")
+#     print(f"Average Brier score: {avg_brier:.3f}")
+#     print(f"Average AUC: {avg_auc:.3f}")

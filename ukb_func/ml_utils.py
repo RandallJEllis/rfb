@@ -153,14 +153,24 @@ def save_labels_probas(filepath, train_labels, train_probas, test_labels, test_p
     save_pickle(f'{filepath}/test_probas{other_file_info}.pkl', test_probas)
     
     if survival is True:
-        save_pickle(f'{filepath}/rsf_model{other_file_info}.pkl', surv_model)
+        save_pickle(f'{filepath}/surv_model{other_file_info}.pkl', surv_model)
         
         train_surv_fn = pd.DataFrame(train_surv_fn)
         test_surv_fn = pd.DataFrame(test_surv_fn)
         
-        train_surv_fn.to_parquet(f"{filepath}/train_survival_fns{other_file_info}.parquet")
-        test_surv_fn.to_parquet(f"{filepath}/test_survival_fns{other_file_info}.parquet")
+        print('Saving training survival functions')
+        start_time = datetime.now()
+        train_surv_fn.to_parquet(f"{filepath}/train_survival_fns{other_file_info}.parquet", engine='pyarrow')
+        end_time = datetime.now()
+        print(f'pyarrow, Time to save: {end_time - start_time}')
         
+        print('Saving test survival functions')
+        start_time = datetime.now()
+        test_surv_fn.to_parquet(f"{filepath}/test_survival_fns{other_file_info}.parquet", engine='pyarrow')
+        end_time = datetime.now()
+        print(f'pyarrow, Time to save: {end_time - start_time}')
+
+
         # pa_table = pa.table({"train_survival_functions": train_surv_fn})
         # pa.parquet.write_table(pa_table, f"{filepath}/train_survival_fns{other_file_info}.parquet")
         

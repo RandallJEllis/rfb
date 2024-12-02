@@ -16,7 +16,7 @@ import sys
 sys.path.append('./ukb_func')
 from ml_utils import concat_labels_and_probas, probas_to_results
 import seaborn as sns
-import ptitprince as pt
+# import ptitprince as pt
 
 # Set font properties
 plt.rcParams.update({

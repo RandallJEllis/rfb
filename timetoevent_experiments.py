@@ -18,7 +18,6 @@ from flaml.automl.data import get_output_from_log
 from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
 from datetime import datetime
-import pickle
 
 from pyarrow.parquet import ParquetFile
 import pyarrow as pa 
