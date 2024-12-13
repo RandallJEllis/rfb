@@ -6,15 +6,14 @@ experiments=('demographics' 'ptau217' 'demographics_ptau217' 'demographics_ptau2
 
 # Nested loops to iterate over the strings
 for predictor in "${experiments[@]}"; do
-    for fold_index in {0..9}; do
+    for fold in {0..0}; do
         
-        job_name="${predictor}_${fold_index}"
+        job_name="${predictor}_${fold}"
         output_dir="${predictor}/"
         error_dir="${predictor}/"
 
         echo "Running script on modality $predictor,\
-        Experiment: $predictor,\
-        Predict Alzheimer's only: $predict_alzheimers_only"
+        Experiment: $predictor"
 
         sbatch --job-name="$job_name"_%J \
                 --output="$output_dir"job_%J_$job_name.out \
