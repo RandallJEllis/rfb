@@ -83,100 +83,6 @@ def parse_args():
 
     return predictors, fold
 
-def vectorized_age_calculation(data):
-    """
-    Calculate age updates for each patient based on collection date differences.
-    Resets cumulative sum for each new patient ID.
-    
-    Parameters:
-    data (pandas.DataFrame): DataFrame containing columns 'BID', 'AGEYR', 'COLLECTION_DATE_DAYS_T0'
-    
-    Returns:
-    pandas.DataFrame: DataFrame with updated AGEYR column
-    """
-    # Make a copy to avoid modifying the original
-    result = data.copy()
-    
-    # Create a mask for rows with the same BID as the previous row
-    same_bid_mask = result['BID'] == result['BID'].shift(1)
-    
-    # Calculate age increments for rows with the same BID
-    age_increments = np.where(same_bid_mask, 
-                             (result['COLLECTION_DATE_DAYS_T0'] - result['COLLECTION_DATE_DAYS_T0'].shift(1)) / 365.25, 
-                             0)
-    
-    # Create groups based on BID
-    bid_groups = (result['BID'] != result['BID'].shift(1)).cumsum()
-    
-    # Convert numpy array to pandas Series for groupby operation
-    age_increments_series = pd.Series(age_increments, index=result.index)
-    
-    # Calculate cumulative sum within each BID group
-    cumulative_age_increments = age_increments_series.groupby(bid_groups).cumsum()
-    
-    # Add cumulative increments to original AGEYR
-    result['AGEYR'] = result['AGEYR'] + cumulative_age_increments
-    
-    return result
-
-def preprocess_data():
-    data = pd.read_parquet('../../tidy_data/A4/ptau217_allvisits.parquet')
-
-    # incorrect value; correct value pulled from /raw_data/A4_oct302024/clinical/Derived Data/SV.csv
-    data.loc[(data['BID'] == 'B69890108') & (data.COLLECTION_DATE_DAYS_T0 == 84), 'COLLECTION_DATE_DAYS_T0'] = 2450
-
-    data = data.sort_values(by=['BID', 'VISCODE']).reset_index(drop=True)
-    data.drop(columns=['TESTCD', 'TEST', 'STAT', 'REASND', 'NAM', 'SPEC', 'METHOD', 'COMMENT', 'COMMENT2'], inplace=True)
-
-    stop = data.COLLECTION_DATE_DAYS_T0.shift(-1)
-    stop.iloc[-1] = data.final_visit.iloc[-1]
-    stop = np.where(data.BID != data.BID.shift(-1), data.final_visit, stop)
-
-    data['start'] = data.COLLECTION_DATE_DAYS_T0
-    data['stop'] = stop
-
-    print(data.shape)
-    # Drop rows where start is greater than stop (rare but possible in unusual datasets)
-    data = data[data['start'] <= data['stop']].reset_index(drop=True)
-    data['label'] = (data.stop >= data.time_to_event).astype(int)
-    print(data.shape)
-
-    # drop rows where start == stop. for patients with no events, this is all that's needed. for patients with events, if the previous time step does not have an event, change the label to 1
-    rows_drop = data[(data.start == data.stop) & (data.label == 0)].index
-    data.drop(rows_drop, inplace=True)
-    data = data.reset_index(drop=True)
-    print(data.shape)
-
-    rows = data[(data.start == data.stop)].index
-    for r in rows:
-        if data.label[r-1] != data.label[r]:
-            # overwrite value at previous index to 1
-            data.loc[r-1, 'label'] = 1
-    data = data[data.start < data.stop].reset_index(drop=True)
-    print(data.shape)
-
-
-    print(data.shape)
-    # Drop rows where start is greater than stop (rare but possible in unusual datasets)
-    data = data[data['start'] <= data['stop']].reset_index(drop=True)
-    data['label'] = (data.stop > data.time_to_event).astype(int)
-    print(data.shape)
-
-    # drop rows where start == stop. for patients with no events, this is all that's needed. for patients with events, if the previous time step does not have an event, change the label to 1
-    rows_drop = data[(data.start == data.stop) & (data.label == 0)].index
-    data.drop(rows_drop, inplace=True)
-    data = data.reset_index(drop=True)
-
-    rows = data[(data.start == data.stop)].index
-    for r in rows:
-        if data.label[r-1] != data.label[r]:
-            # overwrite value at previous index to 1
-            data.loc[r-1, 'label'] = 1
-    data = data[data.start < data.stop].reset_index(drop=True)
-
-    data = vectorized_age_calculation(data)
-    return data
-
 def get_X(df, predictor, model=None, time_vary=False, binary_outcome=False):
     if model is None:
         # raise an error
@@ -819,7 +725,7 @@ def main():
     }
 
     predictors, fold = parse_args()
-    data = preprocess_data()
+    data = pd.read_parquet('../../tidy_data/A4/ptau217_allvisits.parquet')
     run_analysis(data, predictors, fold, param_grid)
 
 if __name__ == '__main__':
