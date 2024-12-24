@@ -11,7 +11,7 @@ def vectorized_age_calculation(data):
     Resets cumulative sum for each new patient ID.
     
     Parameters:
-    data (pandas.DataFrame): DataFrame containing columns 'BID', 'AGEYR', 'COLLECTION_DATE_DAYS_T0'
+    data (pandas.DataFrame): DataFrame containing columns 'BID', 'AGEYR', 'COLLECTION_DATE_DAYS_CONSENT'
     
     Returns:
     pandas.DataFrame: DataFrame with updated AGEYR column
@@ -24,7 +24,7 @@ def vectorized_age_calculation(data):
     
     # Calculate age increments for rows with the same BID
     age_increments = np.where(same_bid_mask, 
-                             (result['COLLECTION_DATE_DAYS_T0'] - result['COLLECTION_DATE_DAYS_T0'].shift(1)) / 365.25, 
+                             (result['COLLECTION_DATE_DAYS_CONSENT'] - result['COLLECTION_DATE_DAYS_CONSENT'].shift(1)) / 365.25, 
                              0)
     
     # Create groups based on BID
@@ -71,15 +71,15 @@ def merge_cdr(df, cdr, sv):
     controls = df[df['time_to_event'].isna()]
     controls['label'] = 0
 
-    sv_controls = sv[(sv['BID'].isin(controls.BID)) & (sv.SVUSEDTC_DAYS_T0.notna())]
-    control_t2e = sv_controls.groupby('BID').SVUSEDTC_DAYS_T0.max().reset_index(name='time_to_event').sort_values(by='time_to_event')
+    sv_controls = sv[(sv['BID'].isin(controls.BID)) & (sv.SVUSEDTC_DAYS_CONSENT.notna())]
+    control_t2e = sv_controls.groupby('BID').SVUSEDTC_DAYS_CONSENT.max().reset_index(name='time_to_event').sort_values(by='time_to_event')
     controls = controls.drop(columns=['time_to_event']).merge(control_t2e, on='BID', how='left')
     controls = controls[controls.time_to_event.notna()]
 
     df = pd.concat([cases, controls], axis=0).reset_index(drop=True)
 
-    final_visit = sv[(sv['BID'].isin(df.BID)) & (sv.SVUSEDTC_DAYS_T0.notna())]
-    final_visit = final_visit.groupby('BID').SVUSEDTC_DAYS_T0.max().reset_index(name='final_visit').sort_values(by='final_visit')
+    final_visit = sv[(sv['BID'].isin(df.BID)) & (sv.SVUSEDTC_DAYS_CONSENT.notna())]
+    final_visit = final_visit.groupby('BID').SVUSEDTC_DAYS_CONSENT.max().reset_index(name='final_visit').sort_values(by='final_visit')
     df = df.merge(final_visit[['BID', 'final_visit']], on='BID', how='left')
 
     # print out descriptive stats
@@ -89,9 +89,9 @@ def merge_cdr(df, cdr, sv):
     cases_with_ptau217 = np.intersect1d(result[result.time_to_event.notna()].BID.unique(), df.BID.unique())
     print(f'{len(cases_with_ptau217)}/{len(cases)} patients have both CDR data and pTau217 data')
 
-    for c in df.columns:
-        if df[c].nunique() < 10:
-            print(c, df[c].unique())
+    # for c in df.columns:
+    #     if df[c].nunique() < 10:
+    #         print(c, df[c].unique())
             
     # use either the latest ptau217 or the visit6 ptau217; visit6 or latest_ptau217
     df_ptau217 = df
@@ -101,8 +101,10 @@ def merge_cdr(df, cdr, sv):
     df_ptau217 = df_ptau217.merge(demo.loc[:, ['BID', 'AGEYR', 'SEX', 'RACE', 'EDCCNTU', 'ETHNIC', 'APOEGN', 'TX']], on='BID', how='left')
     return df_ptau217
 
-def main():
+def get_ptau():
     ptau217 = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/External Data/biomarker_pTau217.csv')
+    ptau217.drop(columns=['TESTCD', 'TEST', 'STAT', 'REASND', 'NAM', 'SPEC', 'METHOD', 'COMMENT', 'COMMENT2'], inplace=True)
+    
     ptau217 = ptau217.sort_values(by=['BID', 'VISCODE'])
     print(ptau217.shape)
 
@@ -111,9 +113,13 @@ def main():
     print(ptau217.shape)
 
     min_ptau = ptau217[ ~ ptau217['ORRES'].isin(['<LLOQ', '>ULOQ'])]['ORRESRAW'].min()
-    ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRESRAW'] = min_ptau ** 2
-    ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRES'] = min_ptau ** 2
-    ptau217 = ptau217[ ~ ptau217['ORRES'].isin(['<LLOQ', '>ULOQ'])].reset_index(drop=True)    
+    if min_ptau < 1:
+        ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRESRAW'] = min_ptau ** 2
+        ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRES'] = min_ptau ** 2
+    else:
+        ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRESRAW'] = np.sqrt(min_ptau)
+        ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRES'] = np.sqrt(min_ptau)
+    ptau217 = ptau217[ ~ ptau217['ORRES'].isin(['<LLOQ', '>ULOQ'])].reset_index(drop=True)
     print(ptau217.shape)
     ptau217['ORRES'] = ptau217['ORRES'].astype(float)
 
@@ -125,7 +131,7 @@ def main():
     sv = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SV.csv')
     sv.rename(columns={'VISITCD': 'VISCODE'}, inplace=True)
 
-    cdr = cdr.merge(sv[['BID', 'VISCODE', 'SVUSEDTC_DAYS_T0']], on=['BID', 'VISCODE'])
+    cdr = cdr.merge(sv[['BID', 'VISCODE', 'SVUSEDTC_DAYS_CONSENT']], on=['BID', 'VISCODE'])
 
     cdr_pts = cdr.BID.unique()
     print(f'{len(cdr_pts)} patients have CDR data')
@@ -136,60 +142,53 @@ def main():
 
 
     # incorrect value; correct value pulled from /raw_data/A4_oct302024/clinical/Derived Data/SV.csv
+    data.loc[(data['BID'] == 'B69890108') & (data.COLLECTION_DATE_DAYS_T0 == 84), 'COLLECTION_DATE_DAYS_CONSENT'] = 2591
     data.loc[(data['BID'] == 'B69890108') & (data.COLLECTION_DATE_DAYS_T0 == 84), 'COLLECTION_DATE_DAYS_T0'] = 2450
 
     data = data.sort_values(by=['BID', 'VISCODE']).reset_index(drop=True)
-    data.drop(columns=['TESTCD', 'TEST', 'STAT', 'REASND', 'NAM', 'SPEC', 'METHOD', 'COMMENT', 'COMMENT2'], inplace=True)
+    
 
-    stop = data.COLLECTION_DATE_DAYS_T0.shift(-1)
+    stop = data.COLLECTION_DATE_DAYS_CONSENT.shift(-1)
     stop.iloc[-1] = data.final_visit.iloc[-1]
     stop = np.where(data.BID != data.BID.shift(-1), data.final_visit, stop)
 
-    data['start'] = data.COLLECTION_DATE_DAYS_T0
+    data['start'] = data.COLLECTION_DATE_DAYS_CONSENT
     data['stop'] = stop
-
-    print(data.shape)
-    # Drop rows where start is greater than stop (rare but possible in unusual datasets)
-    data = data[data['start'] <= data['stop']].reset_index(drop=True)
-    data['label'] = (data.stop >= data.time_to_event).astype(int)
     print(data.shape)
 
-    # drop rows where start == stop. for patients with no events, this is all that's needed. for patients with events, if the previous time step does not have an event, change the label to 1
-    rows_drop = data[(data.start == data.stop) & (data.label == 0)].index
-    data.drop(rows_drop, inplace=True)
-    data = data.reset_index(drop=True)
+    print('Dropping rows where start > stop')
+
+    # In rows where start is greater than stop, overwrite stop
+    data['stop'] = np.where(data['start'] > data['stop'], data['start'], data['stop'])
+    # data = data[data['start'] <= data['stop']].reset_index(drop=True)
+    # data['label'] = (data.stop > data.time_to_event).astype(int)
     print(data.shape)
+
+    # print('Dropping rows where start == stop')
+    # # drop rows where start == stop. for patients with no events, this is all that's needed. for patients with events, if the previous time step does not have an event, change the label to 1
+    # rows_drop = data[(data.start == data.stop) & (data.label == 0)].index
+    # data.drop(rows_drop, inplace=True)
+    # data = data.reset_index(drop=True)
+    # print(data.shape)
 
     rows = data[(data.start == data.stop)].index
     for r in rows:
         if data.label[r-1] != data.label[r]:
             # overwrite value at previous index to 1
             data.loc[r-1, 'label'] = 1
-    data = data[data.start < data.stop].reset_index(drop=True)
+    data = data[data.start <= data.stop].reset_index(drop=True)
     print(data.shape)
-
-
-    print(data.shape)
-    # Drop rows where start is greater than stop (rare but possible in unusual datasets)
-    data = data[data['start'] <= data['stop']].reset_index(drop=True)
-    data['label'] = (data.stop > data.time_to_event).astype(int)
-    print(data.shape)
-
-    # drop rows where start == stop. for patients with no events, this is all that's needed. for patients with events, if the previous time step does not have an event, change the label to 1
-    rows_drop = data[(data.start == data.stop) & (data.label == 0)].index
-    data.drop(rows_drop, inplace=True)
-    data = data.reset_index(drop=True)
-
-    rows = data[(data.start == data.stop)].index
-    for r in rows:
-        if data.label[r-1] != data.label[r]:
-            # overwrite value at previous index to 1
-            data.loc[r-1, 'label'] = 1
-    data = data[data.start < data.stop].reset_index(drop=True)
 
     data = vectorized_age_calculation(data)
+    return data
 
+
+def main():
+    
+    data = get_ptau()
     data.to_parquet('../../tidy_data/A4/ptau217_allvisits.parquet')
+
+
 
 if __name__ == '__main__':
     main()
