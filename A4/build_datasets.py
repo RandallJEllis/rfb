@@ -56,7 +56,16 @@ def time_to_consecutive_CDR(sub_df):
     else:
         return None  # Return None if no consecutive values >= 0.5 are found
 
+def merge_demo(df):
+    demo = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SUBJINFO.csv')
+    demo = demo[demo.BID.isin(df.BID.unique())]
+    df = df.merge(demo.loc[:, ['BID', 'AGEYR', 'SEX', 'RACE', 'EDCCNTU', 'ETHNIC', 'APOEGN', 'TX']], on='BID', how='left')
+    return df
+
 def merge_cdr(df, cdr, sv):
+
+    cdr = cdr.sort_values(by=['BID', 'VISCODE'])
+    sv = sv.sort_values(by=['BID', 'VISCODE'])
 
     # identify patients with CDR >= 0.5 for two consecutive visits
     result = cdr.groupby('BID').apply(time_to_consecutive_CDR)
@@ -92,16 +101,61 @@ def merge_cdr(df, cdr, sv):
     # for c in df.columns:
     #     if df[c].nunique() < 10:
     #         print(c, df[c].unique())
-            
-    # use either the latest ptau217 or the visit6 ptau217; visit6 or latest_ptau217
-    df_ptau217 = df
 
-    demo = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SUBJINFO.csv')
-    demo = demo[demo.BID.isin(df_ptau217.BID.unique())]
-    df_ptau217 = df_ptau217.merge(demo.loc[:, ['BID', 'AGEYR', 'SEX', 'RACE', 'EDCCNTU', 'ETHNIC', 'APOEGN', 'TX']], on='BID', how='left')
-    return df_ptau217
+    return df
+
+def fix_time_dependent_labels(df, id_col='BID', time_col='COLLECTION_DATE_DAYS_CONSENT', 
+                            time_to_event_col='time_to_event', label_col='label'):
+    """
+    Fix labels in a time-to-event dataset with customizable column names.
+    
+    Parameters:
+    -----------
+    df : pandas.DataFrame
+        DataFrame containing time-to-event data
+    id_col : str
+        Name of the ID column
+    time_col : str
+        Name of the time column
+    time_to_event_col : str
+        Name of the column containing time to event
+    label_col : str
+        Name of the label column
+    
+    Returns:
+    --------
+    pandas.DataFrame
+        DataFrame with corrected labels
+    """
+    df_fixed = df.copy()
+    
+    for subject_id in df_fixed[id_col].unique():
+        mask = df_fixed[id_col] == subject_id
+        time_to_event = df_fixed.loc[mask, time_to_event_col].iloc[0]
+        df_fixed.loc[mask, label_col] = (
+            df_fixed.loc[mask, time_col] >= time_to_event
+        ).astype(int)
+    
+    return df_fixed
 
 def get_ptau():
+    """
+    Processes pTau217 biomarker data and merges it with Clinical Dementia Rating (CDR) data.
+    Steps:
+    1. Reads and cleans pTau217 biomarker data.
+    2. Removes invalid values and handles '<LLOQ' and '>ULOQ' cases.
+    3. Converts 'ORRES' column to float.
+    4. Reads and processes CDR data.
+    5. Merges pTau217 and CDR data.
+    6. Corrects specific data values based on external source.
+    7. Calculates start and stop times for each patient.
+    8. Drops rows where start is greater than stop.
+    9. Adjusts labels for rows where start equals stop.
+    10. Calculates age-related vectors.
+    Returns:
+        pd.DataFrame: Processed dataset with merged pTau217 and CDR data.
+    """
+
     ptau217 = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/External Data/biomarker_pTau217.csv')
     ptau217.drop(columns=['TESTCD', 'TEST', 'STAT', 'REASND', 'NAM', 'SPEC', 'METHOD', 'COMMENT', 'COMMENT2'], inplace=True)
     
@@ -123,10 +177,14 @@ def get_ptau():
     print(ptau217.shape)
     ptau217['ORRES'] = ptau217['ORRES'].astype(float)
 
+    # print the number of patients with ptau217 data
+    ptau217_pts = ptau217.BID.unique()
+    print(f'{len(ptau217_pts)} patients have pTau217 data')
+
     # cases are defined by having a Clinical Dementia Rating (CDR) of 0.5 or higher for two consecutive visits
     # this definition is used to define "functional impairment" in this paper: https://link.springer.com/content/pdf/10.14283/jpad.2024.122.pdf
     cdr = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Raw Data/cdr.csv')
-    cdf = cdr.sort_values(by=['BID', 'VISCODE'])
+    cdr = cdr.sort_values(by=['BID', 'VISCODE'])
 
     sv = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SV.csv')
     sv.rename(columns={'VISITCD': 'VISCODE'}, inplace=True)
@@ -136,10 +194,13 @@ def get_ptau():
     cdr_pts = cdr.BID.unique()
     print(f'{len(cdr_pts)} patients have CDR data')
 
+    # print the number of patinets with both ptau217 and CDR data
+    cdr_ptau217 = np.intersect1d(ptau217_pts, cdr_pts)
+    print(f'{len(cdr_ptau217)} patients have both pTau217 and CDR data')
 
     # instead of ptau217, could use last_ptau217 or visit6
     data = merge_cdr(ptau217, cdr, sv)
-
+    data = merge_demo(data)
 
     # incorrect value; correct value pulled from /raw_data/A4_oct302024/clinical/Derived Data/SV.csv
     data.loc[(data['BID'] == 'B69890108') & (data.COLLECTION_DATE_DAYS_T0 == 84), 'COLLECTION_DATE_DAYS_CONSENT'] = 2591
@@ -147,7 +208,7 @@ def get_ptau():
 
     data = data.sort_values(by=['BID', 'VISCODE']).reset_index(drop=True)
     
-
+    # calculate start and stop times for each patient
     stop = data.COLLECTION_DATE_DAYS_CONSENT.shift(-1)
     stop.iloc[-1] = data.final_visit.iloc[-1]
     stop = np.where(data.BID != data.BID.shift(-1), data.final_visit, stop)
@@ -171,6 +232,7 @@ def get_ptau():
     # data = data.reset_index(drop=True)
     # print(data.shape)
 
+    # adjust labels for rows where start == stop
     rows = data[(data.start == data.stop)].index
     for r in rows:
         if data.label[r-1] != data.label[r]:
@@ -180,8 +242,11 @@ def get_ptau():
     print(data.shape)
 
     data = vectorized_age_calculation(data)
-    return data
 
+    # Assuming your DataFrame is called 'data'
+    data = fix_time_dependent_labels(data)
+
+    return data
 
 def main():
     
