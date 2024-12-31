@@ -52,7 +52,7 @@ def time_to_consecutive_CDR(sub_df):
         # Get the index of the first occurrence
         index_of_second = consecutive_highs.idxmax()  # idxmax gives the first True index
         # Return the corresponding date value
-        return sub_df.loc[index_of_second, 'CDADTC_DAYS_T0']
+        return sub_df.loc[index_of_second, 'CDADTC_DAYS_CONSENT']
     else:
         return None  # Return None if no consecutive values >= 0.5 are found
 
@@ -76,6 +76,7 @@ def merge_cdr(df, cdr, sv):
 
     # for patients who do not reach criteria for functional impairment (CDR of 0.5+ for two consecutive visits), we will get the number of days after baseline that the patient was last seen
     cases = df[df['time_to_event'].notna()]
+    cases_bid = cases.BID.unique()
     cases['label'] = 1
     controls = df[df['time_to_event'].isna()]
     controls['label'] = 0
@@ -102,12 +103,14 @@ def merge_cdr(df, cdr, sv):
     #     if df[c].nunique() < 10:
     #         print(c, df[c].unique())
 
-    return df
+    return df, cases_bid
 
-def fix_time_dependent_labels(df, id_col='BID', time_col='COLLECTION_DATE_DAYS_CONSENT', 
-                            time_to_event_col='time_to_event', label_col='label'):
+def fix_time_dependent_labels(df, cases_bid, id_col='BID', time_col='COLLECTION_DATE_DAYS_CONSENT', 
+                        time_to_event_col='time_to_event', label_col='label'):
     """
-    Fix labels in a time-to-event dataset with customizable column names.
+    Prepare time-to-event data for survival analysis by:
+    1. Correctly setting labels based on event times
+    2. Keeping only observations up to and including the first occurrence of case status
     
     Parameters:
     -----------
@@ -125,18 +128,44 @@ def fix_time_dependent_labels(df, id_col='BID', time_col='COLLECTION_DATE_DAYS_C
     Returns:
     --------
     pandas.DataFrame
-        DataFrame with corrected labels
+        DataFrame with corrected labels and trimmed to first case occurrence
     """
+    # First, correctly set all labels based on event times
     df_fixed = df.copy()
     
-    for subject_id in df_fixed[id_col].unique():
-        mask = df_fixed[id_col] == subject_id
-        time_to_event = df_fixed.loc[mask, time_to_event_col].iloc[0]
-        df_fixed.loc[mask, label_col] = (
-            df_fixed.loc[mask, time_col] >= time_to_event
-        ).astype(int)
+    processed_data = []
+
+    # processed_data.append(df_fixed[~df_fixed[id_col].isin(cases_bid)])
     
-    return df_fixed
+    for subject_id in df_fixed[id_col].unique():
+        # Get all rows for this subject
+        subject_data = df_fixed[df_fixed[id_col] == subject_id].copy()
+        
+        # Sort by time to ensure we process observations chronologically
+        subject_data = subject_data.sort_values(time_col)
+        
+        # Get the time to event for this subject
+        time_to_event = subject_data[time_to_event_col].iloc[0]
+        
+        # Set correct labels based on time comparison
+        subject_data[label_col] = (subject_data[time_col] >= time_to_event).astype(int)
+        
+        # Find the first occurrence of label = 1 
+        first_case_idx = subject_data[subject_data[label_col] == 1].index.min()
+        
+        if pd.isna(first_case_idx):
+            # If no case status found, keep all observations
+            processed_data.append(subject_data)
+        else:
+            # Keep all observations up to and including the first case
+            processed_data.append(
+                subject_data.loc[:first_case_idx]
+            )
+    
+    # Combine all processed subject data
+    final_data = pd.concat(processed_data, axis=0)
+    
+    return final_data
 
 def get_ptau():
     """
@@ -148,12 +177,12 @@ def get_ptau():
     4. Reads and processes CDR data.
     5. Merges pTau217 and CDR data.
     6. Corrects specific data values based on external source.
-    7. Calculates start and stop times for each patient.
-    8. Drops rows where start is greater than stop.
-    9. Adjusts labels for rows where start equals stop.
-    10. Calculates age-related vectors.
+    7. Merges demographic data.
+    8. Calculates age-related vectors.
+    9. Adjusts labels for time-dependent data.
     Returns:
         pd.DataFrame: Processed dataset with merged pTau217 and CDR data.
+        np.ndarray: Array of BID values for cases.
     """
 
     ptau217 = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/External Data/biomarker_pTau217.csv')
@@ -184,6 +213,13 @@ def get_ptau():
     # cases are defined by having a Clinical Dementia Rating (CDR) of 0.5 or higher for two consecutive visits
     # this definition is used to define "functional impairment" in this paper: https://link.springer.com/content/pdf/10.14283/jpad.2024.122.pdf
     cdr = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Raw Data/cdr.csv')
+    cdr_pts = cdr.BID.unique()
+    print(f'{len(cdr_pts)} patients have CDR data')
+
+    # print the number of patients with both ptau217 and CDR data
+    cdr_ptau217 = np.intersect1d(ptau217_pts, cdr_pts)
+    print(f'{len(cdr_ptau217)} patients have both pTau217 and CDR data')
+
     cdr = cdr.sort_values(by=['BID', 'VISCODE'])
 
     sv = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SV.csv')
@@ -191,15 +227,9 @@ def get_ptau():
 
     cdr = cdr.merge(sv[['BID', 'VISCODE', 'SVUSEDTC_DAYS_CONSENT']], on=['BID', 'VISCODE'])
 
-    cdr_pts = cdr.BID.unique()
-    print(f'{len(cdr_pts)} patients have CDR data')
-
-    # print the number of patinets with both ptau217 and CDR data
-    cdr_ptau217 = np.intersect1d(ptau217_pts, cdr_pts)
-    print(f'{len(cdr_ptau217)} patients have both pTau217 and CDR data')
-
-    # instead of ptau217, could use last_ptau217 or visit6
-    data = merge_cdr(ptau217, cdr, sv)
+    
+    # add case label and demographics to ptau217 data
+    data, cases_bid = merge_cdr(ptau217, cdr, sv)
     data = merge_demo(data)
 
     # incorrect value; correct value pulled from /raw_data/A4_oct302024/clinical/Derived Data/SV.csv
@@ -208,22 +238,22 @@ def get_ptau():
 
     data = data.sort_values(by=['BID', 'VISCODE']).reset_index(drop=True)
     
-    # calculate start and stop times for each patient
-    stop = data.COLLECTION_DATE_DAYS_CONSENT.shift(-1)
-    stop.iloc[-1] = data.final_visit.iloc[-1]
-    stop = np.where(data.BID != data.BID.shift(-1), data.final_visit, stop)
+    # # calculate start and stop times for each patient
+    # stop = data.COLLECTION_DATE_DAYS_CONSENT.shift(-1)
+    # stop.iloc[-1] = data.final_visit.iloc[-1]
+    # stop = np.where(data.BID != data.BID.shift(-1), data.final_visit, stop)
 
-    data['start'] = data.COLLECTION_DATE_DAYS_CONSENT
-    data['stop'] = stop
-    print(data.shape)
+    # data['start'] = data.COLLECTION_DATE_DAYS_CONSENT
+    # data['stop'] = stop
+    # print(data.shape)
 
-    print('Dropping rows where start > stop')
+    # print('Dropping rows where start > stop')
 
-    # In rows where start is greater than stop, overwrite stop
-    data['stop'] = np.where(data['start'] > data['stop'], data['start'], data['stop'])
-    # data = data[data['start'] <= data['stop']].reset_index(drop=True)
-    # data['label'] = (data.stop > data.time_to_event).astype(int)
-    print(data.shape)
+    # # In rows where start is greater than stop, overwrite stop
+    # data['stop'] = np.where(data['start'] > data['stop'], data['start'], data['stop'])
+    # # data = data[data['start'] <= data['stop']].reset_index(drop=True)
+    # # data['label'] = (data.stop > data.time_to_event).astype(int)
+    # print(data.shape)
 
     # print('Dropping rows where start == stop')
     # # drop rows where start == stop. for patients with no events, this is all that's needed. for patients with events, if the previous time step does not have an event, change the label to 1
@@ -233,24 +263,24 @@ def get_ptau():
     # print(data.shape)
 
     # adjust labels for rows where start == stop
-    rows = data[(data.start == data.stop)].index
-    for r in rows:
-        if data.label[r-1] != data.label[r]:
-            # overwrite value at previous index to 1
-            data.loc[r-1, 'label'] = 1
-    data = data[data.start <= data.stop].reset_index(drop=True)
-    print(data.shape)
+    # rows = data[(data.start == data.stop)].index
+    # for r in rows:
+    #     if data.label[r-1] != data.label[r]:
+    #         # overwrite value at previous index to 1
+    #         data.loc[r-1, 'label'] = 1
+    # data = data[data.start <= data.stop].reset_index(drop=True)
+    # print(data.shape)
 
     data = vectorized_age_calculation(data)
 
     # Assuming your DataFrame is called 'data'
-    data = fix_time_dependent_labels(data)
+    data = fix_time_dependent_labels(data, cases_bid)
 
-    return data
+    return data, cases_bid
 
 def main():
     
-    data = get_ptau()
+    data, cases_bid = get_ptau()
     data.to_parquet('../../tidy_data/A4/ptau217_allvisits.parquet')
 
 
