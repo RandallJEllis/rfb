@@ -105,7 +105,7 @@ def merge_cdr(df, cdr, sv):
 
     return df, cases_bid
 
-def fix_time_dependent_labels(df, cases_bid, id_col='BID', time_col='COLLECTION_DATE_DAYS_CONSENT', 
+def fix_time_dependent_labels(df, cases_bid, id_col='BID', time_col='stop', 
                         time_to_event_col='time_to_event', label_col='label'):
     """
     Prepare time-to-event data for survival analysis by:
@@ -135,14 +135,15 @@ def fix_time_dependent_labels(df, cases_bid, id_col='BID', time_col='COLLECTION_
     
     processed_data = []
 
-    # processed_data.append(df_fixed[~df_fixed[id_col].isin(cases_bid)])
+    # add controls
+    processed_data.append(df_fixed[~df_fixed[id_col].isin(cases_bid)])
     
-    for subject_id in df_fixed[id_col].unique():
+    for subject_id in cases_bid:
         # Get all rows for this subject
         subject_data = df_fixed[df_fixed[id_col] == subject_id].copy()
         
         # Sort by time to ensure we process observations chronologically
-        subject_data = subject_data.sort_values(time_col)
+        subject_data = subject_data.sort_values('start')
         
         # Get the time to event for this subject
         time_to_event = subject_data[time_to_event_col].iloc[0]
@@ -161,11 +162,20 @@ def fix_time_dependent_labels(df, cases_bid, id_col='BID', time_col='COLLECTION_
             processed_data.append(
                 subject_data.loc[:first_case_idx]
             )
+            # if sum(subject_data[label_col]) > 1:
+            #     print(subject_id)
     
     # Combine all processed subject data
-    final_data = pd.concat(processed_data, axis=0)
+    final_data = pd.concat(processed_data, axis=0).reset_index(drop=True)
     
     return final_data
+
+def merge_e2_carriers(df):
+    # overwrite "E2/E3" and "E2/E2" values in the APOEGN column as "E2_carrier"
+    df.APOEGN = df.APOEGN.replace("E2/E3", "E2_carrier")
+    df.APOEGN = df.APOEGN.replace("E2/E2", "E2_carrier")
+    return df
+
 
 def get_ptau():
     """
@@ -195,13 +205,13 @@ def get_ptau():
     ptau217 = ptau217[ptau217['ORRES'].notna()]
     print(ptau217.shape)
 
-    min_ptau = ptau217[ ~ ptau217['ORRES'].isin(['<LLOQ', '>ULOQ'])]['ORRESRAW'].min()
-    if min_ptau < 1:
-        ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRESRAW'] = min_ptau ** 2
-        ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRES'] = min_ptau ** 2
-    else:
-        ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRESRAW'] = np.sqrt(min_ptau)
-        ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRES'] = np.sqrt(min_ptau)
+    # min_ptau = ptau217[ ~ ptau217['ORRES'].isin(['<LLOQ', '>ULOQ'])]['ORRESRAW'].min()
+    # if min_ptau < 1:
+    #     ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRESRAW'] = min_ptau ** 2
+    #     ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRES'] = min_ptau ** 2
+    # else:
+    #     ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRESRAW'] = np.sqrt(min_ptau)
+    #     ptau217.loc[ptau217['ORRES'] == '<LLOQ', 'ORRES'] = np.sqrt(min_ptau)
     ptau217 = ptau217[ ~ ptau217['ORRES'].isin(['<LLOQ', '>ULOQ'])].reset_index(drop=True)
     print(ptau217.shape)
     ptau217['ORRES'] = ptau217['ORRES'].astype(float)
@@ -227,16 +237,34 @@ def get_ptau():
 
     cdr = cdr.merge(sv[['BID', 'VISCODE', 'SVUSEDTC_DAYS_CONSENT']], on=['BID', 'VISCODE'])
 
-    
+    print(ptau217.shape)
     # add case label and demographics to ptau217 data
     data, cases_bid = merge_cdr(ptau217, cdr, sv)
+    print(data.shape)
     data = merge_demo(data)
+    print(data.shape)
 
     # incorrect value; correct value pulled from /raw_data/A4_oct302024/clinical/Derived Data/SV.csv
     data.loc[(data['BID'] == 'B69890108') & (data.COLLECTION_DATE_DAYS_T0 == 84), 'COLLECTION_DATE_DAYS_CONSENT'] = 2591
     data.loc[(data['BID'] == 'B69890108') & (data.COLLECTION_DATE_DAYS_T0 == 84), 'COLLECTION_DATE_DAYS_T0'] = 2450
 
     data = data.sort_values(by=['BID', 'VISCODE']).reset_index(drop=True)
+
+    # For BIDs not in cases_bid list, if COLLECTION_DATE_DAYS_CONSENT is greater than time_to_event, set time_to_event to COLLECTION_DATE_DAYS_CONSENT
+    # this is a weird time lag issue that we need to address where the last pTau time point is coded as later than the patient's last visit
+    data['time_to_event'] = np.where((~data['BID'].isin(cases_bid)) & (data['COLLECTION_DATE_DAYS_CONSENT'] > data['time_to_event']), data['COLLECTION_DATE_DAYS_CONSENT'], data['time_to_event'])
+
+    return data, cases_bid
+
+    # # normalize time 
+    # # data['time_to_event'] = data['time_to_event'] / 365.25
+    # # data['COLLECTION_DATE_DAYS_CONSENT'] = data['COLLECTION_DATE_DAYS_CONSENT'] / 365.25
+    # # data['final_visit'] = data['final_visit'] / 365.25
+
+    # # In rows where COLLECTION_DATE_DAYS_CONSENT equals time_to_event, subtract 1 day from COLLECTION_DATE_DAYS_CONSENT
+    # data['COLLECTION_DATE_DAYS_CONSENT'] = np.where(data['COLLECTION_DATE_DAYS_CONSENT'] == data['time_to_event'],
+    #                                                 data['COLLECTION_DATE_DAYS_CONSENT'] - (1/365.25),
+    #                                                 data['COLLECTION_DATE_DAYS_CONSENT'])
     
     # # calculate start and stop times for each patient
     # stop = data.COLLECTION_DATE_DAYS_CONSENT.shift(-1)
@@ -244,39 +272,49 @@ def get_ptau():
     # stop = np.where(data.BID != data.BID.shift(-1), data.final_visit, stop)
 
     # data['start'] = data.COLLECTION_DATE_DAYS_CONSENT
-    # data['stop'] = stop
+    # data['stop'] = stop 
     # print(data.shape)
 
     # print('Dropping rows where start > stop')
 
-    # # In rows where start is greater than stop, overwrite stop
-    # data['stop'] = np.where(data['start'] > data['stop'], data['start'], data['stop'])
+    # # For controls, if start > stop, set stop to time_to_event
+    # data['stop'] = np.where((data['start'] > data['stop']) & (data['label'] == 0), data['time_to_event'], data['stop'])
+    
+    # # # In rows where start is greater than stop, overwrite stop
+    # # data['stop'] = np.where(data['start'] > data['stop'], data['start'], data['stop'])
+    # # data['start'] = np.where(data['start'] == data['stop'], data['start'] - (1/365.25), data['start'])
     # # data = data[data['start'] <= data['stop']].reset_index(drop=True)
-    # # data['label'] = (data.stop > data.time_to_event).astype(int)
+    # # print(data.shape)
+
+    # data = vectorized_age_calculation(data)
     # print(data.shape)
 
-    # print('Dropping rows where start == stop')
-    # # drop rows where start == stop. for patients with no events, this is all that's needed. for patients with events, if the previous time step does not have an event, change the label to 1
-    # rows_drop = data[(data.start == data.stop) & (data.label == 0)].index
-    # data.drop(rows_drop, inplace=True)
-    # data = data.reset_index(drop=True)
+    # # set binary event indicators properly for time-dependent data
+    # data = fix_time_dependent_labels(data, cases_bid)
     # print(data.shape)
 
-    # adjust labels for rows where start == stop
-    # rows = data[(data.start == data.stop)].index
-    # for r in rows:
-    #     if data.label[r-1] != data.label[r]:
-    #         # overwrite value at previous index to 1
-    #         data.loc[r-1, 'label'] = 1
-    # data = data[data.start <= data.stop].reset_index(drop=True)
-    # print(data.shape)
+    # # merge E2 carriers
+    # data = merge_e2_carriers(data)
 
-    data = vectorized_age_calculation(data)
+    # # one BID with a NaN for stop; replace with final_visit
+    # data.loc[data.stop.isna(), 'stop'] = data.final_visit[data.stop.isna()]
 
-    # Assuming your DataFrame is called 'data'
-    data = fix_time_dependent_labels(data, cases_bid)
+    # # drop TX and COLLECTION_DATE_DAYS_T0 columns as they are not informative
+    # data = data.drop(columns=['TX', 'COLLECTION_DATE_DAYS_T0'])
 
-    return data, cases_bid
+    # # drop rows with any missing values
+    # data = data.dropna().reset_index(drop=True)
+
+    # # one BID with stop < start
+    # data.loc[data.BID == 'B94220847', 'stop'] = data.loc[data.BID == 'B94220847', 'time_to_event']
+
+    # # one BID with stop == start
+    # data = data[data.BID != 'B95580364'].reset_index(drop=True)
+
+    # # transform labels into booleans
+    # data['label'] = data['label'].astype(bool)
+
+    # return data, cases_bid
 
 def main():
     

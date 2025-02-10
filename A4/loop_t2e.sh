@@ -1,7 +1,8 @@
 #!/bin/bash
 
 # Define the strings for experiment and metric
-experiments=('demographics' 'ptau217' 'demographics_ptau217' 'demographics_ptau217_no_apoe' 'demographics_no_apoe') 
+experiments=('demographics')
+# 'ptau217' 'demographics_ptau217' 'demographics_ptau217_no_apoe' 'demographics_no_apoe') 
 
 
 # Nested loops to iterate over the strings

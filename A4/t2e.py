@@ -61,6 +61,8 @@ import pandas as pd
 from itertools import product
 from datetime import datetime
 
+from scipy import stats
+
 # Set global font weight to bold
 mpl.rcParams['font.weight'] = 'bold'
 mpl.rcParams['axes.labelweight'] = 'bold'  # For axis labels
@@ -98,16 +100,16 @@ def get_X(df, predictor, model=None, time_vary=False, binary_outcome=False):
         X = df[['ORRESRAW', 'label']]#, 'time_to_event']]
     elif predictor == 'demographics':
         X = df_utils.pull_columns_by_prefix(df, ['AGEYR', 'EDCCNTU', 'SEX',
-            'RACE', 'ETHNIC', 'APOEGN', 'label'])#, 'time_to_event'])
+            'APOEGN', 'label']) # 'RACE', 'ETHNIC', , 'time_to_event'])
     elif predictor == 'demographics_no_apoe':
         X = df_utils.pull_columns_by_prefix(df, ['AGEYR', 'EDCCNTU', 'SEX',
-            'RACE', 'ETHNIC', 'label'])#, 'time_to_event'])
+             'label'])#, 'time_to_event']) 'RACE', 'ETHNIC',
     elif predictor == 'demographics_ptau217':
         X = df_utils.pull_columns_by_prefix(df, ['ORRESRAW', 'AGEYR', 'EDCCNTU', 'SEX',
-            'RACE', 'ETHNIC', 'APOEGN', 'label'])#, 'time_to_event'])
+             'APOEGN', 'label'])#, 'time_to_event']) 'RACE', 'ETHNIC',
     elif predictor == 'demographics_ptau217_no_apoe':
         X = df_utils.pull_columns_by_prefix(df, ['ORRESRAW', 'AGEYR', 'EDCCNTU', 'SEX',
-            'RACE', 'ETHNIC', 'label'])#, 'time_to_event'])
+             'label'])#, 'time_to_event']) 'RACE', 'ETHNIC',
     else:
         raise ValueError(f'Predictor {predictor} not recognized.')
     
@@ -119,7 +121,7 @@ def get_X(df, predictor, model=None, time_vary=False, binary_outcome=False):
     return X, directory_path
 
 def preprocess_cats(X):
-    cat_cols_l = ['SEX', 'RACE', 'ETHNIC', 'APOEGN']
+    cat_cols_l = ['SEX', 'APOEGN'] # 'RACE', 'ETHNIC', 
     cat_cols = [col for col in X.columns if col in cat_cols_l]
     
     if len(cat_cols) > 0:
@@ -152,13 +154,19 @@ def preprocess_xtrain_xtest(X_train, X_test, time_vary=False, binary_outcome=Fal
         X_test = X_test.drop(columns=['label', 'stop'])
 
     if 'ORRESRAW' in X_train.columns:
-        # zscore age and education using StandardScaler
-        scaler = StandardScaler()
-        scaler.fit(X_train['ORRESRAW'].values.reshape(-1, 1))
-        X_train['ORRESRAW'] = scaler.transform(X_train['ORRESRAW'].values.reshape(-1, 1))
-        X_test['ORRESRAW'] = scaler.transform(X_test['ORRESRAW'].values.reshape(-1, 1))
-    
-    
+        # # zscore age and education using StandardScaler
+        # scaler = StandardScaler()
+        # scaler.fit(X_train['ORRESRAW'].values.reshape(-1, 1))
+        # X_train['ORRESRAW'] = scaler.transform(X_train['ORRESRAW'].values.reshape(-1, 1))
+        # X_test['ORRESRAW'] = scaler.transform(X_test['ORRESRAW'].values.reshape(-1, 1))
+        # boxcox transform ORRES
+        X_train['ORRES_boxcox'], lambda_val = stats.boxcox(X_train.ORRES)
+        X_test['ORRES_boxcox'] = stats.boxcox(X_test.ORRES, lmbda = lambda_val)
+
+        # drop ORRESRAW 
+        X_train = X_train.drop(columns=['ORRESRAW'])
+        X_test = X_test.drop(columns=['ORRESRAW'])
+        
     if 'AGEYR' in X_train.columns:
         
         # zscore age and education using StandardScaler
@@ -198,24 +206,24 @@ def preprocess_xtrain_xtest(X_train, X_test, time_vary=False, binary_outcome=Fal
             
     return X_train, y_train, X_test, y_test
 
-def get_prediction_times(X, y):
-    skf = StratifiedKFold(n_splits=10)
-    starts = []
-    ends = []
-    all_times = []
-    for fold, (train_index, test_index) in enumerate(skf.split(X, y)):
-        X_train = X.loc[train_index].reset_index(drop=True)
-        X_test = X.loc[test_index].reset_index(drop=True)
+# def get_prediction_times(X, y):
+#     skf = StratifiedKFold(n_splits=10)
+#     starts = []
+#     ends = []
+#     all_times = []
+#     for fold, (train_index, test_index) in enumerate(skf.split(X, y)):
+#         X_train = X.loc[train_index].reset_index(drop=True)
+#         X_test = X.loc[test_index].reset_index(drop=True)
 
-        X_train, y_train, X_test, y_test = preprocess_xtrain_xtest(X_train, X_test)
+#         X_train, y_train, X_test, y_test = preprocess_xtrain_xtest(X_train, X_test)
 
-        times = [x[1] for x in y_test]
-        starts.append(min(times))
-        ends.append(max(times))
-        all_times.extend(times)
-    time_range = sorted(list(set(all_times)))
-    time_range = [t for t in time_range if t >= max(starts) and t < min(ends)]
-    return time_range
+#         times = [x[1] for x in y_test]
+#         starts.append(min(times))
+#         ends.append(max(times))
+#         all_times.extend(times)
+#     time_range = sorted(list(set(all_times)))
+#     time_range = [t for t in time_range if t >= max(starts) and t < min(ends)]
+#     return time_range
 
 def save_metrics(directory_path, model, times, X_train, y_train, X_test, y_test, fold):
     # times = [x[1] for x in y_test]
@@ -355,22 +363,24 @@ def calculate_time_dependent_metrics(X_train, X_test, y_train, y_test, ctv):
     # Get unique time points in the baseline_cumulative_hazard
     baseline_time_points = ctv.baseline_cumulative_hazard_.index
 
-    # Filter time points to only include those where events occurred
-    all_time_points = np.unique(np.concatenate([
-        X_train[X_train['label'] == 1]['stop'].unique(), 
-        X_test[X_test['label'] == 1]['stop'].unique()
-    ]))
-    all_time_points = all_time_points[
-        (all_time_points >= baseline_time_points.min()) & 
-        (all_time_points <= baseline_time_points.max())
-    ]
+    # # Filter time points to only include those where events occurred
+    # all_time_points = np.unique(np.concatenate([
+    #     X_train[X_train['label'] == 1]['stop'].unique(), 
+    #     X_test[X_test['label'] == 1]['stop'].unique()
+    # ]))
+    # all_time_points = all_time_points[
+    #     (all_time_points >= baseline_time_points.min()) & 
+    #     (all_time_points <= baseline_time_points.max())
+    # ]
+
+    # For time points, round baseline_time_points.min() up to nearest integer, and round baseline_time_points.max() down to nearest integer
+    all_time_points = np.arange(int(np.ceil(baseline_time_points.min())), int(np.floor(baseline_time_points.max())) + 1)
 
     # Initialize results
     results_list = []
     
     for i, time_point in enumerate(all_time_points):
-        if i % 100 == 0:
-            print(f"Processing time point {i} of {len(all_time_points)}. Time: {datetime.now()}")
+        print(f"Processing time point {i} of {len(all_time_points)}. Time: {datetime.now()}")
 
         # Create time-specific labels
         train_labels = (y_train['stop'] <= time_point) & (y_train['label'] == 1)
@@ -570,7 +580,8 @@ def inner_cross_validation(directory_path, fold_num, X_train_outer, y_train_oute
             try:
                 ctv = CoxTimeVaryingFitter(penalizer=penalizer, l1_ratio=l1_ratio)
                 ctv.fit(X_train_inner, id_col="BID", start_col="start", 
-                       stop_col="stop", event_col="label")
+                       stop_col="stop", event_col="label", show_progress=True,
+                       fit_options={"max_steps": 1000})
                 
                 metrics_df = calculate_time_dependent_metrics(
                     X_train_inner, X_val_inner, y_train_inner, y_val_inner, ctv
@@ -633,12 +644,12 @@ def run_analysis(data, predictors, fold_num, param_grid):
     X = preprocess_cats(X)
     if 'APOEGN_None' in X.columns:
         X = X.drop(columns=['APOEGN_None'])
-    if 'APOEGN_E2/E2' in X.columns:
-        X = X.drop(columns=['APOEGN_E2/E2'])
-    if 'RACE_84' in X.columns:
-        X = X.drop(columns=['RACE_84'])
-    if 'RACE_100' in X.columns:
-        X = X.drop(columns=['RACE_100'])
+    # if 'APOEGN_E2/E2' in X.columns:
+    #     X = X.drop(columns=['APOEGN_E2/E2'])
+    # if 'RACE_84' in X.columns:
+    #     X = X.drop(columns=['RACE_84'])
+    # if 'RACE_100' in X.columns:
+    #     X = X.drop(columns=['RACE_100'])
     
     predictor_results = []
     unique_bids = X['BID'].unique()
@@ -673,7 +684,7 @@ def run_analysis(data, predictors, fold_num, param_grid):
             l1_ratio=best_params['l1_ratio']
         )
         ctv.fit(X_train_outer, id_col="BID", start_col="start", 
-                stop_col="stop", event_col="label")
+                stop_col="stop", event_col="label", show_progress=True)
         
         # Get feature importances for this fold
         coef_df = get_model_coefficients(ctv)
@@ -720,11 +731,12 @@ def run_analysis(data, predictors, fold_num, param_grid):
 
 def main():
     param_grid = {
-        'penalizer': [0.001, 0.01, 0.1, 1.0],
+        'penalizer': [0.1, 1, 10],
         'l1_ratio': [0.0, 0.25, 0.5, 0.75, 1.0]
     }
 
-    predictors, fold = parse_args()
+    # predictors, fold = parse_args()
+    predictors, fold = 'demographics', 0
     data = pd.read_parquet('../../tidy_data/A4/ptau217_allvisits.parquet')
     run_analysis(data, predictors, fold, param_grid)
 
