@@ -145,8 +145,8 @@ for (fold in seq(0, 4)) {
   # Define time points for evaluation
   # Take first event, and round it up to the nearest multiple of 365
   # Take last event, and round it down to the nearest multiple of 365
-  first_event <- min(val_df[val_df$event == 1, ]$time)
-  last_event <- max(val_df[val_df$event == 1, ]$time)
+  # first_event <- min(val_df[val_df$event == 1, ]$time)
+  # last_event <- max(val_df[val_df$event == 1, ]$time)
   eval_times <- seq(3, 8)
 
   # Calculate all metrics
@@ -333,51 +333,19 @@ cal_data_avg <- all_cal_data %>%
     .groups = "drop"
   )
 
-# Modified plotting function to include confidence intervals
-calibration_plots <- function(cal_data, times, model_colors) {
-
-  publication_theme <- get_publication_theme()
-  model_colors <- c("Baseline" = "#287271", "Biomarker" = "#B63679")
-
-  plots <- list()
-
-  for (t in times) {
-    t_data <- cal_data[cal_data$time == t, ]
-
-    is_leftmost <- as.numeric(t) %in% c(3, 6)
-    is_bottom <- as.numeric(t) >= 6
-    is_middle_bottom <- t == 7
-
-    max_limit <- max(max(t_data$pred), max(t_data$actual)) * 1.05
-
-    current_plot <- ggplot(t_data,
-                           aes(x = pred, y = actual, color = model,
-                               fill = model)) +
-      geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper), alpha = 0.2) +
-      geom_abline(slope = 1, intercept = 0, linetype = "dashed",
-                  color = "gray50") +
-      geom_line(linewidth = 1) +
-      geom_point(size = 2) +
-      scale_color_manual(values = model_colors, name = "Model") +
-      scale_fill_manual(values = model_colors, name = "Model") +
-      labs(x = if (is_bottom) "Predicted Probability" else "",
-           y = if (is_leftmost) "Observed Probability" else "",
-           title = paste0(t, " years")) +
-      coord_equal(xlim = c(0, max_limit), ylim = c(0, max_limit)) +
-      publication_theme +
-      theme(legend.position = if (is_middle_bottom) "bottom" else "none")
-
-    plots[[as.character(t)]] <- current_plot
-  }
-
-  return(wrap_plots(plots, ncol = 3))
-}
-
 # Create final plots
+extrafont::loadfonts()
+extrafont::font_import()
+
 plots <- calibration_plots(cal_data_avg, eval_times, model_colors)
 print(plots)
 
-
+# save plot
+ggsave("../../tidy_data/A4/final_calibration_plots2.pdf",
+       plot = plots,
+       width = 8,
+       height = 6,
+       dpi = 300)
 
 
 # Decision curve analysis
@@ -419,7 +387,7 @@ for (t in eval_times) {
       baseline_pred = pred_probs_base,
       biomarker_pred = pred_probs_bio
     )
-    
+
     dca_data_all[[paste0("t", t, "_fold", fold)]] <- dca_fold_data
   }
 }
@@ -527,14 +495,188 @@ for (t in eval_times) {
       title = paste(t, "years")
     ) +
     get_publication_theme() +
-    theme(legend.position = if (is_middle_bottom) "bottom" else "none")
-  
+    theme(legend.position = if (is_middle_bottom) "bottom" else "none") +
+    theme(aspect.ratio = 0.7)
+
   plots[[as.character(t)]] <- current_plot
 }
 
 # Create final decision curve plot
 dca_plots <- wrap_plots(plots, ncol = 3)
 print(dca_plots)
+ggsave("../../tidy_data/A4/final_DCA_Over_Time.png",
+       plot = dca_plots,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+
+########################################################
+
+# Additional figures with uncertainty
+# Initialize lists to store predictions for each time point
+all_preds_by_time <- list()
+roc_data_all <- list()
+pe_data_all <- list()
+
+# First pass: collect all predictions for each time point
+for (fold in seq(0, 4)) {
+  baseline_model <- overwrite_na_coef_to_zero(
+    baseline_model_l[[paste0("fold_", fold + 1)]]
+  )
+  model <- overwrite_na_coef_to_zero(
+    model_l[[paste0("fold_", fold + 1)]]
+  )
+  
+  val_data <- val_df_l[[paste0("fold_", fold + 1)]]
+  
+  # Run create_additional_figures for this fold
+  additional_figs <- create_additional_figures(
+    baseline_model = baseline_model,
+    biomarker_model = model,
+    data = val_data,
+    times = eval_times
+  )
+
+  # Extract ROC data
+  roc_data <- additional_figs$dynamic_roc$data
+  roc_data$fold <- fold
+  roc_data_all[[fold + 1]] <- roc_data
+  
+  # Extract prediction error data
+  pe_data <- additional_figs$prediction_error$data
+  pe_data$fold <- fold
+  pe_data_all[[fold + 1]] <- pe_data
+}
+
+# Combine all data
+all_roc_data <- do.call(rbind, roc_data_all)
+all_pe_data <- do.call(rbind, pe_data_all)
+
+# Calculate AUC summary statistics
+auc_stats <- all_roc_data %>%
+  group_by(Model, Time, fold) %>%
+  # Calculate AUC for each fold using trapezoidal rule
+  summarise(
+    AUC = pracma::trapz(FPR, TPR),
+    .groups = 'drop'
+  ) %>%
+  group_by(Model, Time) %>%
+  summarise(
+    mean_auc = mean(AUC, na.rm = TRUE),
+    sd_auc = sd(AUC, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  mutate(
+    auc_label = sprintf("AUC = %.2f ± %.2f", mean_auc, sd_auc)
+  ) %>%
+  pivot_wider(
+    id_cols = Time,
+    names_from = Model,
+    values_from = auc_label
+  ) %>%
+  mutate(
+    panel_title = sprintf("%d years\n%s\n%s", 
+                         Time, 
+                         Baseline,
+                         Biomarker)
+  )
+
+# Calculate means and SEs for ROC curves with smoothing
+roc_summary <- all_roc_data %>%
+  group_by(Model, Time, fold) %>%
+  arrange(FPR) %>%
+  distinct(FPR, .keep_all = TRUE) %>%
+  do({
+    new_fpr <- seq(min(.$FPR), max(.$FPR), length.out = 100)
+    new_tpr <- approx(.$FPR, .$TPR, xout = new_fpr, method = "linear")$y
+    data.frame(
+      FPR = new_fpr,
+      TPR = new_tpr
+    )
+  }) %>%
+  ungroup() %>%
+  group_by(Model, Time, FPR) %>%
+  summarise(
+    mean_TPR = mean(TPR, na.rm = TRUE),
+    se_TPR = sd(TPR, na.rm = TRUE) / sqrt(n()),
+    .groups = 'drop'
+  )
+
+# Plot ROC curves with smoothing and uncertainty
+model_colors <- c("Baseline" = "#287271", "Biomarker" = "#B63679")
+
+p5 <- ggplot(roc_summary, aes(x = FPR, y = mean_TPR, color = Model)) +
+  geom_ribbon(aes(ymin = pmax(mean_TPR - 1.96 * se_TPR, 0),
+                  ymax = pmin(mean_TPR + 1.96 * se_TPR, 1),
+                  fill = Model), 
+              alpha = 0.2, 
+              color = NA) +
+  geom_smooth(se = FALSE, method = "loess", span = 0.2, linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0,
+              linetype = "dashed", color = "gray50") +
+  scale_color_manual(values = model_colors) +
+  scale_fill_manual(values = model_colors) +
+  facet_wrap(~Time, 
+             labeller = labeller(Time = function(x) {
+               auc_stats$panel_title[auc_stats$Time == x]
+             })) +
+  labs(
+    x = "False Positive Rate",
+    y = "True Positive Rate", 
+    title = "Dynamic ROC Curves",
+    subtitle = "At Different Follow-up Times"
+  ) +
+  coord_equal() +
+  get_publication_theme()
+
+print(p5)
+
+# Calculate means and SEs for prediction error, averaging across folds first
+pe_summary <- all_pe_data %>%
+  group_by(Model, time) %>%
+  summarise(
+    fold_error = mean(error, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  group_by(Model, time) %>%
+  summarise(
+    mean_error = mean(fold_error, na.rm = TRUE),
+    se_error = sd(fold_error, na.rm = TRUE) / sqrt(n()),
+    .groups = 'drop'
+  )
+
+# Plot prediction error with uncertainty
+p6 <- ggplot(pe_summary, aes(x = time, y = mean_error, 
+                            color = Model)) +
+  geom_ribbon(aes(ymin = mean_error - 1.96 * se_error,
+                  ymax = mean_error + 1.96 * se_error,
+                  fill = Model), alpha = 0.2, color = NA) +
+  geom_line(linewidth = 1) +
+  scale_color_manual(
+    values = model_colors,  # Remove extra color for non-existent Null Model
+    labels = c("Baseline", "Biomarker")
+  ) +
+  scale_fill_manual(
+    values = model_colors,  # Remove extra fill for non-existent Null Model
+    labels = c("Baseline", "Biomarker")
+  ) +
+  labs(
+    x = "Time (Years)",
+    y = "Prediction Error",
+    title = "Integrated Prediction Error",
+    subtitle = "Lower Values Indicate Better Performance"
+  ) +
+  get_publication_theme()
+print(p6)
+
+ggsave("../../tidy_data/A4/final_additional_metrics.png",
+       plot = additional_plots,
+       width = 15,  # Increased width
+       height = 8,  # Increased height
+       dpi = 300)
+########################################################
+
 
 
 
@@ -612,55 +754,67 @@ brier_summary <- brier_results %>%
     .groups = "drop"
   )
 
-publication_plot_viridis <- td_plot(auc_summary, metric = "auc")
+auc_plot <- td_plot(auc_summary, metric = "auc")
 
 # Display the plot
-print(publication_plot_viridis)
+print(auc_plot)
 
 # Save the plot
 ggsave("../../tidy_data/A4/final_auc_Over_Time_Publication_Viridis.pdf",
-       plot = publication_plot_viridis,
+       plot = auc_plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+brier_plot <- td_plot(brier_summary, metric = "brier")
+
+# Display the plot
+print(brier_plot)
+
+# Save the plot
+ggsave("../../tidy_data/A4/final_brier_Over_Time_Publication_Viridis.pdf",
+       plot = brier_plot,
        width = 8,
        height = 6,
        dpi = 300)
 
 
 
-# Pub figures
-first_event <- min(val_df[val_df$event == 1, ]$time)
-last_event <- max(val_df[val_df$event == 1, ]$time)
-eval_times <- seq(ceiling(first_event),
-                  floor(last_event),
-                  by = 1)
+# # Pub figures
+# first_event <- min(val_df[val_df$event == 1, ]$time)
+# last_event <- max(val_df[val_df$event == 1, ]$time)
+# eval_times <- seq(ceiling(first_event),
+#                   floor(last_event),
+#                   by = 1)
 
-t_horizon <- 8 # years
-# Add predictions to your dataframe
-val_df$baseline_pred <- predict(baseline_model,
-                                type = "lp",
-                                times = t_horizon,
-                                newdata = val_df)
-val_df$biomarker_pred <- predict(model,
-                                 type = "lp",
-                                 times = t_horizon,
-                                 newdata = val_df)
+# t_horizon <- 8 # years
+# # Add predictions to your dataframe
+# val_df$baseline_pred <- predict(baseline_model,
+#                                 type = "lp",
+#                                 times = t_horizon,
+#                                 newdata = val_df)
+# val_df$biomarker_pred <- predict(model,
+#                                  type = "lp",
+#                                  times = t_horizon,
+#                                  newdata = val_df)
 
-figures <- create_publication_figures(
-  baseline_model = baseline_model,
-  biomarker_model = model,
-  auc_summary = auc_summary[auc_summary$time > 2, ],
-  brier_summary = brier_summary[brier_summary$time > 2, ],
-  cal_data = cal_data_avg,
-  data = val_df,
-  times = eval_times
-)
+# figures <- create_publication_figures(
+#   baseline_model = baseline_model,
+#   biomarker_model = model,
+#   auc_summary = auc_summary[auc_summary$time > 2, ],
+#   brier_summary = brier_summary[brier_summary$time > 2, ],
+#   cal_data = cal_data_avg,
+#   data = val_df,
+#   times = eval_times
+# )
 
-# Save plots
-ggsave("combined_performance.pdf", figures$combined_plot,
-       width = 12, height = 10, dpi = 300)
-ggsave("time_dependent_auc.pdf", figures$time_dependent_auc,
-       width = 6, height = 5, dpi = 300)
-ggsave("decision_curve.pdf", figures$decision_curve,
-       width = 6, height = 5, dpi = 300)
+# # Save plots
+# ggsave("combined_performance.pdf", figures$combined_plot,
+#        width = 12, height = 10, dpi = 300)
+# ggsave("time_dependent_auc.pdf", figures$time_dependent_auc,
+#        width = 6, height = 5, dpi = 300)
+# ggsave("decision_curve.pdf", figures$decision_curve,
+#        width = 6, height = 5, dpi = 300)
 
 
 

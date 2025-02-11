@@ -98,8 +98,9 @@ td_plot <- function(summary_df, model_colors, metric = "auc") {
   }
 }
 
-# Calculate predicted vs observed probabilities at a specific timepoint
+# Modified plotting function to include confidence intervals
 calibration_plots <- function(cal_data, times, model_colors) {
+
   publication_theme <- get_publication_theme()
   model_colors <- c("Baseline" = "#287271", "Biomarker" = "#B63679")
 
@@ -115,16 +116,12 @@ calibration_plots <- function(cal_data, times, model_colors) {
     max_limit <- max(max(t_data$pred), max(t_data$actual)) * 1.05
 
     current_plot <- ggplot(t_data,
-                           aes(x = pred,
-                               y = actual,
-                               color = model,
+                           aes(x = pred, y = actual, color = model,
                                fill = model)) +
       geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper), alpha = 0.2) +
-      geom_abline(slope = 1,
-                  intercept = 0,
-                  linetype = "dashed",
+      geom_abline(slope = 1, intercept = 0, linetype = "dashed",
                   color = "gray50") +
-      geom_line(size = 1) +
+      geom_line(linewidth = 1) +
       geom_point(size = 2) +
       scale_color_manual(values = model_colors, name = "Model") +
       scale_fill_manual(values = model_colors, name = "Model") +
@@ -299,33 +296,48 @@ create_additional_figures <- function(baseline_model, biomarker_model,
 
   model_colors <- c("Baseline" = "#287271", "Biomarker" = "#B63679")
 
-  # 1. Cumulative/Dynamic ROC Curves at different time points
-  selected_times <- times[c(1, floor(length(times) / 2),
-                            length(times))]  # early, middle, late
+  # 1. Cumulative/Dynamic ROC Curves at different time points  
+  # ROC curve for biomarker model
+  roc_biomarker <- timeROC(
+    T = data$tstop,
+    delta = data$event,
+    marker = predict(biomarker_model, newdata = data, type = "lp"),
+    cause = 1,
+    times = times,
+    iid = TRUE,
+    ROC = TRUE
+  )
 
-  roc_data <- lapply(selected_times, function(t) {
-    roc <- timeROC(
-      T = data$tstop,
-      delta = data$event,
-      marker = predict(biomarker_model, type = "lp"),
-      marker2 = predict(baseline_model, type = "lp"),
-      cause = 1,
-      times = t,
-      iid = TRUE,
-      ROC = TRUE  # Request ROC curves
-    )
+  # ROC curve for baseline model
+  roc_baseline <- timeROC(
+    T = data$tstop,
+    delta = data$event,
+    marker = predict(baseline_model, newdata = data, type = "lp"),
+    cause = 1,
+    times = times,
+    iid = TRUE,
+    ROC = TRUE
+  )
 
-    data.frame(
-      FPR = c(roc$FP, roc$FP),
-      TPR = c(roc$TP, roc$TP2),
-      Model = rep(c("Biomarker", "Baseline"), each = length(roc$FP)),
-      Time = t / 365.25  # Convert to years
-    )
-  })
+  # Create data frames with consistent column names
+  biomarker_df <- data.frame(
+    FPR = as.vector(roc_biomarker$FP),
+    TPR = as.vector(roc_biomarker$TP),
+    Model = "Biomarker",
+    Time = rep(times, each = length(roc_biomarker$FP) / length(times))
+  )
+  
+  baseline_df <- data.frame(
+    FPR = as.vector(roc_baseline$FP),
+    TPR = as.vector(roc_baseline$TP),
+    Model = "Baseline",
+    Time = rep(times, each = length(roc_baseline$FP) / length(times))
+  )
 
-  roc_data <- do.call(rbind, roc_data)
+  # Combine the data frames
+  roc_data <- rbind(biomarker_df, baseline_df)
 
-  p5 <- ggplot(roc_data, aes(x = FPR, y = TPR,
+  p5 <- ggplot(roc_data, aes(x = FP, y = TP,
                              color = Model,
                              linetype = factor(Time))) +
     geom_line(linewidth = 1) +
@@ -336,7 +348,7 @@ create_additional_figures <- function(baseline_model, biomarker_model,
     labs(
       x = "False Positive Rate",
       y = "True Positive Rate",
-      title = "Dynamic ROC Curves",
+      title = "Dynamic ROC Curves", 
       subtitle = "At Different Follow-up Times"
     ) +
     coord_equal() +
@@ -344,37 +356,48 @@ create_additional_figures <- function(baseline_model, biomarker_model,
 
   # 2. Integrated Prediction Error
   # Calculate prediction error curves
-  pe <- pec(
-    list("Baseline" = baseline_model, "Biomarker" = biomarker_model),
-    data = data,
-    times = times,
-    exact = FALSE,
-    reference = TRUE,  # Include null model
-    splitMethod = "bootcv",
-    B = 100  # Number of bootstrap samples
-  )
-
-  # Convert to data frame for ggplot
-  pe_data <- data.frame(
-    time = rep(pe$time, 3),
-    error = c(pe$AppErr$Baseline, pe$AppErr$Biomarker, pe$AppErr$reference),
-    Model = factor(rep(c("Baseline", "Biomarker", "Reference"),
-                       each = length(pe$time)))
-  )
-
-  p6 <- ggplot(pe_data, aes(x = time / 365.25, y = error, color = Model)) +
-    geom_line(linewidth = 1) +
-    scale_color_manual(
-      values = c(model_colors, "gray50"),
-      labels = c("Baseline", "Biomarker", "Null Model")
-    ) +
-    labs(
-      x = "Time (Years)",
-      y = "Prediction Error",
-      title = "Integrated Prediction Error",
-      subtitle = "Lower Values Indicate Better Performance"
-    ) +
-    publication_theme
+  pe <- tryCatch({
+    pec(
+      list("Baseline" = baseline_model, "Biomarker" = biomarker_model),
+      data = data,
+      times = times,
+      exact = TRUE,
+      reference = TRUE,
+      splitMethod = "none",  # No cross-validation
+      formula = Surv(tstop, event) ~ 1,
+      start = data$tstart,
+      verbose = FALSE
+    )
+  }, error = function(e) {
+    warning("Prediction error calculation failed, returning NULL")
+    NULL
+  })
+  
+  # Only create the plot if pe calculation succeeded
+  if (!is.null(pe)) {
+    pe_data <- data.frame(
+      time = rep(pe$time, 2),
+      error = c(pe$AppErr$Baseline, pe$AppErr$Biomarker),
+      Model = factor(rep(c("Baseline", "Biomarker"),
+                        each = length(pe$time)))
+    )
+    
+    p6 <- ggplot(pe_data, aes(x = time, y = error, color = Model)) +
+      geom_line(linewidth = 1) +
+      scale_color_manual(
+        values = model_colors,
+        labels = c("Baseline", "Biomarker")
+      ) +
+      labs(
+        x = "Time (Years)",
+        y = "Prediction Error",
+        title = "Integrated Prediction Error",
+        subtitle = "Lower Values Indicate Better Performance"
+      ) +
+      publication_theme
+  } else {
+    p6 <- NULL
+  }
 
   # Create combined plot with new figures
   combined_additional <- (p5 + p6) +
