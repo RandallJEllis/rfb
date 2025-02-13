@@ -63,7 +63,7 @@ td_plot <- function(summary_df, model_colors, metric = "auc") {
         legend.position = "right"
       ) +
       scale_y_continuous(limits = c(0.5, 0.8))
-  } else {
+  } else if (metric == "brier") {
     ggplot(summary_df,
            aes(x = time,
                y = mean_brier,
@@ -95,6 +95,39 @@ td_plot <- function(summary_df, model_colors, metric = "auc") {
         panel.grid.minor = element_blank(),
         legend.position = "right"
       )
+  } else if (metric == "concordance") {
+    ggplot(summary_df,
+           aes(x = time,
+               y = mean_concordance,
+               color = model,
+               fill = model)) +
+      geom_ribbon(aes(ymin = ymin, ymax = ymax),
+                  alpha = 0.3,
+                  color = NA,
+                  show.legend = FALSE) +
+      geom_line(linewidth = 1.2) +
+      geom_point(size = 3, shape = 21, fill = "white") +
+      scale_color_manual(values = model_colors) +
+      scale_fill_manual(values = model_colors) +
+      labs(
+        title = "Time-varying Concordance",
+        x = "Follow-up Time (years)",
+        y = "Concordance",
+        color = "Model",
+        fill = "Model"
+      ) +
+      theme_bw(base_size = 14) +
+      theme(
+        plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+        plot.subtitle = element_text(size = 14, hjust = 0.5),
+        axis.title = element_text(face = "bold", size = 14),
+        axis.text = element_text(size = 12),
+        legend.title = element_text(face = "bold", size = 14),
+        legend.text = element_text(size = 12),
+        panel.grid.minor = element_blank(),
+        legend.position = "right"
+      ) +
+      scale_y_continuous(limits = c(0.5, 0.85))
   }
 }
 
@@ -118,7 +151,7 @@ calibration_plots <- function(cal_data, times, model_colors) {
     current_plot <- ggplot(t_data,
                            aes(x = pred, y = actual, color = model,
                                fill = model)) +
-      geom_ribbon(aes(ymin = ci_lower, ymax = ci_upper), alpha = 0.2) +
+      geom_ribbon(aes(ymin = lower, ymax = upper), alpha = 0.2) +
       geom_abline(slope = 1, intercept = 0, linetype = "dashed",
                   color = "gray50") +
       geom_line(linewidth = 1) +
@@ -293,7 +326,6 @@ library(pec)
 create_additional_figures <- function(baseline_model, biomarker_model,
                                       data, times) {
   publication_theme <- get_publication_theme()
-
   model_colors <- c("Baseline" = "#287271", "Biomarker" = "#B63679")
 
   # 1. Cumulative/Dynamic ROC Curves at different time points  
@@ -355,17 +387,20 @@ create_additional_figures <- function(baseline_model, biomarker_model,
     publication_theme
 
   # 2. Integrated Prediction Error
-  # Calculate prediction error curves
+  # Create consistent time points from 3-8 years
+  eval_times <- seq(3, 8)
+
+  # Calculate prediction error curves with consistent time points
   pe <- tryCatch({
     pec(
       list("Baseline" = baseline_model, "Biomarker" = biomarker_model),
       data = data,
-      times = times,
-      exact = TRUE,
+      times = eval_times,  # Use consistent eval_times
+      exact = FALSE,
       reference = TRUE,
-      splitMethod = "none",  # No cross-validation
+      splitMethod = "none",
       formula = Surv(tstop, event) ~ 1,
-      start = data$tstart,
+      start = 3,
       verbose = FALSE
     )
   }, error = function(e) {

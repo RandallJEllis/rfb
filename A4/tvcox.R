@@ -13,21 +13,61 @@ setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
 source("pub_figures.R")
 source("metrics.R")
 
+# Load fonts
+extrafont::loadfonts()
+
+cut_time_data <- function(td_data, interval_years = 0.8) {
+  # Create sequence of timepoints for each ID
+  td_data %>%
+    group_by(id) %>%
+    mutate(
+      # Round start and stop times to nearest interval
+      tstart = floor(tstart / interval_years) * interval_years,
+      tstop = ceiling(tstop / interval_years) * interval_years
+    ) %>%
+    # If this creates duplicate rows, keep last observation
+    group_by(id, tstart, tstop) %>%
+    slice_tail(n = 1) %>%
+    ungroup()
+}
+
 format_df <- function(df) {
   df$SEX <- factor(df$SEX)
   df$APOEGN <- factor(df$APOEGN)
   df <- within(df, APOEGN <- relevel(APOEGN, ref = "E3/E3"))
 
-  base <- df[!duplicated(df$BID), c("BID", "time_to_event", "label", "AGEYR_z",
-                                    "AGEYR_z_squared", "AGEYR_z_cubed", "SEX",
+  base <- df[!duplicated(df$BID), c("BID", "time_to_event", "label", 
+                                    "AGEYR_centered", "AGEYR_centered_squared",
+                                    "AGEYR_centered_cubed", "SEX",
                                     "EDCCNTU_z", "APOEGN")]
   tv_covar <- df[, c("BID", "COLLECTION_DATE_DAYS_CONSENT", "ORRES_boxcox")]
+  habits <- habits[habits$BID %in% df$BID, c("BID",
+                                             "COLLECTION_DATE_DAYS_CONSENT",
+                                             "SMOKE", "ALCOHOL", "SUBUSE",
+                                             "AEROBIC", "WALKING")]
+  psychwell <- psychwell[psychwell$BID %in% df$BID, c("BID",
+                                                "COLLECTION_DATE_DAYS_CONSENT",
+                                                "GDTOTAL", "STAITOTAL")]
+  vitals <- vitals[vitals$BID %in% df$BID, c("BID",
+                                            "COLLECTION_DATE_DAYS_CONSENT",
+                                            "VSBPSYS", "VSBPDIA")]
+  # print(dim(habits))
+  # print(dim(psychwell))
+  # print(dim(vitals))
   colnames(base) <- c("id", "time", "event", "age", "age2", "age3",
                       "sex", "educ", "apoe")
   colnames(tv_covar) <- c("id", "time", "ptau")
+  colnames(habits) <- c("id", "time", "smoke", "alcohol", "subuse",
+                        "aerobic", "walking")
+  colnames(psychwell) <- c("id", "time", "gdtotal", "staital")
+  colnames(vitals) <- c("id", "time", "vsbsys", "vsdia")
+
 
   base$time <- base$time / 365.25
   tv_covar$time <- tv_covar$time / 365.25
+  habits$time <- habits$time / 365.25
+  psychwell$time <- psychwell$time / 365.25
+  vitals$time <- vitals$time / 365.25
 
   # Create initial time-dependent data
   td_data <- tmerge(
@@ -53,6 +93,33 @@ format_df <- function(df) {
     ptau = tdc(time, ptau)
   )
 
+  td_data <- tmerge(
+    td_data,
+    habits,
+    id = id,
+    smoke = tdc(time, smoke),
+    alcohol = tdc(time, alcohol),
+    subuse = tdc(time, subuse),
+    aerobic = tdc(time, aerobic),
+    walking = tdc(time, walking)
+  )
+
+  td_data <- tmerge(
+    td_data,
+    psychwell,
+    id = id,
+    gdtotal = tdc(time, gdtotal),
+    staital = tdc(time, staital)
+  )
+
+  td_data <- tmerge(  
+    td_data,
+    vitals,
+    id = id,
+    vsbsys = tdc(time, vsbsys),
+    vsdia = tdc(time, vsdia)
+  )
+
   td_data <- td_data[order(td_data$id), ]
   td_data <- td_data[complete.cases(td_data), ]
 
@@ -71,18 +138,52 @@ format_df <- function(df) {
     ) %>%
     select(-baseline_age)  # Remove the temporary baseline_age column
 
+  td_data_updated <- cut_time_data(td_data_updated)
   return(td_data_updated)
 }
 
-overwrite_na_coef_to_zero <- function(model) {
-  if (length(names(which(is.na(coef(model))))) > 0) {
-    # set coefficients to zero
-    for (n in names(which(is.na(coef(model))))) {
-      model$coefficients[[n]] <- 0
+# Helper function to process model predictions
+process_model_predictions <- function(preds, model_name, val_df, t,
+                                      fixed_breaks, fold) {
+  risk_groups <- cut(preds, breaks = fixed_breaks, include.lowest = TRUE)
+  cal_data <- data.frame()
+
+  for (group in levels(risk_groups)) {
+    group_data <- val_df[risk_groups == group, ]
+    if (nrow(group_data) > 0) {
+      surv_fit <- survfit(Surv(tstop, event) ~ 1, data = group_data)
+      surv_summary <- summary(surv_fit, times = t)
+
+      if (length(surv_summary$surv) > 0) {
+        cal_data <- rbind(cal_data, data.frame(
+          fold = fold,
+          time = t,
+          model = model_name,
+          risk_group = group,
+          pred = mean(preds[risk_groups == group]),
+          actual = 1 - surv_summary$surv[1]
+        ))
+      }
     }
   }
-  return(model)
+  return(cal_data)
 }
+
+test_assumptions <- function(cox_model) {
+  # Test proportional hazards assumption
+  test <- cox.zph(cox_model)
+  print(test)
+
+  # Test linearity of the predictor
+  ggcoxzph(test)
+}
+
+# read in data
+habits <- read_parquet("../../tidy_data/A4/habits.parquet")
+habits$SUBUSE <- as.factor(habits$SUBUSE)
+psychwell <- read_parquet("../../tidy_data/A4/psychwell.parquet")
+vitals <- read_parquet("../../tidy_data/A4/vitals.parquet")
+
 
 val_df_l <- list()
 model_l <- list()
@@ -106,13 +207,47 @@ for (fold in seq(0, 4)) {
 
   df <- format_df(df)
   val_df <- format_df(val_df)
+
+  # zscore smoke, alcohol, aerobic, walking, gdtotal, staital, vsbsys, vsdia
+  # calculate means and SDs for training and transform training and test sets
+
+  means <- apply(df[, c("smoke", "alcohol", "aerobic", "walking",
+                        "gdtotal", "staital", "vsbsys", "vsdia"
+                        )],
+                2, mean, na.rm = TRUE)
+  sds <- apply(df[, c("smoke", "alcohol", "aerobic", "walking",
+                      "gdtotal", "staital", "vsbsys", "vsdia"
+                      )],
+              2, sd, na.rm = TRUE)
+
+  df[, c("smoke", "alcohol", "aerobic", "walking",
+         "gdtotal", "staital", "vsbsys", "vsdia"
+         )] <- scale(
+          df[, c("smoke", "alcohol", "aerobic", "walking",
+         "gdtotal", "staital", "vsbsys", "vsdia"
+         )],
+         center = means,
+         scale = sds)
+
+  val_df[, c("smoke", "alcohol", "aerobic", "walking",
+             "gdtotal", "staital", "vsbsys", "vsdia"
+             )] <- scale(
+              val_df[, c("smoke", "alcohol", "aerobic", "walking",
+             "gdtotal", "staital", "vsbsys", "vsdia"
+             )],
+             center = means,
+             scale = sds)
   val_df_l[[paste0("fold_", fold + 1)]] <- val_df
 
   # Fit Cox model with time-varying covariates
   # Use a time-transform function in the Cox model
   model <- coxph(
-    Surv(tstart, tstop, event) ~ ptau + age + age2 + age3 + sex + educ +
-      apoe + age * apoe + age2 * apoe + age3 * apoe,
+    Surv(tstart, tstop, event) ~ ptau + age + age2 + sex + educ +
+      smoke + alcohol + subuse + 
+      aerobic + walking + 
+      gdtotal + staital +
+      vsbsys + vsdia + 
+      apoe + age * apoe + age2 * apoe,
     data = df,
     x = TRUE
   )
@@ -120,8 +255,12 @@ for (fold in seq(0, 4)) {
   model_l[[paste0("fold_", fold + 1)]] <- model
 
   baseline_model <- coxph(
-    Surv(tstart, tstop, event) ~ age + age2 + age3 + sex + educ +
-      apoe + age * apoe + age2 * apoe + age3 * apoe,
+    Surv(tstart, tstop, event) ~ age + age2 + sex + educ +
+      smoke + alcohol + subuse + 
+      aerobic + walking + 
+      gdtotal + staital +
+      vsbsys + vsdia + 
+      apoe + age * apoe + age2 * apoe,
     data = df,
     x = TRUE
   )
@@ -130,13 +269,13 @@ for (fold in seq(0, 4)) {
 
   print("Models fitted")
 
-  # View model summary
+  # # View model summary
   # summary(model)
 
-  # Extract deviance residuals
-  # residuals <- residuals(model, type = "deviance")
+  # # Extract deviance residuals
+  # residuals <- residuals(baseline_model, type = "deviance")
 
-  # Generate Q-Q plot
+  # # Generate Q-Q plot
   # qqnorm(residuals, main = "Q-Q Plot of Deviance Residuals")
   # qqline(residuals, col = "red")
   # ggcoxdiagnostics(model)
@@ -165,7 +304,7 @@ for (fold in seq(0, 4)) {
   )
 
   baseline_metrics_l[[paste0("fold_", fold + 1)]] <- baseline_metrics_results
-
+  
   print("Metrics calculated")
 
   # Print numerical results
@@ -183,7 +322,221 @@ for (fold in seq(0, 4)) {
 
 }
 
+# Calculate p-values comparing AUCs between models at each time point
+# First combine timeROC objects from each fold for each model
+biomarker_trocs <- list(
+  metrics_l$fold_1$troc,
+  metrics_l$fold_2$troc, 
+  metrics_l$fold_3$troc,
+  metrics_l$fold_4$troc,
+  metrics_l$fold_5$troc
+)
 
+baseline_trocs <- list(
+  baseline_metrics_l$fold_1$troc,
+  baseline_metrics_l$fold_2$troc,
+  baseline_metrics_l$fold_3$troc, 
+  baseline_metrics_l$fold_4$troc,
+  baseline_metrics_l$fold_5$troc
+)
+
+# Initialize list to store p-values
+all_pvalues <- list()
+
+# Calculate p-values for each time point using timeROC::compare
+for (fold in seq_along(biomarker_trocs)) {
+  # Compare ROC curves for this fold and time point
+  comparison <- timeROC::compare(
+    biomarker_trocs[[fold]],
+    baseline_trocs[[fold]],
+    adjusted = TRUE  # Use adjusted p-values
+  )
+  # Store p-values for this fold
+  all_pvalues[[fold]] <- comparison$p_values_AUC[2,]
+}
+
+# Convert to data frame
+all_pvalues_df <- do.call(rbind, all_pvalues)
+hist(all_pvalues_df)
+mean(all_pvalues_df)
+median(all_pvalues_df)
+range(all_pvalues_df)
+
+collate_metric <- function(metrics_l, baseline_metrics_l, metric = "auc") {
+
+  if (metric != "concordance") {
+    ptau <- c(as.numeric(metrics_l$fold_1[[metric]][[metric]]),
+      as.numeric(metrics_l$fold_2[[metric]][[metric]]),
+      as.numeric(metrics_l$fold_3[[metric]][[metric]]),
+      as.numeric(metrics_l$fold_4[[metric]][[metric]]),
+      as.numeric(metrics_l$fold_5[[metric]][[metric]])
+    )
+    baseline <- c(as.numeric(baseline_metrics_l$fold_1[[metric]][[metric]]),
+      as.numeric(baseline_metrics_l$fold_2[[metric]][[metric]]),
+      as.numeric(baseline_metrics_l$fold_3[[metric]][[metric]]),
+      as.numeric(baseline_metrics_l$fold_4[[metric]][[metric]]),
+      as.numeric(baseline_metrics_l$fold_5[[metric]][[metric]])
+    )
+  } else {
+    ptau <- c(as.numeric(metrics_l$fold_1[[metric]][["AppCindex"]][["coxph"]]),
+      as.numeric(metrics_l$fold_2[[metric]][["AppCindex"]][["coxph"]]),
+      as.numeric(metrics_l$fold_3[[metric]][["AppCindex"]][["coxph"]]),
+      as.numeric(metrics_l$fold_4[[metric]][["AppCindex"]][["coxph"]]),
+      as.numeric(metrics_l$fold_5[[metric]][["AppCindex"]][["coxph"]])
+    )
+
+    baseline <- c(as.numeric(
+      baseline_metrics_l$fold_1[[metric]][["AppCindex"]][["coxph"]]),
+      as.numeric(baseline_metrics_l$fold_2[[metric]][["AppCindex"]][["coxph"]]),
+      as.numeric(baseline_metrics_l$fold_3[[metric]][["AppCindex"]][["coxph"]]),
+      as.numeric(baseline_metrics_l$fold_4[[metric]][["AppCindex"]][["coxph"]]),
+      as.numeric(baseline_metrics_l$fold_5[[metric]][["AppCindex"]][["coxph"]])
+    )
+  }
+  times <- c(as.numeric(metrics_l$fold_1[[metric]]$time),
+    as.numeric(metrics_l$fold_2[[metric]]$time),
+    as.numeric(metrics_l$fold_3[[metric]]$time),
+    as.numeric(metrics_l$fold_4[[metric]]$time),
+    as.numeric(metrics_l$fold_5[[metric]]$time)
+  )
+  folds <- rep(c(rep(1, 6),
+                rep(2, 6),
+                rep(3, 6),
+                rep(4, 6),
+                rep(5, 6)), 2)
+
+  df <- data.frame(
+    model = c(rep("Biomarker", length(ptau)),
+              rep("Baseline", length(baseline))),
+    metric = c(ptau, baseline),
+    time = c(times, times),
+    fold = folds
+  )
+  names(df)[names(df) == "metric"] <- metric
+
+  return(df)
+}
+
+########################################################
+# AUC, Brier Score, and Concordance Over Time
+auc_results <- collate_metric(metrics_l, baseline_metrics_l, metric = "auc")
+brier_results <- collate_metric(metrics_l, baseline_metrics_l, metric = "brier")
+concordance_results <- collate_metric(metrics_l, baseline_metrics_l,
+                                      metric = "concordance")
+
+write_csv(auc_results, "../../tidy_data/A4/results_AUC.csv")
+write_csv(brier_results, "../../tidy_data/A4/results_brier.csv")
+write_csv(concordance_results, "../../tidy_data/A4/results_concordance.csv")
+
+# Save objects
+saveRDS(model_l, "../../tidy_data/A4/fitted_ptau_cox.rds")
+saveRDS(baseline_model_l, "../../tidy_data/A4/fitted_baseline_cox.rds")
+saveRDS(metrics_l, "../../tidy_data/A4/ptau_metrics.rds")
+saveRDS(baseline_metrics_l, "../../tidy_data/A4/baseline_metrics.rds")
+saveRDS(plots_l, "../../tidy_data/A4/ptau_plots.rds")
+saveRDS(baseline_plots_l, "../../tidy_data/A4/baseline_plots.rds")
+
+# plot auc over time
+auc_summary <- auc_results %>%
+  group_by(model, time) %>%
+  summarise(
+    mean_AUC = mean(auc, na.rm = TRUE),
+    sd_AUC = sd(auc, na.rm = TRUE),
+    ymin = pmax(mean_AUC - sd_AUC, 0),
+    ymax = pmin(mean_AUC + sd_AUC, 1),
+    .groups = "drop"
+  )
+
+auc_plot <- td_plot(auc_summary, metric = "auc")
+
+# Display the plot
+print(auc_plot)
+
+# Save the plot
+ggsave("../../tidy_data/A4/final_auc_Over_Time.pdf",
+       plot = auc_plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+# plot brier score over time
+brier_summary <- brier_results %>%
+  group_by(model, time) %>%
+  summarise(
+    mean_brier = mean(brier, na.rm = TRUE),
+    sd_brier = sd(brier, na.rm = TRUE),
+    ymin = pmax(mean_brier - sd_brier, 0),
+    ymax = pmin(mean_brier + sd_brier, 1),
+    .groups = "drop"
+  )
+
+# print differences between biomarker and baseline at each time point
+brier_summary %>%
+  group_by(time) %>%
+  summarise(
+    mean_diff = mean_brier[model == "Biomarker"] - mean_brier[model == "Baseline"],
+    .groups = "drop"
+  ) %>%
+  print()
+
+ibs_results <- pec::pec(list("Biomarker" = model_l[[1]], "Baseline" = baseline_model_l[[1]]),
+        data = val_df_l[[1]],
+        formula = Surv(tstop, event) ~ ptau,
+        # times = eval_times,
+        # metrics = "ibs",
+        testIBS = TRUE,
+        testTimes = eval_times)
+
+ibs_results
+
+brier_plot <- td_plot(brier_summary, metric = "brier")
+
+# Display the plot
+print(brier_plot)
+
+# Save the plot
+ggsave("../../tidy_data/A4/final_brier_Over_Time.pdf",
+       plot = brier_plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+# plot concordance over time
+concordance_summary <- concordance_results %>%
+  group_by(model, time) %>%
+  summarise(
+    mean_concordance = mean(concordance, na.rm = TRUE),
+    sd_concordance = sd(concordance, na.rm = TRUE),
+    ymin = pmax(mean_concordance - sd_concordance, 0),
+    ymax = pmin(mean_concordance + sd_concordance, 1),
+    .groups = "drop"
+  )
+
+# print differences between biomarker and baseline at each time point
+concordance_summary %>%
+  group_by(time) %>%
+  summarise(
+    mean_diff = mean_concordance[model == "Biomarker"] - mean_concordance[model == "Baseline"],
+    .groups = "drop"
+  ) %>%
+  print()
+
+
+concordance_plot <- td_plot(concordance_summary, metric = "concordance")
+
+# Display the plot
+print(concordance_plot)
+
+# Save the plot
+ggsave("../../tidy_data/A4/final_concordance_Over_Time.pdf",
+       plot = concordance_plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
+
+
+########################################################
 # Calibration plots
 # Initialize lists to store predictions for each time point
 # this helps us create consistent bins
@@ -221,32 +574,7 @@ for (t in eval_times) {
   all_preds_by_time[[as.character(t)]] <- all_preds
 }
 
-# Helper function to process model predictions
-process_model_predictions <- function(preds, model_name, val_df, t,
-                                      fixed_breaks, fold) {
-  risk_groups <- cut(preds, breaks = fixed_breaks, include.lowest = TRUE)
-  cal_data <- data.frame()
 
-  for (group in levels(risk_groups)) {
-    group_data <- val_df[risk_groups == group, ]
-    if (nrow(group_data) > 0) {
-      surv_fit <- survfit(Surv(tstop, event) ~ 1, data = group_data)
-      surv_summary <- summary(surv_fit, times = t)
-
-      if (length(surv_summary$surv) > 0) {
-        cal_data <- rbind(cal_data, data.frame(
-          fold = fold,
-          time = t,
-          model = model_name,
-          risk_group = group,
-          pred = mean(preds[risk_groups == group]),
-          actual = 1 - surv_summary$surv[1]
-        ))
-      }
-    }
-  }
-  return(cal_data)
-}
 
 # Second pass: calculate calibration using fixed bins for each time point
 for (t in eval_times) {
@@ -327,27 +655,26 @@ cal_data_avg <- all_cal_data %>%
   summarize(
     pred = mean(pred),
     actual = mean(actual),
-    se = mean(rolling_sd, na.rm = TRUE) / sqrt(n()),
-    ci_lower = actual - 1.96 * se,
-    ci_upper = actual + 1.96 * se,
+    sd = mean(rolling_sd, na.rm = TRUE),
+    lower = actual - sd,  # mean - 1 SD
+    upper = actual + sd,  # mean + 1 SD
     .groups = "drop"
   )
 
-# Create final plots
-extrafont::loadfonts()
-extrafont::font_import()
+
 
 plots <- calibration_plots(cal_data_avg, eval_times, model_colors)
 print(plots)
 
 # save plot
-ggsave("../../tidy_data/A4/final_calibration_plots2.pdf",
+ggsave("../../tidy_data/A4/final_calibration_plots.pdf",
        plot = plots,
        width = 8,
        height = 6,
        dpi = 300)
 
 
+########################################################
 # Decision curve analysis
 # Initialize lists to store predictions for each time point
 all_preds_by_time <- list()
@@ -426,7 +753,7 @@ for (t in eval_times) {
     )
   }
   
-  # Calculate mean and SE across folds
+  # Calculate mean and SD across folds
   thresholds <- fold_results[[1]]$threshold
   n_thresholds <- length(thresholds)
   
@@ -444,14 +771,15 @@ for (t in eval_times) {
     biomarker_vals[fold,] <- fold_results[[fold]]$biomarker
   }
   
-  # Calculate means and SEs
+  # Calculate means and SDs
   none_mean <- colMeans(none_vals, na.rm = TRUE)
   all_mean <- colMeans(all_vals, na.rm = TRUE)
   baseline_mean <- colMeans(baseline_vals, na.rm = TRUE)
   biomarker_mean <- colMeans(biomarker_vals, na.rm = TRUE)
   
-  baseline_se <- apply(baseline_vals, 2, sd, na.rm = TRUE) / sqrt(5)
-  biomarker_se <- apply(biomarker_vals, 2, sd, na.rm = TRUE) / sqrt(5)
+  # Calculate SD 
+  baseline_sd <- apply(baseline_vals, 2, sd, na.rm = TRUE)
+  biomarker_sd <- apply(biomarker_vals, 2, sd, na.rm = TRUE)
   
   is_leftmost <- as.numeric(t) %in% c(3, 6)
   is_bottom <- as.numeric(t) >= 6
@@ -463,19 +791,19 @@ for (t in eval_times) {
               aes(x = x, y = y, linetype = "Treat None"), color = "gray50") +
     geom_line(data = data.frame(x = thresholds, y = all_mean),
               aes(x = x, y = y, linetype = "Treat All"), color = "gray50") +
-    # Add model lines with confidence bands
+    # Add model lines with confidence bands using SD instead of SE
     geom_ribbon(data = data.frame(
       x = thresholds,
       y = baseline_mean,
-      ymin = baseline_mean - 1.96 * baseline_se,
-      ymax = baseline_mean + 1.96 * baseline_se
+      ymin = baseline_mean - baseline_sd,  # Changed from 1.96 * SE to SD
+      ymax = baseline_mean + baseline_sd
     ),
     aes(x = x, y = y, ymin = ymin, ymax = ymax, fill = "Baseline"), alpha = 0.2) +
     geom_ribbon(data = data.frame(
       x = thresholds,
       y = biomarker_mean,
-      ymin = biomarker_mean - 1.96 * biomarker_se,
-      ymax = biomarker_mean + 1.96 * biomarker_se
+      ymin = biomarker_mean - biomarker_sd,  # Changed from 1.96 * SE to SD
+      ymax = biomarker_mean + biomarker_sd
     ),
     aes(x = x, y = y, ymin = ymin, ymax = ymax, fill = "Biomarker"), alpha = 0.2) +
     geom_line(data = data.frame(x = thresholds, y = baseline_mean),
@@ -504,7 +832,9 @@ for (t in eval_times) {
 # Create final decision curve plot
 dca_plots <- wrap_plots(plots, ncol = 3)
 print(dca_plots)
-ggsave("../../tidy_data/A4/final_DCA_Over_Time.png",
+
+# save plot
+ggsave("../../tidy_data/A4/final_DCA_Over_Time.pdf",
        plot = dca_plots,
        width = 8,
        height = 6,
@@ -512,14 +842,15 @@ ggsave("../../tidy_data/A4/final_DCA_Over_Time.png",
 
 
 ########################################################
-
-# Additional figures with uncertainty
+# ROC and Prediction Error Curves
 # Initialize lists to store predictions for each time point
 all_preds_by_time <- list()
 roc_data_all <- list()
 pe_data_all <- list()
 
-# First pass: collect all predictions for each time point
+# Create consistent time points
+eval_times_pe <- seq(3, 8)
+
 for (fold in seq(0, 4)) {
   baseline_model <- overwrite_na_coef_to_zero(
     baseline_model_l[[paste0("fold_", fold + 1)]]
@@ -530,12 +861,12 @@ for (fold in seq(0, 4)) {
   
   val_data <- val_df_l[[paste0("fold_", fold + 1)]]
   
-  # Run create_additional_figures for this fold
+  # Run create_additional_figures for this fold with consistent time points
   additional_figs <- create_additional_figures(
     baseline_model = baseline_model,
     biomarker_model = model,
     data = val_data,
-    times = eval_times
+    times = eval_times  # Original eval_times for ROC curves
   )
 
   # Extract ROC data
@@ -582,7 +913,7 @@ auc_stats <- all_roc_data %>%
                          Biomarker)
   )
 
-# Calculate means and SEs for ROC curves with smoothing
+# Calculate means and SDs for ROC curves with smoothing
 roc_summary <- all_roc_data %>%
   group_by(Model, Time, fold) %>%
   arrange(FPR) %>%
@@ -599,7 +930,7 @@ roc_summary <- all_roc_data %>%
   group_by(Model, Time, FPR) %>%
   summarise(
     mean_TPR = mean(TPR, na.rm = TRUE),
-    se_TPR = sd(TPR, na.rm = TRUE) / sqrt(n()),
+    sd_TPR = sd(TPR, na.rm = TRUE),
     .groups = 'drop'
   )
 
@@ -607,8 +938,8 @@ roc_summary <- all_roc_data %>%
 model_colors <- c("Baseline" = "#287271", "Biomarker" = "#B63679")
 
 p5 <- ggplot(roc_summary, aes(x = FPR, y = mean_TPR, color = Model)) +
-  geom_ribbon(aes(ymin = pmax(mean_TPR - 1.96 * se_TPR, 0),
-                  ymax = pmin(mean_TPR + 1.96 * se_TPR, 1),
+  geom_ribbon(aes(ymin = pmax(mean_TPR - sd_TPR, 0),
+                  ymax = pmin(mean_TPR + sd_TPR, 1),
                   fill = Model), 
               alpha = 0.2, 
               color = NA) +
@@ -628,13 +959,65 @@ p5 <- ggplot(roc_summary, aes(x = FPR, y = mean_TPR, color = Model)) +
     subtitle = "At Different Follow-up Times"
   ) +
   coord_equal() +
-  get_publication_theme()
+  get_publication_theme() +
+  theme(
+    panel.spacing = unit(1, "cm"),  # Increase spacing between panels
+    axis.text.x = element_text(angle = 0, hjust = 0.5, size = 8),  # Adjust x-axis text
+    plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm")  # Add margin around entire plot
+  )
 
 print(p5)
 
+# save plot with adjusted width-to-height ratio
+ggsave("../../tidy_data/A4/final_ROCcurves_Over_Time.pdf",
+       plot = p5,
+       width = 14,  # Increased width
+       height = 6,
+       dpi = 300)
+
+# Year 7
+# Create individual panel for time = 7
+roc_t7 <- roc_summary %>% 
+  filter(Time == 7)
+
+p5_t7 <- ggplot(roc_t7, aes(x = FPR, y = mean_TPR, color = Model)) +
+  geom_ribbon(aes(ymin = pmax(mean_TPR - sd_TPR, 0),
+                  ymax = pmin(mean_TPR + sd_TPR, 1),
+                  fill = Model), 
+              alpha = 0.2, 
+              color = NA) +
+  geom_smooth(se = FALSE, method = "loess", span = 0.2, linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0,
+              linetype = "dashed", color = "gray50") +
+  scale_color_manual(values = model_colors) +
+  scale_fill_manual(values = model_colors) +
+  labs(
+    x = "False Positive Rate",
+    y = "True Positive Rate",
+    title = paste("7 years\n", 
+                 auc_stats$Baseline[auc_stats$Time == 7], "\n",
+                 auc_stats$Biomarker[auc_stats$Time == 7])
+  ) +
+  coord_equal() +
+  get_publication_theme() +
+  theme(
+    legend.position = "bottom",
+    plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm"),
+    panel.border = element_rect(color = "black", fill = NA, linewidth = 1)  # Add solid border
+  )
+
+print(p5_t7)
+
+# Save the individual panel
+ggsave("../../tidy_data/A4/final_ROCcurve_7years.pdf",
+       plot = p5_t7,
+       width = 6,
+       height = 6,
+       dpi = 300)
+
 # Calculate means and SEs for prediction error, averaging across folds first
 pe_summary <- all_pe_data %>%
-  group_by(Model, time) %>%
+  group_by(Model, time, fold) %>%
   summarise(
     fold_error = mean(error, na.rm = TRUE),
     .groups = 'drop'
@@ -642,23 +1025,26 @@ pe_summary <- all_pe_data %>%
   group_by(Model, time) %>%
   summarise(
     mean_error = mean(fold_error, na.rm = TRUE),
-    se_error = sd(fold_error, na.rm = TRUE) / sqrt(n()),
+    sd_error = sd(fold_error, na.rm = TRUE),
     .groups = 'drop'
   )
 
 # Plot prediction error with uncertainty
 p6 <- ggplot(pe_summary, aes(x = time, y = mean_error, 
                             color = Model)) +
-  geom_ribbon(aes(ymin = mean_error - 1.96 * se_error,
-                  ymax = mean_error + 1.96 * se_error,
+  geom_ribbon(aes(ymin = mean_error - sd_error,
+                  ymax = mean_error + sd_error,
                   fill = Model), alpha = 0.2, color = NA) +
   geom_line(linewidth = 1) +
+  # Add points at each year
+  geom_point(data = pe_summary[pe_summary$time %in% 3:8,], 
+             size = 3) +
   scale_color_manual(
-    values = model_colors,  # Remove extra color for non-existent Null Model
+    values = model_colors,
     labels = c("Baseline", "Biomarker")
   ) +
   scale_fill_manual(
-    values = model_colors,  # Remove extra fill for non-existent Null Model
+    values = model_colors,
     labels = c("Baseline", "Biomarker")
   ) +
   labs(
@@ -670,10 +1056,11 @@ p6 <- ggplot(pe_summary, aes(x = time, y = mean_error,
   get_publication_theme()
 print(p6)
 
-ggsave("../../tidy_data/A4/final_additional_metrics.png",
-       plot = additional_plots,
-       width = 15,  # Increased width
-       height = 8,  # Increased height
+# save plot
+ggsave("../../tidy_data/A4/final_prediction_error.pdf",
+       plot = p6,
+       width = 8,
+       height = 6,
        dpi = 300)
 ########################################################
 
@@ -682,155 +1069,3 @@ ggsave("../../tidy_data/A4/final_additional_metrics.png",
 
 
 
-collate_metric <- function(metrics_l, baseline_metrics_l, metric = "auc") {
-
-  ptau <- c(as.numeric(metrics_l$fold_1[[metric]][[metric]]),
-    as.numeric(metrics_l$fold_2[[metric]][[metric]]),
-    as.numeric(metrics_l$fold_3[[metric]][[metric]]),
-    as.numeric(metrics_l$fold_4[[metric]][[metric]]),
-    as.numeric(metrics_l$fold_5[[metric]][[metric]])
-  )
-  baseline <- c(as.numeric(baseline_metrics_l$fold_1[[metric]][[metric]]),
-    as.numeric(baseline_metrics_l$fold_2[[metric]][[metric]]),
-    as.numeric(baseline_metrics_l$fold_3[[metric]][[metric]]),
-    as.numeric(baseline_metrics_l$fold_4[[metric]][[metric]]),
-    as.numeric(baseline_metrics_l$fold_5[[metric]][[metric]])
-  )
-  times <- c(as.numeric(metrics_l$fold_1[[metric]]$time),
-    as.numeric(metrics_l$fold_2[[metric]]$time),
-    as.numeric(metrics_l$fold_3[[metric]]$time),
-    as.numeric(metrics_l$fold_4[[metric]]$time),
-    as.numeric(metrics_l$fold_5[[metric]]$time)
-  )
-  folds <- rep(c(rep(1, 6),
-                 rep(2, 6),
-                 rep(3, 6),
-                 rep(4, 6),
-                 rep(5, 6)), 2)
-
-  df <- data.frame(
-    model = c(rep("Biomarker", length(ptau)),
-              rep("Baseline", length(baseline))),
-    metric = c(ptau, baseline),
-    time = c(times, times),
-    fold = folds
-  )
-  names(df)[names(df) == "metric"] <- metric
-
-  return(df)
-}
-
-auc_results <- collate_metric(metrics_l, baseline_metrics_l, metric = "auc")
-brier_results <- collate_metric(metrics_l, baseline_metrics_l, metric = "brier")
-
-write_csv(auc_results, "../../tidy_data/A4/results_AUC.csv")
-write_csv(brier_results, "../../tidy_data/A4/results_brier.csv")
-
-# Save objects
-saveRDS(model_l, "../../tidy_data/A4/fitted_ptau_cox.rds")
-saveRDS(baseline_model_l, "../../tidy_data/A4/fitted_baseline_cox.rds")
-saveRDS(metrics_l, "../../tidy_data/A4/ptau_metrics.rds")
-saveRDS(baseline_metrics_l, "../../tidy_data/A4/baseline_metrics.rds")
-saveRDS(plots_l, "../../tidy_data/A4/ptau_plots.rds")
-saveRDS(baseline_plots_l, "../../tidy_data/A4/baseline_plots.rds")
-
-auc_summary <- auc_results %>%
-  group_by(model, time) %>%
-  summarise(
-    mean_AUC = mean(auc, na.rm = TRUE),
-    sd_AUC = sd(auc, na.rm = TRUE),
-    ymin = pmax(mean_AUC - sd_AUC, 0),
-    ymax = pmin(mean_AUC + sd_AUC, 1),
-    .groups = "drop"
-  )
-
-brier_summary <- brier_results %>%
-  group_by(model, time) %>%
-  summarise(
-    mean_brier = mean(brier, na.rm = TRUE),
-    sd_brier = sd(brier, na.rm = TRUE),
-    ymin = pmax(mean_brier - sd_brier, 0),
-    ymax = pmin(mean_brier + sd_brier, 1),
-    .groups = "drop"
-  )
-
-auc_plot <- td_plot(auc_summary, metric = "auc")
-
-# Display the plot
-print(auc_plot)
-
-# Save the plot
-ggsave("../../tidy_data/A4/final_auc_Over_Time_Publication_Viridis.pdf",
-       plot = auc_plot,
-       width = 8,
-       height = 6,
-       dpi = 300)
-
-brier_plot <- td_plot(brier_summary, metric = "brier")
-
-# Display the plot
-print(brier_plot)
-
-# Save the plot
-ggsave("../../tidy_data/A4/final_brier_Over_Time_Publication_Viridis.pdf",
-       plot = brier_plot,
-       width = 8,
-       height = 6,
-       dpi = 300)
-
-
-
-# # Pub figures
-# first_event <- min(val_df[val_df$event == 1, ]$time)
-# last_event <- max(val_df[val_df$event == 1, ]$time)
-# eval_times <- seq(ceiling(first_event),
-#                   floor(last_event),
-#                   by = 1)
-
-# t_horizon <- 8 # years
-# # Add predictions to your dataframe
-# val_df$baseline_pred <- predict(baseline_model,
-#                                 type = "lp",
-#                                 times = t_horizon,
-#                                 newdata = val_df)
-# val_df$biomarker_pred <- predict(model,
-#                                  type = "lp",
-#                                  times = t_horizon,
-#                                  newdata = val_df)
-
-# figures <- create_publication_figures(
-#   baseline_model = baseline_model,
-#   biomarker_model = model,
-#   auc_summary = auc_summary[auc_summary$time > 2, ],
-#   brier_summary = brier_summary[brier_summary$time > 2, ],
-#   cal_data = cal_data_avg,
-#   data = val_df,
-#   times = eval_times
-# )
-
-# # Save plots
-# ggsave("combined_performance.pdf", figures$combined_plot,
-#        width = 12, height = 10, dpi = 300)
-# ggsave("time_dependent_auc.pdf", figures$time_dependent_auc,
-#        width = 6, height = 5, dpi = 300)
-# ggsave("decision_curve.pdf", figures$decision_curve,
-#        width = 6, height = 5, dpi = 300)
-
-
-
-# additional
-# Use the function
-additional_figures <- create_additional_figures(
-  baseline_model = baseline_model,
-  biomarker_model = model,
-  data = td_data,
-  times = eval_times
-)
-
-# Save the new plots
-ggsave("dynamic_roc.pdf", additional_figures$dynamic_roc,
-       width = 8, height = 6, dpi = 300)
-ggsave("prediction_error.pdf", additional_figures$prediction_error,
-       width = 8, height = 6, dpi = 300)
-ggsave("additional_performance.pdf", additional_figures$combined_additional,
-       width = 12, height = 6, dpi = 300)

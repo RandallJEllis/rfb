@@ -201,7 +201,7 @@ def get_ptau():
     ptau217 = ptau217.sort_values(by=['BID', 'VISCODE'])
     print(ptau217.shape)
 
-    # remove invalud values
+    # remove invalid values
     ptau217 = ptau217[ptau217['ORRES'].notna()]
     print(ptau217.shape)
 
@@ -254,7 +254,7 @@ def get_ptau():
     # this is a weird time lag issue that we need to address where the last pTau time point is coded as later than the patient's last visit
     data['time_to_event'] = np.where((~data['BID'].isin(cases_bid)) & (data['COLLECTION_DATE_DAYS_CONSENT'] > data['time_to_event']), data['COLLECTION_DATE_DAYS_CONSENT'], data['time_to_event'])
 
-    return data, cases_bid
+    
 
     # # normalize time 
     # # data['time_to_event'] = data['time_to_event'] / 365.25
@@ -294,8 +294,8 @@ def get_ptau():
     # print(data.shape)
 
     # # merge E2 carriers
-    # data = merge_e2_carriers(data)
-
+    data = merge_e2_carriers(data)
+    return data, cases_bid
     # # one BID with a NaN for stop; replace with final_visit
     # data.loc[data.stop.isna(), 'stop'] = data.final_visit[data.stop.isna()]
 

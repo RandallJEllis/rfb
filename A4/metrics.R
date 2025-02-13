@@ -1,5 +1,13 @@
 
-
+overwrite_na_coef_to_zero <- function(model) {
+  if (length(names(which(is.na(coef(model))))) > 0) {
+    # set coefficients to zero
+    for (n in names(which(is.na(coef(model))))) {
+      model$coefficients[[n]] <- 0
+    }
+  }
+  return(model)
+}
 
 # Function to calculate Brier score at a specific time point
 calculate_brier_at_time <- function(model, data, t) {
@@ -71,6 +79,7 @@ calculate_survival_metrics <- function(model, data, times) {
     marker = risk_scores,  # using linear predictor instead of risk
     cause = 1,
     times = times,
+    weighting = "marginal",
     iid = TRUE
   )
   
@@ -82,14 +91,20 @@ calculate_survival_metrics <- function(model, data, times) {
   )
   
   results$auc <- auc_results
+  results$troc <- troc
   
   # 2. Brier Scores
   brier_results <- calculate_brier_scores(model, data, times)
   results$brier <- brier_results
   
   # 3. Concordance Index (Harrell's C)
-  c_index <- concordance(model)
+  model <- overwrite_na_coef_to_zero(model)
+  c_index <- pec::cindex(model,
+                         formula = Surv(time = tstop, event = event) ~ 1,
+                         data = data,
+                         eval.times = times,
+                         pred.times = times)
   results$concordance <- c_index
-  
+
   return(results)
 }
