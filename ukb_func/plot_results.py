@@ -115,7 +115,7 @@ def _save_plot(fig, curve_type, filepath, metric, age_cutoff, image_format):
     plt.close()
 
 
-def _mean_roc_curve(true_labels_list, predicted_probs_list):
+def mean_roc_curve(true_labels_list, predicted_probs_list):
     """
     Calculate the mean ROC curve from multiple ROC curves.
 
@@ -129,11 +129,15 @@ def _mean_roc_curve(true_labels_list, predicted_probs_list):
     mean_fpr = np.linspace(0, 1, 100)
     tprs = []
     auc_l = []
+    auc_maxfpr025_l = []
 
     for true_labels, predicted_probs in zip(true_labels_list,
                                             predicted_probs_list):
         rocauc = roc_auc_score(true_labels, predicted_probs)
         auc_l.append(rocauc)
+
+        rocauc_maxfpr025 = roc_auc_score(true_labels, predicted_probs, max_fpr=0.25)
+        auc_maxfpr025_l.append(rocauc_maxfpr025)
 
         fpr, tpr, _ = roc_curve(true_labels, predicted_probs)
         interp_tpr = np.interp(mean_fpr, fpr, tpr)
@@ -149,7 +153,10 @@ def _mean_roc_curve(true_labels_list, predicted_probs_list):
     mean_auc = auc(mean_fpr, mean_tpr)
     std_auc = np.std(auc_l)
 
-    return mean_tpr, std_tpr, mean_auc, std_auc
+    mean_auc_maxfpr025 = np.mean(auc_maxfpr025_l)   
+    std_auc_maxfpr025 = np.std(auc_maxfpr025_l)
+
+    return mean_tpr, std_tpr, mean_auc, std_auc, mean_auc_maxfpr025, std_auc_maxfpr025
 
 
 # def cv_roc_curve(true_labels_list, predicted_probs_list, individual_label,
@@ -295,7 +302,7 @@ def multi_mean_roc_curve(filepath, model, metric, image_format, age65_cutoff=Fal
             true_labels, probas = concat_labels_and_probas(dirpath)
             title = _choose_plot_title(dirpath)
 
-            mean_tpr, std_tpr, mean_auc, std_auc = _mean_roc_curve(true_labels,
+            mean_tpr, std_tpr, mean_auc, std_auc, mean_auc_maxfpr025, std_auc_maxfpr025 = mean_roc_curve(true_labels,
                                                                   probas)
 
             label = f'{title}\nAUC: {mean_auc:.3f} $\pm$ {std_auc:.3f}'

@@ -97,31 +97,72 @@ def get_X(df, predictor, model=None, time_vary=False, binary_outcome=False):
     check_folder_existence(directory_path)
         
     if predictor == 'ptau217':
-        X = df[['ORRESRAW', 'label']]#, 'time_to_event']]
+        X = df[['ORRESRAW', 'label']]
     elif predictor == 'demographics':
         X = df_utils.pull_columns_by_prefix(df, ['AGEYR', 'EDCCNTU', 'SEX',
-            'APOEGN', 'label']) # 'RACE', 'ETHNIC', , 'time_to_event'])
+                                            'APOEGN', 'label']) 
+    elif predictor == 'demographics_lancet':
+        X = df_utils.pull_columns_by_prefix(df, ['AGEYR', 'EDCCNTU', 'SEX',
+                                                 'APOEGN',  'SMOKE', 'ALCOHOL',
+                                                 'SUBUSE', 'AEROBIC', 'WALKING',
+                                                 'GDTOTAL', 'STAITOTAL', 'VSBPSYS', 'VSBPDIA',
+                                                 'label'])
     elif predictor == 'demographics_no_apoe':
         X = df_utils.pull_columns_by_prefix(df, ['AGEYR', 'EDCCNTU', 'SEX',
-             'label'])#, 'time_to_event']) 'RACE', 'ETHNIC',
+                                                'label'])  
+    elif predictor == 'demographics_lancet_no_apoe':
+        X = df_utils.pull_columns_by_prefix(df, ['AGEYR', 'EDCCNTU', 'SEX',
+                                                 'SMOKE', 'ALCOHOL', 'SUBUSE', 'AEROBIC', 'WALKING',
+                                                 'GDTOTAL', 'STAITOTAL', 'VSBPSYS', 'VSBPDIA',
+                                                 'label'])
     elif predictor == 'demographics_ptau217':
-        X = df_utils.pull_columns_by_prefix(df, ['ORRESRAW', 'AGEYR', 'EDCCNTU', 'SEX',
-             'APOEGN', 'label'])#, 'time_to_event']) 'RACE', 'ETHNIC',
+        X = df_utils.pull_columns_by_prefix(df, ['ORRES', 'AGEYR', 'EDCCNTU', 'SEX',
+                                                'APOEGN', 'label'])
+    elif predictor == 'demographics_ptau217_lancet':
+        X = df_utils.pull_columns_by_prefix(df, ['ORRES', 'AGEYR', 'EDCCNTU', 'SEX',  'APOEGN',
+                                                 'SMOKE', 'ALCOHOL', 'SUBUSE', 'AEROBIC', 'WALKING',
+                                                 'GDTOTAL', 'STAITOTAL', 'VSBPSYS', 'VSBPDIA',
+                                                 'label'])
     elif predictor == 'demographics_ptau217_no_apoe':
-        X = df_utils.pull_columns_by_prefix(df, ['ORRESRAW', 'AGEYR', 'EDCCNTU', 'SEX',
-             'label'])#, 'time_to_event']) 'RACE', 'ETHNIC',
+        X = df_utils.pull_columns_by_prefix(df, ['ORRES', 'AGEYR', 'EDCCNTU', 'SEX',
+             'label'])
+    elif predictor == 'demographics_ptau217_lancet_no_apoe':
+        X = df_utils.pull_columns_by_prefix(df, ['ORRES', 'AGEYR', 'EDCCNTU', 'SEX',
+                                                 'SMOKE', 'ALCOHOL', 'SUBUSE', 'AEROBIC', 'WALKING',
+                                                 'GDTOTAL', 'STAITOTAL', 'VSBPSYS', 'VSBPDIA',
+                                                 'label'])
     else:
         raise ValueError(f'Predictor {predictor} not recognized.')
     
+    if model == 'lgbm':
+
+        drop_cols = [col for col in X.columns if col in [
+            'ORRES', 'ORRESU', 'AGEYR_z',
+       'AGEYR_centered', 'AGEYR_z_squared', 'AGEYR_z_cubed',
+       'AGEYR_centered_squared', 'AGEYR_centered_cubed', 'EDCCNTU_z',
+       'ORRES_z', 'ORRES_boxcox']]
+        X = X.drop(columns=drop_cols)
+        
+    elif model == 'logit_regression':
+        drop_cols = [col for col in X.columns if col in [
+            'ORRES', 'ORRESU', 'ORRESRAW',
+        'AGEYR_z',
+        'AGEYR_z_squared', 'AGEYR_z_cubed',
+        'ORRES_z']]
+        X = X.drop(columns=drop_cols)
+
     if time_vary:
         X = pd.concat([df[['BID', 'start', 'stop']], X], axis=1)
 
-    print(X.columns)
+    # print(X.columns)
     
     return X, directory_path
 
 def preprocess_cats(X):
     cat_cols_l = ['SEX', 'APOEGN'] # 'RACE', 'ETHNIC', 
+    if 'SUBUSE' in X.columns:
+        cat_cols_l.append('SUBUSE')
+        
     cat_cols = [col for col in X.columns if col in cat_cols_l]
     
     if len(cat_cols) > 0:
@@ -133,12 +174,21 @@ def preprocess_cats(X):
             columns=encoder.get_feature_names_out(cat_cols)
         )
         
+        # Drop one column for each binary categorical variable
+        for cat_col in cat_cols:
+            col_prefix = f"{cat_col}_"
+            related_cols = [col for col in X_cat.columns if col.startswith(col_prefix)]
+            if len(related_cols) == 2:  # If it's a binary variable
+                X_cat = X_cat.drop(columns=[related_cols[0]])  # Drop first column
+        
         X = X.drop(columns=cat_cols)
         X = pd.concat([X, X_cat], axis=1)
     
+    if 'APOEGN_None' in X.columns:
+        X = X.drop(columns=['APOEGN_None'])
     return X
 
-def preprocess_xtrain_xtest(X_train, X_test, time_vary=False, binary_outcome=False):
+def preprocess_xtrain_xtest(X_train, X_test, model='lgbm', time_vary=False, binary_outcome=True):
     
     if binary_outcome:
         y_train = X_train['label']
@@ -150,60 +200,74 @@ def preprocess_xtrain_xtest(X_train, X_test, time_vary=False, binary_outcome=Fal
         y_test = np.array(list(X_test.loc[:, ['label', 'stop']].itertuples(index=False, name=None)), dtype=dtype)
 
     if time_vary == False:
-        X_train = X_train.drop(columns=['label', 'stop'])
-        X_test = X_test.drop(columns=['label', 'stop'])
+        X_train = X_train.drop(columns=['label'])#, 'stop'])
+        X_test = X_test.drop(columns=['label'])#, 'stop'])
 
-    if 'ORRESRAW' in X_train.columns:
-        # # zscore age and education using StandardScaler
-        # scaler = StandardScaler()
-        # scaler.fit(X_train['ORRESRAW'].values.reshape(-1, 1))
-        # X_train['ORRESRAW'] = scaler.transform(X_train['ORRESRAW'].values.reshape(-1, 1))
-        # X_test['ORRESRAW'] = scaler.transform(X_test['ORRESRAW'].values.reshape(-1, 1))
-        # boxcox transform ORRES
-        X_train['ORRES_boxcox'], lambda_val = stats.boxcox(X_train.ORRES)
-        X_test['ORRES_boxcox'] = stats.boxcox(X_test.ORRES, lmbda = lambda_val)
+    # if model == 'logit_regression':
+        # if 'ORRESRAW' in X_train.columns:
+        #     # # zscore age and education using StandardScaler
+        #     # scaler = StandardScaler()
+        #     # scaler.fit(X_train['ORRESRAW'].values.reshape(-1, 1))
+        #     # X_train['ORRESRAW'] = scaler.transform(X_train['ORRESRAW'].values.reshape(-1, 1))
+        #     # X_test['ORRESRAW'] = scaler.transform(X_test['ORRESRAW'].values.reshape(-1, 1))
+        #     # boxcox transform ORRES
+        #     X_train['ORRES_boxcox'], lambda_val = stats.boxcox(X_train.ORRES)
+        #     X_test['ORRES_boxcox'] = stats.boxcox(X_test.ORRES, lmbda = lambda_val)
 
-        # drop ORRESRAW 
-        X_train = X_train.drop(columns=['ORRESRAW'])
-        X_test = X_test.drop(columns=['ORRESRAW'])
-        
-    if 'AGEYR' in X_train.columns:
-        
-        # zscore age and education using StandardScaler
-        scaler = StandardScaler()
-        scaler.fit(X_train['AGEYR'].values.reshape(-1, 1))
-        X_train['AGEYR'] = scaler.transform(X_train['AGEYR'].values.reshape(-1, 1))
-        X_test['AGEYR'] = scaler.transform(X_test['AGEYR'].values.reshape(-1, 1))
-        
-        # add quadratic and cubic age, and interactions with apoe for age, quadratic age, and cubic age
-        X_train['AGEYR2'] = X_train['AGEYR'] ** 2
-        X_train['AGEYR3'] = X_train['AGEYR'] ** 3
-        
-        X_test['AGEYR2'] = X_test['AGEYR'] ** 2
-        X_test['AGEYR3'] = X_test['AGEYR'] ** 3
+        #     # drop ORRESRAW 
+        #     X_train = X_train.drop(columns=['ORRESRAW'])
+        #     X_test = X_test.drop(columns=['ORRESRAW'])
+    if model == 'lgbm':
+        if 'AGEYR' in X_train.columns:
+            X_train['AGEYR2'] = X_train['AGEYR'] ** 2
+            X_test['AGEYR2'] = X_test['AGEYR'] ** 2
+            
+        #     # zscore age and education using StandardScaler
+        #     scaler = StandardScaler()
+        #     scaler.fit(X_train['AGEYR'].values.reshape(-1, 1))
+        #     X_train['AGEYR'] = scaler.transform(X_train['AGEYR'].values.reshape(-1, 1))
+        #     X_test['AGEYR'] = scaler.transform(X_test['AGEYR'].values.reshape(-1, 1))
+            
+        #     # add quadratic and cubic age, and interactions with apoe for age, quadratic age, and cubic age
+        #     X_train['AGEYR2'] = X_train['AGEYR'] ** 2
+        #     # X_train['AGEYR3'] = X_train['AGEYR'] ** 3
+            
+        #     X_test['AGEYR2'] = X_test['AGEYR'] ** 2
+        #     # X_test['AGEYR3'] = X_test['AGEYR'] ** 3
+            
+            # add interaction of age and education
+        # if 'EDCCNTU' in X_train.columns:
+        #     scaler = StandardScaler()
+        #     scaler.fit(X_train['EDCCNTU'].values.reshape(-1, 1))
+        #     X_train['EDCCNTU'] = scaler.transform(X_train['EDCCNTU'].values.reshape(-1, 1))
+        #     X_test['EDCCNTU'] = scaler.transform(X_test['EDCCNTU'].values.reshape(-1, 1))
+            
+            # X_train['interaction_AGEYR_EDCCNTU'] = X_train['AGEYR'] * X_train['EDCCNTU']
+            # X_train['interaction_AGEYR2_EDCCNTU'] = X_train['AGEYR2'] * X_train['EDCCNTU']
+            # X_train['interaction_AGEYR3_EDCCNTU'] = X_train['AGEYR3'] * X_train['EDCCNTU']
+            
+            # X_test['interaction_AGEYR_EDCCNTU'] = X_test['AGEYR'] * X_test['EDCCNTU']
+            # X_test['interaction_AGEYR2_EDCCNTU'] = X_test['AGEYR2'] * X_test['EDCCNTU']
+            # X_test['interaction_AGEYR3_EDCCNTU'] = X_test['AGEYR3'] * X_test['EDCCNTU']
+    # elif model == 'lgbm':
+    #     if 'AGEYR' in X_train.columns:        
+    #         # add quadratic and cubic age, and interactions with apoe for age, quadratic age, and cubic age
+    #         X_train['AGEYR2'] = X_train['AGEYR'] ** 2
+    #         # X_train['AGEYR3'] = X_train['AGEYR'] ** 3
+            
+    #         X_test['AGEYR2'] = X_test['AGEYR'] ** 2
+    #         # X_test['AGEYR3'] = X_test['AGEYR'] ** 3
 
-        if len(df_utils.pull_columns_by_prefix(X_train, ['APOEGN']).columns.to_list()) > 0:
+    # create interaction variables for APOE and age
+    if len(df_utils.pull_columns_by_prefix(X_train, ['APOEGN']).columns.to_list()) > 0:
+            # age columns
+            age_cols = [col for col in X_train.columns if 'AGEYR' in col]
+            
             # Create interaction variables
             for col in df_utils.pull_columns_by_prefix(X_train, ['APOEGN']).columns.to_list():
-                for age_col in ['AGEYR', 'AGEYR2', 'AGEYR3']:
+                for age_col in age_cols:
                     X_train[f'interaction_{col}_{age_col}'] = X_train[col] * X_train[age_col]
                     X_test[f'interaction_{col}_{age_col}'] = X_test[col] * X_test[age_col]
-        
-        # add interaction of age and education
-        if 'EDCCNTU' in X_train.columns:
-            scaler = StandardScaler()
-            scaler.fit(X_train['EDCCNTU'].values.reshape(-1, 1))
-            X_train['EDCCNTU'] = scaler.transform(X_train['EDCCNTU'].values.reshape(-1, 1))
-            X_test['EDCCNTU'] = scaler.transform(X_test['EDCCNTU'].values.reshape(-1, 1))
-        
-            X_train['interaction_AGEYR_EDCCNTU'] = X_train['AGEYR'] * X_train['EDCCNTU']
-            X_train['interaction_AGEYR2_EDCCNTU'] = X_train['AGEYR2'] * X_train['EDCCNTU']
-            X_train['interaction_AGEYR3_EDCCNTU'] = X_train['AGEYR3'] * X_train['EDCCNTU']
-            
-            X_test['interaction_AGEYR_EDCCNTU'] = X_test['AGEYR'] * X_test['EDCCNTU']
-            X_test['interaction_AGEYR2_EDCCNTU'] = X_test['AGEYR2'] * X_test['EDCCNTU']
-            X_test['interaction_AGEYR3_EDCCNTU'] = X_test['AGEYR3'] * X_test['EDCCNTU']
-            
     return X_train, y_train, X_test, y_test
 
 # def get_prediction_times(X, y):

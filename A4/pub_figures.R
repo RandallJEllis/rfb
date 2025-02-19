@@ -27,73 +27,100 @@ get_publication_theme <- function() {
   return(publication_theme)
 }
 
-td_plot <- function(summary_df, model_colors, metric = "auc") {
-  model_colors <- c("Baseline" = "#287271", "Biomarker" = "#B63679")
+td_plot <- function(summary_df, model_colors,
+                    metric = "auc", all_models = FALSE) {
+  # Define colors for all nine models
+  if (all_models) {
+    model_colors <- c(
+      "demographics" = "#440154",           # deep purple
+      "demographics_no_apoe" = "#009E73",   # teal
+      "demographics_lancet" = "#E69F00",    # orange
+      "demographics_lancet_no_apoe" = "#56B4E9", # sky blue
+      "ptau" = "#CC79A7",                  # pink
+      "ptau_demographics" = "#F0E442",      # yellow
+      "ptau_demographics_no_apoe" = "#0072B2", # dark blue
+      "ptau_demographics_lancet_no_apoe" = "#D55E00", # red-orange
+      "ptau_demographics_lancet" = "#009292"  # turquoise
+    )
 
-  if (metric == "auc") {
+    model_labels <- c(
+      # "Demo", "Demo (-APOE)",
+      "Demo + Lancet", 
+      #"Demo+ Lancet\n(-APOE)",
+      "pTau217", 
+      # "Demo + pTau217",
+      # "Demo + pTau217\n(-APOE)", 
+      # "Demo + pTau217\n+ Lancet (-APOE)",
+      "Demo + pTau217\n+ Lancet"
+    )
+
+    # Create named vector for mapping model names to labels
+    names(model_labels) <- c(
+      # "demographics", 
+      # "demographics_no_apoe",
+      "demographics_lancet", 
+      # "demographics_lancet_no_apoe",
+      "ptau", 
+      # "ptau_demographics",
+      # "ptau_demographics_no_apoe", 
+      # "ptau_demographics_lancet_no_apoe",
+      "ptau_demographics_lancet"
+    )
+  } else {
+    model_colors <- c(
+      # "demographics" = "#440154", # deep purple
+      # "demographics_no_apoe" = "#009E73",   # teal
+      "demographics_lancet" = "#E69F00",    # orange
+      "ptau" = "#CC79A7",                  # pink
+      "ptau_demographics_lancet" = "#009292"  # turquoise
+    )
+
+    model_labels <- c(
+      # "Demo",
+      # "Demo (-APOE)",
+      "Demo + Lancet",
+      "pTau217",
+      "Demo + pTau217\n+ Lancet"
+    )
+
+    # Create named vector for mapping model names to labels
+    names(model_labels) <- c(
+      # "demographics",
+      # "demographics_no_apoe",
+      "demographics_lancet",
+      "ptau",
+      "ptau_demographics_lancet"
+    )
+  }
+
+  # subset to only include models in model_labels and order by model_labels
+  summary_df <- summary_df %>%
+    filter(model %in% names(model_labels)) %>%
+    mutate(model = factor(model, levels = names(model_labels)))
+
+  # Create base plot based on metric
+  base_plot <- if (metric == "auc") {
     ggplot(summary_df,
            aes(x = time,
                y = mean_AUC,
                color = model,
                fill = model)) +
-      geom_ribbon(aes(ymin = ymin, ymax = ymax),
-                  alpha = 0.3,
-                  color = NA,
-                  show.legend = FALSE) +
-      geom_line(linewidth = 1.2) +
-      geom_point(size = 3, shape = 21, fill = "white") +
-      scale_color_manual(values = model_colors) +
-      scale_fill_manual(values = model_colors) +
       labs(
         title = "Time-varying AUROC",
         x = "Follow-up Time (years)",
-        y = "AUROC",
-        color = "Model",
-        fill = "Model"
-      ) +
-      theme_bw(base_size = 14) +
-      theme(
-        plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-        plot.subtitle = element_text(size = 14, hjust = 0.5),
-        axis.title = element_text(face = "bold", size = 14),
-        axis.text = element_text(size = 12),
-        legend.title = element_text(face = "bold", size = 14),
-        legend.text = element_text(size = 12),
-        panel.grid.minor = element_blank(),
-        legend.position = "right"
-      ) +
-      scale_y_continuous(limits = c(0.5, 0.8))
+        y = "AUROC"
+      ) #+
+      # scale_y_continuous(limits = c(0.5, 0.8))
   } else if (metric == "brier") {
     ggplot(summary_df,
            aes(x = time,
                y = mean_brier,
                color = model,
                fill = model)) +
-      geom_ribbon(aes(ymin = ymin, ymax = ymax),
-                  alpha = 0.3,
-                  color = NA,
-                  show.legend = FALSE) +
-      geom_line(linewidth = 1.2) +
-      geom_point(size = 3, shape = 21, fill = "white") +
-      scale_color_manual(values = model_colors) +
-      scale_fill_manual(values = model_colors) +
       labs(
         title = "Time-varying Brier score",
         x = "Follow-up Time (years)",
-        y = "Brier Score",
-        color = "Model",
-        fill = "Model"
-      ) +
-      theme_bw(base_size = 14) +
-      theme(
-        plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-        plot.subtitle = element_text(size = 14, hjust = 0.5),
-        axis.title = element_text(face = "bold", size = 14),
-        axis.text = element_text(size = 12),
-        legend.title = element_text(face = "bold", size = 14),
-        legend.text = element_text(size = 12),
-        panel.grid.minor = element_blank(),
-        legend.position = "right"
+        y = "Brier Score"
       )
   } else if (metric == "concordance") {
     ggplot(summary_df,
@@ -101,41 +128,210 @@ td_plot <- function(summary_df, model_colors, metric = "auc") {
                y = mean_concordance,
                color = model,
                fill = model)) +
-      geom_ribbon(aes(ymin = ymin, ymax = ymax),
-                  alpha = 0.3,
-                  color = NA,
-                  show.legend = FALSE) +
-      geom_line(linewidth = 1.2) +
-      geom_point(size = 3, shape = 21, fill = "white") +
-      scale_color_manual(values = model_colors) +
-      scale_fill_manual(values = model_colors) +
       labs(
         title = "Time-varying Concordance",
         x = "Follow-up Time (years)",
-        y = "Concordance",
-        color = "Model",
-        fill = "Model"
-      ) +
-      theme_bw(base_size = 14) +
-      theme(
-        plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
-        plot.subtitle = element_text(size = 14, hjust = 0.5),
-        axis.title = element_text(face = "bold", size = 14),
-        axis.text = element_text(size = 12),
-        legend.title = element_text(face = "bold", size = 14),
-        legend.text = element_text(size = 12),
-        panel.grid.minor = element_blank(),
-        legend.position = "right"
-      ) +
-      scale_y_continuous(limits = c(0.5, 0.85))
+        y = "Concordance"
+      ) #+
+      # scale_y_continuous(limits = c(0.5, 0.85))
   }
+
+  # Add common elements
+  base_plot +
+    geom_ribbon(aes(ymin = ymin, ymax = ymax),
+                alpha = 0.1,
+                show.legend = FALSE) +
+    geom_line(linewidth = 1.2) +
+    geom_point(size = 3, shape = 21, fill = "white") +
+    scale_color_manual(values = model_colors,
+                       labels = model_labels,
+                       name = "Model") +
+    scale_fill_manual(values = model_colors,
+                      labels = model_labels,
+                      name = "Model") +
+    theme_bw(base_size = 14) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 14, hjust = 0.5),
+      axis.title = element_text(face = "bold", size = 14),
+      axis.text = element_text(size = 12),
+      legend.title = element_text(face = "bold", size = 14),
+      legend.text = element_text(size = 12),
+      panel.grid.minor = element_blank(),
+      legend.position = "right"
+    )
+}
+
+# Helper function to process predictions and calibration data for one model
+process_calibration_data <- function(model_name, model, val_df, time,
+                                     fixed_breaks, fold) {
+  # Get predictions for current model
+  pred_probs <- 1 - pec::predictSurvProb(
+    model,
+    newdata = val_df,
+    times = time
+  )
+
+  # Create risk groups using fixed breaks
+  risk_groups <- cut(pred_probs, breaks = fixed_breaks, include.lowest = TRUE)
+
+  # Calculate calibration metrics for each risk group
+  cal_data <- data.frame()
+  for (group in levels(risk_groups)) {
+    group_data <- val_df[risk_groups == group, ]
+    if (nrow(group_data) > 0) {
+      surv_fit <- survfit(Surv(tstop, event) ~ 1, data = group_data)
+      surv_summary <- summary(surv_fit, times = time)
+
+      if (length(surv_summary$surv) > 0) {
+        cal_data <- rbind(cal_data, data.frame(
+          fold = fold,
+          time = time,
+          model = model_name,
+          risk_group = group,
+          pred = mean(pred_probs[risk_groups == group]),
+          actual = 1 - surv_summary$surv[1]
+        ))
+      }
+    }
+  }
+
+  return(cal_data)
+}
+
+# Function to calculate calibration data across all models and folds
+calculate_calibration_data <- function(models_list, val_df_l,
+                                       times = seq(3, 8)) {
+  selected_models <- c(
+    # "demographics", "demographics_no_apoe",
+    "demographics_lancet", "ptau",
+    "ptau_demographics_lancet"
+  )
+
+  cal_data_all <- list()
+
+  # First pass: collect all predictions to create fixed breaks
+  for (t in times) {
+    all_preds_by_model <- list()
+
+    # Collect predictions across all folds and models
+    for (fold in 0:4) {
+      for (model_name in selected_models) {
+        model <- overwrite_na_coef_to_zero(
+          models_list[[model_name]][[paste0("fold_", fold + 1)]]
+        )
+
+        pred_probs <- 1 - pec::predictSurvProb(
+          model,
+          newdata = val_df_l[[paste0("fold_", fold + 1, "_", model_name)]],
+          times = t
+        )
+
+        # Store predictions by model
+        all_preds_by_model[[model_name]] <- c(
+          all_preds_by_model[[model_name]],
+          pred_probs
+        )
+      }
+    }
+
+    # Calculate fixed breaks using all predictions
+    all_preds <- unlist(all_preds_by_model)
+    raw_breaks <- quantile(all_preds, probs = seq(0, 1, length.out = 11))
+    fixed_breaks <- numeric(length(raw_breaks))
+
+    # Handle duplicate break points
+    for (i in seq_along(raw_breaks)) {
+      duplicates <- sum(raw_breaks[1:i] == raw_breaks[i])
+      fixed_breaks[i] <- if (duplicates > 1) {
+        raw_breaks[i] + (duplicates - 1) * .Machine$double.eps
+      } else {
+        raw_breaks[i]
+      }
+    }
+
+    # Second pass: calculate calibration using fixed breaks
+    cal_data_time <- list()
+
+    for (fold in 0:4) {
+      fold_data <- list()
+
+      for (model_name in selected_models) {
+        model <- overwrite_na_coef_to_zero(
+          models_list[[model_name]][[paste0("fold_", fold + 1)]]
+        )
+
+        model_data <- process_calibration_data(
+          model_name,
+          model,
+          val_df_l[[paste0("fold_", fold + 1, "_", model_name)]],
+          t,
+          fixed_breaks,
+          fold
+        )
+
+        fold_data[[model_name]] <- model_data
+      }
+
+      cal_data_time[[paste0("fold_", fold + 1)]] <- do.call(rbind, fold_data)
+    }
+
+    cal_data_all[[as.character(t)]] <- cal_data_time
+  }
+
+  # Combine and summarize calibration data
+  all_cal_data <- do.call(rbind, lapply(names(cal_data_all), function(t) {
+    do.call(rbind, cal_data_all[[t]])
+  }))
+
+  # First, calculate the mean predictions and observed outcomes for each fold
+  fold_level <- all_cal_data %>%
+    group_by(time, model, risk_group, fold) %>%
+    summarize(
+      pred_mean = mean(pred),
+      actual_prop = mean(actual),
+      n = n(),
+      .groups = "keep"
+    )
+
+  # Then aggregate across folds to get the final calibration points
+  calibration_points <- fold_level %>%
+    group_by(time, model, risk_group) %>%
+    summarize(
+      pred = mean(pred_mean),  # Average prediction across folds
+      actual = mean(actual_prop),  # Average actual proportion across folds
+      sd = sd(actual_prop),  # SD
+      lower = actual - sd,
+      upper = actual + sd,
+      n_folds = n(),  # Number of folds contributing to this point
+      .groups = "drop"
+    )
+
+  return(calibration_points)
 }
 
 # Modified plotting function to include confidence intervals
 calibration_plots <- function(cal_data, times, model_colors) {
 
   publication_theme <- get_publication_theme()
-  model_colors <- c("Baseline" = "#287271", "Biomarker" = "#B63679")
+  model_colors <- c(
+      "demographics_lancet" = "#E69F00",    # orange
+      "ptau" = "#CC79A7",                  # pink
+      "ptau_demographics_lancet" = "#009292"  # turquoise
+      # "demographics" = "#440154",           # deep purple
+      # "demographics_no_apoe" = "#009E73"   # teal
+    )
+
+  model_labels <- c(
+      # "Demo", "Demo (-APOE)",
+      "Demo + Lancet", 
+      #"Demo+ Lancet\n(-APOE)",
+      "pTau217", 
+      # "Demo + pTau217",
+      # "Demo + pTau217\n(-APOE)", 
+      # "Demo + pTau217\n+ Lancet (-APOE)",
+      "Demo + pTau217\n+ Lancet"
+    )
 
   plots <- list()
 
@@ -156,8 +352,8 @@ calibration_plots <- function(cal_data, times, model_colors) {
                   color = "gray50") +
       geom_line(linewidth = 1) +
       geom_point(size = 2) +
-      scale_color_manual(values = model_colors, name = "Model") +
-      scale_fill_manual(values = model_colors, name = "Model") +
+      scale_color_manual(values = model_colors, name = "Model", labels = model_labels) +
+      scale_fill_manual(values = model_colors, name = "Model", labels = model_labels) +
       labs(x = if (is_bottom) "Predicted Probability" else "",
            y = if (is_leftmost) "Observed Probability" else "",
            title = paste0(t, " years")) +
@@ -171,104 +367,190 @@ calibration_plots <- function(cal_data, times, model_colors) {
   return(wrap_plots(plots, ncol = 3))
 }
 
-dca_plots <- function(baseline_model, biomarker_model,
-                      data, times, model_colors) {
-  plots <- list()
-  final_plot <- NULL
-
-  for (t in times) {
-    is_leftmost <- as.numeric(t) %in% c(3, 5, 7)
-    is_bottom <- as.numeric(t) >= 7
-    is_last <- t == 8
-
-    # First run with wide range to find valid threshold range
-    temp_dca_base <- stdca(data = data, outcome = "event", ttoutcome = "tstop",
-                           timepoint = t, predictors = "baseline_pred",
-                           xstart = 0, xstop = 1,
-                           probability = FALSE, harm = NULL, graph = FALSE)
-    temp_dca_bio <- stdca(data = data, outcome = "event", ttoutcome = "tstop",
-                          timepoint = t, predictors = "biomarker_pred",
-                          xstart = 0, xstop = 1,
-                          probability = FALSE, harm = NULL, graph = FALSE)
-
-    # Find last valid threshold
-    max_thresh <- min(
-      max(
-        temp_dca_base$net.benefit$threshold[
-          !is.na(temp_dca_base$net.benefit$baseline_pred)
-        ]
-      ),
-      max(
-        temp_dca_bio$net.benefit$threshold[
-          !is.na(temp_dca_bio$net.benefit$biomarker_pred)
-        ]
-      )
+dca_plots <- function(all_dca_data, times = seq(3, 8), model_colors = NULL) {
+  if (is.null(model_colors)) {
+    model_colors <- c(
+      "demographics" = "#287271",
+      "demographics_no_apoe" = "#B63679", 
+      "demographics_lancet" = "#E69F00",    # orange
+      "ptau" = "#CC79A7",                  # pink
+      "ptau_demographics_lancet" = "#009292"  # turquoise
     )
-
-    # Rerun with adaptive xstop
-    dca_baseline <- stdca(data = data, outcome = "event", ttoutcome = "tstop",
-                          timepoint = t, predictors = "baseline_pred",
-                          xstart = 0, xstop = max_thresh,
-                          probability = FALSE, harm = NULL, graph = FALSE)
-
-    dca_biomarker <- stdca(data = data, outcome = "event", ttoutcome = "tstop",
-                           timepoint = t, predictors = "biomarker_pred",
-                           xstart = 0, xstop = max_thresh,
-                           probability = FALSE, harm = NULL, graph = FALSE)
-
-    current_plot <- ggplot() +
-      geom_line(data = data.frame(
-        x = dca_baseline$net.benefit$threshold,
-        y = dca_baseline$net.benefit$none
-      ),
-      aes(x = x, y = y, linetype = "Treat None"), color = "gray50") +
-      geom_line(data = data.frame(
-        x = dca_baseline$net.benefit$threshold,
-        y = dca_baseline$net.benefit$all
-      ),
-      aes(x = x, y = y, linetype = "Treat All"), color = "gray50") +
-      geom_line(data = data.frame(
-        x = dca_baseline$net.benefit$threshold,
-        y = dca_baseline$net.benefit$baseline_pred
-      ),
-      aes(x = x, y = y, color = "Baseline"), linewidth = 1) +
-      geom_line(data = data.frame(
-        x = dca_biomarker$net.benefit$threshold,
-        y = dca_biomarker$net.benefit$biomarker_pred
-      ),
-      aes(x = x, y = y, color = "Biomarker"), linewidth = 1) +
-      scale_color_manual(values = model_colors, name = "Model") +
-      scale_linetype_manual(
-        values = c("Treat None" = "dashed", "Treat All" = "dotted"),
-        name = "Linetype"
-      ) +
-      scale_y_continuous(limits = c(-0.05, NA)) +
-      labs(
-        x = if (is_bottom) "Threshold Probability" else "",
-        y = if (is_leftmost) "Net Benefit" else "",
-        title = paste(t, "years")
-      )
-
-    plots[[as.character(t)]] <- current_plot
-
-    if (t == tail(times, 1)) {
-      final_plot <- current_plot
-    }
   }
 
-  results <- wrap_plots(plots, ncol = 2) +
-    plot_layout(guides = "collect") +
-    plot_annotation(
-      theme = theme(
-        legend.position = "bottom",
-        legend.box = "horizontal"
+  plots <- list()
+
+  for (t in times) {
+    # Pre-filter data for this timepoint
+    t_data_all <- all_dca_data[all_dca_data$time == t, ]
+    
+    # Initialize matrices for all models
+    models_to_analyze <- unique(t_data_all$model)
+    thresholds <- NULL
+    model_vals <- list()
+    
+    # Process each fold
+    for (fold in unique(t_data_all$fold)) {
+      fold_data <- t_data_all[t_data_all$fold == fold, ]
+      
+      # Calculate DCA once for reference strategies
+      dca_ref <- stdca(
+        data = fold_data[fold_data$model == models_to_analyze[1], ],
+        outcome = "event",
+        ttoutcome = "tstop", 
+        timepoint = t,
+        predictors = "pred_prob",
+        xstart = 0,
+        xstop = 1,
+        probability = FALSE,
+        harm = NULL,
+        graph = FALSE
       )
+      
+      # Store thresholds on first iteration
+      if (is.null(thresholds)) {
+        thresholds <- dca_ref$net.benefit$threshold
+        n_thresholds <- length(thresholds)
+        none_vals <- matrix(NA, nrow = length(unique(t_data_all$fold)), ncol = n_thresholds)
+        all_vals <- matrix(NA, nrow = length(unique(t_data_all$fold)), ncol = n_thresholds)
+        for (model_name in models_to_analyze) {
+          model_vals[[model_name]] <- matrix(NA, nrow = length(unique(t_data_all$fold)), ncol = n_thresholds)
+        }
+      }
+      
+      # Store reference values
+      none_vals[fold + 1, ] <- dca_ref$net.benefit$none
+      all_vals[fold + 1, ] <- dca_ref$net.benefit$all
+      
+      # Calculate DCA for each model
+      for (model_name in models_to_analyze) {
+        model_data <- fold_data[fold_data$model == model_name, ]
+        if (nrow(model_data) > 0) {
+          dca_model <- stdca(
+            data = model_data,
+            outcome = "event",
+            ttoutcome = "tstop",
+            timepoint = t,
+            predictors = "pred_prob",
+            xstart = 0,
+            xstop = 1,
+            probability = FALSE,
+            harm = NULL,
+            graph = FALSE
+          )
+          model_vals[[model_name]][fold + 1, ] <- dca_model$net.benefit$pred_prob
+        }
+      }
+    }
+
+    # Calculate means and SDs
+    none_mean <- colMeans(none_vals, na.rm = TRUE)
+    all_mean <- colMeans(all_vals, na.rm = TRUE)
+    model_means <- lapply(model_vals, colMeans, na.rm = TRUE)
+    model_sds <- lapply(model_vals, function(x) apply(x, 2, sd, na.rm = TRUE))
+
+    is_leftmost <- as.numeric(t) %in% c(3, 6)
+    is_bottom <- as.numeric(t) >= 6
+    is_middle_bottom <- t == 7
+
+    # Create plot
+    current_plot <- create_dca_plot(
+      thresholds, none_mean, all_mean, 
+      model_means, model_sds, model_colors,
+      models_to_analyze, t, 
+      is_leftmost, is_bottom, is_middle_bottom
     )
 
-  return(list(
-    all_plots = results,
-    final_plot = final_plot
-  ))
+    plots[[as.character(t)]] <- current_plot
+  }
+
+  # Create final combined plot
+  wrap_plots(plots, ncol = 3) +
+    plot_layout(guides = "collect") & 
+    theme(legend.position = "bottom")
+}
+
+# Helper function to create individual DCA plot
+create_dca_plot <- function(thresholds, none_mean, all_mean,
+                           model_means, model_sds, model_colors,
+                           models_to_analyze, t,
+                           is_leftmost, is_bottom, is_middle_bottom) {
+
+  current_plot <- ggplot() +
+    # Add reference lines
+    geom_line(
+      data = data.frame(x = thresholds, y = none_mean),
+      aes(x = x, y = y, linetype = "Treat None"), 
+      color = "gray50"
+    ) +
+    geom_line(
+      data = data.frame(x = thresholds, y = all_mean),
+      aes(x = x, y = y, linetype = "Treat All"), 
+      color = "gray50"
+    )
+
+  # Add model lines and ribbons
+  for (model_name in models_to_analyze) {
+    plot_data <- data.frame(
+      x = thresholds,
+      y = model_means[[model_name]],
+      ymin = model_means[[model_name]] - model_sds[[model_name]],
+      ymax = model_means[[model_name]] + model_sds[[model_name]],
+      model = model_name
+    )
+    
+    current_plot <- current_plot +
+      geom_ribbon(
+        data = plot_data,
+        aes(x = x, y = y, ymin = ymin, ymax = ymax, fill = model),
+        alpha = 0.2
+      ) +
+      geom_line(
+        data = plot_data,
+        aes(x = x, y = y, color = model), 
+        linewidth = 1
+      )
+  }
+
+  current_plot +
+    scale_color_manual(
+      values = model_colors,
+      name = "Model",
+      labels = c(
+        "Demographics",
+        "Demographics (no APOE)",
+        "Demographics + Lifestyle",
+        "Plasma p-tau217",
+        "Full Model"
+      )
+    ) +
+    scale_fill_manual(
+      values = model_colors,
+      name = "Model",
+      labels = c(
+        "Demographics",
+        "Demographics (no APOE)",
+        "Demographics + Lifestyle",
+        "Plasma p-tau217",
+        "Full Model"
+      )
+    ) +
+    scale_linetype_manual(
+      values = c("Treat None" = "dashed", "Treat All" = "dotted"),
+      name = "Strategy"
+    ) +
+    scale_y_continuous(limits = c(-0.05, NA)) +
+    labs(
+      x = if (is_bottom) "Threshold Probability" else "",
+      y = if (is_leftmost) "Net Benefit" else "",
+      title = paste(t, "years")
+    ) +
+    get_publication_theme() +
+    theme(
+      legend.position = if (is_middle_bottom) "bottom" else "none",
+      legend.box = "vertical",
+      aspect.ratio = 0.7
+    )
 }
 
 # Function to create publication-quality figures
@@ -323,105 +605,132 @@ library(patchwork)
 library(survcomp)
 library(pec)
 
-create_additional_figures <- function(baseline_model, biomarker_model,
-                                      data, times) {
+create_additional_figures <- function(models, val_data_dict, times) {
   publication_theme <- get_publication_theme()
-  model_colors <- c("Baseline" = "#287271", "Biomarker" = "#B63679")
 
-  # 1. Cumulative/Dynamic ROC Curves at different time points  
-  # ROC curve for biomarker model
-  roc_biomarker <- timeROC(
-    T = data$tstop,
-    delta = data$event,
-    marker = predict(biomarker_model, newdata = data, type = "lp"),
-    cause = 1,
-    times = times,
-    iid = TRUE,
-    ROC = TRUE
-  )
+  # Initialize lists to store ROC curves for each model
+  roc_curves <- list()
+  roc_data_list <- list()
 
-  # ROC curve for baseline model
-  roc_baseline <- timeROC(
-    T = data$tstop,
-    delta = data$event,
-    marker = predict(baseline_model, newdata = data, type = "lp"),
-    cause = 1,
-    times = times,
-    iid = TRUE,
-    ROC = TRUE
-  )
+  # Calculate ROC curves for each model using its corresponding validation data
+  for (model_name in names(models)) {
+    # Use the appropriate validation data for this model
+    val_data <- val_data_dict[[model_name]]
 
-  # Create data frames with consistent column names
-  biomarker_df <- data.frame(
-    FPR = as.vector(roc_biomarker$FP),
-    TPR = as.vector(roc_biomarker$TP),
-    Model = "Biomarker",
-    Time = rep(times, each = length(roc_biomarker$FP) / length(times))
-  )
-  
-  baseline_df <- data.frame(
-    FPR = as.vector(roc_baseline$FP),
-    TPR = as.vector(roc_baseline$TP),
-    Model = "Baseline",
-    Time = rep(times, each = length(roc_baseline$FP) / length(times))
-  )
+    roc_curves[[model_name]] <- timeROC(
+      T = val_data$tstop,
+      delta = val_data$event,
+      marker = predict(models[[model_name]], newdata = val_data, type = "lp"),
+      cause = 1,
+      times = times,
+      iid = TRUE,
+      ROC = TRUE
+    )
 
-  # Combine the data frames
-  roc_data <- rbind(biomarker_df, baseline_df)
+    # Create data frame for this model
+    roc_data_list[[model_name]] <- data.frame(
+      FPR = as.vector(roc_curves[[model_name]]$FP),
+      TPR = as.vector(roc_curves[[model_name]]$TP),
+      Model = model_name,
+      Time = rep(times, each = length(roc_curves[[model_name]]$FP) / length(times))
+    )
+  }
 
-  p5 <- ggplot(roc_data, aes(x = FP, y = TP,
-                             color = Model,
-                             linetype = factor(Time))) +
+  # Combine all ROC data
+  roc_data <- do.call(rbind, roc_data_list)
+
+  # Create ROC plot
+  p5 <- ggplot(roc_data, aes(x = FPR, y = TPR, color = Model)) +
     geom_line(linewidth = 1) +
-    geom_abline(slope = 1, intercept = 0,
-                linetype = "dashed", color = "gray50") +
-    scale_color_manual(values = model_colors) +
-    scale_linetype_discrete(name = "Time (Years)") +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") +
+    scale_color_manual(
+      values = c(
+        "demographics" = "#287271",
+        "demographics_no_apoe" = "#B63679",
+        "demographics_lancet" = "#4B0082",
+        "ptau" = "#FF4500",
+        "ptau_demographics_lancet" = "#008000"
+      ),
+      labels = c(
+        "Demographics",
+        "Demographics (no APOE)",
+        "Demographics + Lifestyle",
+        "Plasma p-tau217",
+        "Full Model"
+      )
+    ) +
+    facet_wrap(~Time, labeller = label_both) +
     labs(
       x = "False Positive Rate",
       y = "True Positive Rate",
-      title = "Dynamic ROC Curves", 
+      title = "Dynamic ROC Curves",
       subtitle = "At Different Follow-up Times"
     ) +
     coord_equal() +
     publication_theme
 
-  # 2. Integrated Prediction Error
-  # Create consistent time points from 3-8 years
-  eval_times <- seq(3, 8)
+  # Calculate prediction error curves using appropriate validation data for each model
+  pe <- tryCatch(
+    {
+      # Create a list to store predictions for each model
+      predictions <- list()
+      for (model_name in names(models)) {
+        val_data <- val_data_dict[[model_name]]
+        predictions[[model_name]] <- pec::predictSurvProb(
+          models[[model_name]],
+          newdata = val_data,
+          times = times
+        )
+      }
 
-  # Calculate prediction error curves with consistent time points
-  pe <- tryCatch({
-    pec(
-      list("Baseline" = baseline_model, "Biomarker" = biomarker_model),
-      data = data,
-      times = eval_times,  # Use consistent eval_times
-      exact = FALSE,
-      reference = TRUE,
-      splitMethod = "none",
-      formula = Surv(tstop, event) ~ 1,
-      start = 3,
-      verbose = FALSE
-    )
-  }, error = function(e) {
-    warning("Prediction error calculation failed, returning NULL")
-    NULL
-  })
-  
-  # Only create the plot if pe calculation succeeded
+      # Use the first validation dataset's structure for the reference
+      reference_data <- val_data_dict[[names(models)[1]]]
+
+      pec(
+        object = predictions,
+        data = reference_data,
+        times = times,
+        exact = FALSE,
+        reference = TRUE,
+        splitMethod = "none",
+        formula = Surv(tstop, event) ~ 1,
+        start = 3,
+        verbose = FALSE
+      )
+    },
+    error = function(e) {
+      warning("Prediction error calculation failed, returning NULL")
+      NULL
+    }
+  )
+
+  # Create prediction error plot if calculation succeeded
   if (!is.null(pe)) {
+    # Create data frame for all models
     pe_data <- data.frame(
-      time = rep(pe$time, 2),
-      error = c(pe$AppErr$Baseline, pe$AppErr$Biomarker),
-      Model = factor(rep(c("Baseline", "Biomarker"),
-                        each = length(pe$time)))
+      time = rep(pe$time, length(models)),
+      error = unlist(lapply(names(models), 
+                            function(model_name) pe$AppErr[[model_name]])),
+      Model = factor(rep(names(models), each = length(pe$time)))
     )
-    
+
     p6 <- ggplot(pe_data, aes(x = time, y = error, color = Model)) +
       geom_line(linewidth = 1) +
       scale_color_manual(
-        values = model_colors,
-        labels = c("Baseline", "Biomarker")
+        values = c(
+          "demographics" = "#287271",
+          "demographics_no_apoe" = "#B63679",
+          "demographics_lancet" = "#4B0082",
+          "ptau" = "#FF4500",
+          "ptau_demographics_lancet" = "#008000"
+        ),
+        labels = c(
+          "Demographics",
+          "Demographics (no APOE)",
+          "Demographics + Lifestyle",
+          "Plasma p-tau217",
+          "Full Model"
+        )
       ) +
       labs(
         x = "Time (Years)",
@@ -434,7 +743,7 @@ create_additional_figures <- function(baseline_model, biomarker_model,
     p6 <- NULL
   }
 
-  # Create combined plot with new figures
+  # Create combined plot
   combined_additional <- (p5 + p6) +
     plot_annotation(
       title = "Additional Model Performance Metrics",
@@ -444,8 +753,15 @@ create_additional_figures <- function(baseline_model, biomarker_model,
     )
 
   return(list(
-    dynamic_roc = p5,
-    prediction_error = p6,
-    combined_additional = combined_additional
+    dynamic_roc = list(
+      plot = p5,
+      data = roc_data
+    ),
+    prediction_error = list(
+      plot = p6,
+      data = if (!is.null(pe)) pe_data else NULL
+    ),
+    combined_additional = combined_additional,
+    troc = roc_curves[[1]] # Return first ROC curve for backwards compatibility
   ))
 }
