@@ -420,7 +420,8 @@ compare_tvaurocs <- function(trocs_x, trocs_y) {
     # print(paste("Fold", fold))
     
     # Compare timeROC objects using timeROC::compare
-    comparison <- timeROC::compare(trocs_x[[fold]], trocs_y[[fold]],
+    comparison <- timeROC::compare(trocs_x[[fold]],
+                                   trocs_y[[fold]],
                                   adjusted = TRUE)
     # print(comparison)
     
@@ -440,19 +441,48 @@ compare_tvaurocs <- function(trocs_x, trocs_y) {
   
   # Calculate summary statistics
   summary_stats <- aggregate(
-    cbind(auc_diff, p_value) ~ time, 
+    cbind(auc_diff, p_value, auc_x, auc_y) ~ time, 
     data = all_results_df,
     FUN = function(x) c(mean = mean(x), sd = sd(x))
   )
   
+  # Calculate confidence intervals for each fold
+  ci_data <- data.frame()
+  for (fold in seq_along(trocs_x)) {
+    ci_x <- timeROC:::confint.ipcwsurvivalROC(trocs_x[[fold]])
+    ci_y <- timeROC:::confint.ipcwsurvivalROC(trocs_y[[fold]])
+    
+    ci_data <- rbind(ci_data, data.frame(
+      fold = fold,
+      time = trocs_x[[fold]]$times,
+      ci_lower_x = ci_x$CI_AUC[,1]/100,
+      ci_upper_x = ci_x$CI_AUC[,2]/100,
+      ci_lower_y = ci_y$CI_AUC[,1]/100,
+      ci_upper_y = ci_y$CI_AUC[,2]/100
+    ))
+  }
+  
+  # Calculate mean CIs across folds
+  ci_summary <- aggregate(
+    cbind(ci_lower_x, ci_upper_x, ci_lower_y, ci_upper_y) ~ time,
+    data = ci_data,
+    FUN = mean
+  )
+  
+  # Merge with existing summary stats
+  final_summary <- merge(summary_stats, ci_summary, by = "time")
+  
   return(list(
     all_results = all_results_df,
-    summary = summary_stats
+    summary = final_summary
   ))
 }
 
 # After running comparison, create summary table
 pvals_compare_trocs <- compare_tvaurocs(demo_lancet_trocs, ptau_demo_lancet_trocs)
+
+# print out all p-values
+print(pvals_compare_trocs$summary)
 
 # Print summary table
 print("Summary of AUC differences and p-values by time point:")
@@ -462,32 +492,32 @@ print(pvals_compare_trocs$summary)
 results_table <- pvals_compare_trocs$all_results
 write.csv(results_table, "../../tidy_data/A4/auc_comparison_results.csv", row.names = FALSE)
 
-# Create summary plot
-library(ggplot2)
-auc_plot <- ggplot(pvals_compare_trocs$all_results, 
-       aes(x = factor(time), y = auc_diff)) +
-  geom_boxplot(fill = "#009292", alpha = 0.8) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  labs(
-    title = "AUC Differences Between Models\n(pTau-217+Demographics+Lancet vs Demographics+Lancet)",
-    x = "Time (years)",
-    y = "AUC Difference"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5, size = 12),
-    axis.text = element_text(size = 10),
-    axis.title = element_text(size = 11)
-  )
+# # Create summary plot
+# library(ggplot2)
+# auc_plot <- ggplot(pvals_compare_trocs$all_results, 
+#        aes(x = factor(time), y = auc_diff)) +
+#   geom_boxplot(fill = "#009292", alpha = 0.8) +
+#   geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+#   labs(
+#     title = "AUC Differences Between Models\n(pTau-217+Demographics+Lancet vs Demographics+Lancet)",
+#     x = "Time (years)",
+#     y = "AUC Difference"
+#   ) +
+#   theme_minimal() +
+#   theme(
+#     plot.title = element_text(hjust = 0.5, size = 12),
+#     axis.text = element_text(size = 10),
+#     axis.title = element_text(size = 11)
+#   )
 
-print(auc_plot)
-ggsave(
-  "../../tidy_data/A4/auc_differences_boxplot.pdf",
-  plot = auc_plot,
-  width = 8,
-  height = 6,
-  dpi = 300
-)
+# print(auc_plot)
+# ggsave(
+#   "../../tidy_data/A4/auc_differences_boxplot.pdf",
+#   plot = auc_plot,
+#   width = 8,
+#   height = 6,
+#   dpi = 300
+# )
 
 
 ########################################################
