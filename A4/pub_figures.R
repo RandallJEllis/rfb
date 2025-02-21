@@ -99,41 +99,36 @@ td_plot <- function(summary_df, model_colors,
     mutate(model = factor(model, levels = names(model_labels)))
 
   # Create base plot based on metric
-  base_plot <- if (metric == "auc") {
-    ggplot(summary_df,
-           aes(x = time,
-               y = mean_AUC,
-               color = model,
-               fill = model)) +
-      labs(
-        title = "Time-varying AUROC",
-        x = "Follow-up Time (years)",
-        y = "AUROC"
-      ) #+
-      # scale_y_continuous(limits = c(0.5, 0.8))
-  } else if (metric == "brier") {
-    ggplot(summary_df,
-           aes(x = time,
-               y = mean_brier,
-               color = model,
-               fill = model)) +
-      labs(
-        title = "Time-varying Brier score",
-        x = "Follow-up Time (years)",
-        y = "Brier Score"
-      )
-  } else if (metric == "concordance") {
-    ggplot(summary_df,
-           aes(x = time,
-               y = mean_concordance,
-               color = model,
-               fill = model)) +
-      labs(
-        title = "Time-varying Concordance",
-        x = "Follow-up Time (years)",
-        y = "Concordance"
-      ) #+
-      # scale_y_continuous(limits = c(0.5, 0.85))
+  titles <- list(
+    auc = "Time-varying AUROC",
+    brier = "Time-varying Brier score",
+    concordance = "Time-varying Concordance"
+  )
+  
+  y_labels <- list(
+    auc = "AUROC",
+    brier = "Brier Score",
+    concordance = "Concordance"
+  )
+
+  base_plot <- ggplot(summary_df,
+                     aes(x = time,
+                         y = mean_metric,
+                         color = model,
+                         fill = model)) +
+    labs(
+      title = titles[[metric]],
+      x = "Follow-up Time (years)",
+      y = y_labels[[metric]]
+    )
+
+  # Add confidence intervals for AUC metric
+  if (metric == "auc") {
+    base_plot$data$ymin <- summary_df$ci_lower
+    base_plot$data$ymax <- summary_df$ci_upper
+  } else {
+    base_plot$data$ymin <- summary_df$ymin
+    base_plot$data$ymax <- summary_df$ymax
   }
 
   # Add common elements
