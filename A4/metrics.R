@@ -121,8 +121,31 @@ calculate_survival_metrics <- function(model, model_name, data, times) {
   # Initialize results list
   results <- list()
 
+  # Print diagnostic information about IDs
+  print(paste("Model:", model_name))
+  print(paste("Number of unique IDs:", length(unique(data$id))))
+  print("First few IDs:")
+  print(head(data$id))
+  
+  # Print information about missing values
+  print("Number of rows with missing values:")
+  print(colSums(is.na(data)))
+  
+  # Print information about time-varying covariates
+  print("Number of measurements per ID:")
+  id_counts <- table(data$id)
+  print(summary(id_counts))
+
+  # Sort data consistently by id and time
+  data <- data[order(data$id, data$tstop), ]
+
   # Get linear predictor (which doesn't vary with time)
   risk_scores <- predict(model, newdata = data, type="lp")
+  
+  print("Number of risk scores:")
+  print(length(risk_scores))
+  print("Number of NA risk scores:")
+  print(sum(is.na(risk_scores)))
 
   # 1. Time-dependent AUC using timeROC
   troc <- timeROC(
