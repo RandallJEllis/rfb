@@ -385,7 +385,7 @@ sd(unlist(ptau_coefs))
 
 
 
-# Calculate p-values comparing AUCs between models at each time point
+# Calculate p-values comparing AUCs between two models at each time point
 # First combine timeROC objects from each fold for each model
 demo_lancet_trocs <- list(
   metrics_list$demographics_lancet$fold_1$troc,
@@ -393,14 +393,6 @@ demo_lancet_trocs <- list(
   metrics_list$demographics_lancet$fold_3$troc,
   metrics_list$demographics_lancet$fold_4$troc,
   metrics_list$demographics_lancet$fold_5$troc
-)
-
-ptau_trocs <- list(
-  metrics_list$ptau$fold_1$troc,
-  metrics_list$ptau$fold_2$troc,
-  metrics_list$ptau$fold_3$troc,
-  metrics_list$ptau$fold_4$troc,
-  metrics_list$ptau$fold_5$troc
 )
 
 ptau_demo_lancet_trocs <- list(
@@ -414,17 +406,16 @@ ptau_demo_lancet_trocs <- list(
 compare_tvaurocs <- function(trocs_x, trocs_y) {
   # Initialize list to store results
   all_results <- list()
-  
+
   # Loop through each fold
   for (fold in seq_along(trocs_x)) {
-    # print(paste("Fold", fold))
-    
+
     # Compare timeROC objects using timeROC::compare
     comparison <- timeROC::compare(trocs_x[[fold]],
-                                   trocs_y[[fold]],
-                                  adjusted = TRUE)
-    # print(comparison)
-    
+      trocs_y[[fold]],
+      adjusted = TRUE
+    )
+
     # Store results for this fold
     all_results[[fold]] <- data.frame(
       fold = fold,
@@ -432,46 +423,46 @@ compare_tvaurocs <- function(trocs_x, trocs_y) {
       auc_x = trocs_x[[fold]]$AUC,
       auc_y = trocs_y[[fold]]$AUC,
       auc_diff = trocs_y[[fold]]$AUC - trocs_x[[fold]]$AUC,
-      p_value = comparison$p_values_AUC[2,]
+      p_value = comparison$p_values_AUC[2, ]
     )
   }
-  
+
   # Combine results from all folds
   all_results_df <- do.call(rbind, all_results)
-  
+
   # Calculate summary statistics
   summary_stats <- aggregate(
-    cbind(auc_diff, p_value, auc_x, auc_y) ~ time, 
+    cbind(auc_diff, p_value, auc_x, auc_y) ~ time,
     data = all_results_df,
     FUN = function(x) c(mean = mean(x), sd = sd(x))
   )
-  
+
   # Calculate confidence intervals for each fold
   ci_data <- data.frame()
   for (fold in seq_along(trocs_x)) {
     ci_x <- timeROC:::confint.ipcwsurvivalROC(trocs_x[[fold]])
     ci_y <- timeROC:::confint.ipcwsurvivalROC(trocs_y[[fold]])
-    
+
     ci_data <- rbind(ci_data, data.frame(
       fold = fold,
       time = trocs_x[[fold]]$times,
-      ci_lower_x = ci_x$CI_AUC[,1]/100,
-      ci_upper_x = ci_x$CI_AUC[,2]/100,
-      ci_lower_y = ci_y$CI_AUC[,1]/100,
-      ci_upper_y = ci_y$CI_AUC[,2]/100
+      ci_lower_x = ci_x$CI_AUC[, 1] / 100,
+      ci_upper_x = ci_x$CI_AUC[, 2] / 100,
+      ci_lower_y = ci_y$CI_AUC[, 1] / 100,
+      ci_upper_y = ci_y$CI_AUC[, 2] / 100
     ))
   }
-  
+
   # Calculate mean CIs across folds
   ci_summary <- aggregate(
     cbind(ci_lower_x, ci_upper_x, ci_lower_y, ci_upper_y) ~ time,
     data = ci_data,
     FUN = mean
   )
-  
+
   # Merge with existing summary stats
   final_summary <- merge(summary_stats, ci_summary, by = "time")
-  
+
   return(list(
     all_results = all_results_df,
     summary = final_summary
@@ -479,45 +470,48 @@ compare_tvaurocs <- function(trocs_x, trocs_y) {
 }
 
 # After running comparison, create summary table
-pvals_compare_trocs <- compare_tvaurocs(demo_lancet_trocs, ptau_demo_lancet_trocs)
+pvals_compare_trocs <- compare_tvaurocs(demo_lancet_trocs, 
+                                        ptau_demo_lancet_trocs)
 
 # print out all p-values
-print(pvals_compare_trocs$summary)
-
-# Print summary table
 print("Summary of AUC differences and p-values by time point:")
 print(pvals_compare_trocs$summary)
 
+# how many p-values are less than 0.05? out of how many total p-values?
+sum(pvals_compare_trocs$all_results$p_value < 0.05) /
+  length(pvals_compare_trocs$all_results$p_value)
+
 # Create detailed results table
 results_table <- pvals_compare_trocs$all_results
-write.csv(results_table, "../../tidy_data/A4/auc_comparison_results.csv", row.names = FALSE)
+write.csv(results_table, "../../tidy_data/A4/auc_comparison_results.csv",
+          row.names = FALSE)
 
-# # Create summary plot
-# library(ggplot2)
-# auc_plot <- ggplot(pvals_compare_trocs$all_results, 
-#        aes(x = factor(time), y = auc_diff)) +
-#   geom_boxplot(fill = "#009292", alpha = 0.8) +
-#   geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-#   labs(
-#     title = "AUC Differences Between Models\n(pTau-217+Demographics+Lancet vs Demographics+Lancet)",
-#     x = "Time (years)",
-#     y = "AUC Difference"
-#   ) +
-#   theme_minimal() +
-#   theme(
-#     plot.title = element_text(hjust = 0.5, size = 12),
-#     axis.text = element_text(size = 10),
-#     axis.title = element_text(size = 11)
-#   )
+# Create summary plot
+library(ggplot2)
+auc_plot <- ggplot(pvals_compare_trocs$all_results, 
+       aes(x = factor(time), y = auc_diff)) +
+  geom_boxplot(fill = "#009292", alpha = 0.8) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(
+    title = "AUC Differences Between Models\n(pTau-217+Demographics+Lancet vs Demographics+Lancet)",
+    x = "Time (years)",
+    y = "AUC Difference"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12),
+    axis.text = element_text(size = 10),
+    axis.title = element_text(size = 11)
+  )
 
-# print(auc_plot)
-# ggsave(
-#   "../../tidy_data/A4/auc_differences_boxplot.pdf",
-#   plot = auc_plot,
-#   width = 8,
-#   height = 6,
-#   dpi = 300
-# )
+print(auc_plot)
+ggsave(
+  "../../tidy_data/A4/auc_differences_boxplot.pdf",
+  plot = auc_plot,
+  width = 8,
+  height = 6,
+  dpi = 300
+)
 
 
 ########################################################
@@ -536,7 +530,7 @@ collate_metric <- function(metrics_list, metric = "auc") {
         print(head(troc$ID))
       }
     }
-    
+
     if (metric != "concordance") {
       # Extract metric values for each fold
       fold_values <- sapply(1:5, function(fold) {
@@ -611,55 +605,53 @@ concordance_results <- collate_metric(metrics_list, metric = "concordance")
 
 ########################################################
 # Function to extract AUROC and CIs for all folds
-get_auc_ci_all_folds <- function(metrics_list, model_name) {
-  metric_data <- data.frame()
+get_auc_ci_all_folds <- function(metrics_list) {
+  # Initialize empty dataframe for results
+  all_results <- data.frame()
 
-  for (fold in 1:5) {
-    fold_metrics <- metrics_list[[model_name]][[paste0("fold_", fold)]]
+  # Loop through each model
+  for (model_name in names(metrics_list)) {
+    # Loop through each fold
+    fold_results <- lapply(1:5, function(fold) {
+      troc <- metrics_list[[model_name]][[paste0("fold_", fold)]]$troc
+      ci <- timeROC:::confint.ipcwsurvivalROC(troc)
 
-    troc <- fold_metrics$troc
-    ci <- timeROC:::confint.ipcwsurvivalROC(troc)
+      data.frame(
+        model = model_name,
+        time = troc$times,
+        auc = troc$AUC,
+        ci_lower = ci$CI_AUC[, 1] / 100,
+        ci_upper = ci$CI_AUC[, 2] / 100,
+        fold = fold
+      )
+    })
 
-    fold_data <- data.frame(
-      fold = fold,
-      time = troc$times,
-      metric = troc$AUC,
-      ci_lower = ci$CI_AUC[, 1] / 100,
-      ci_upper = ci$CI_AUC[, 2] / 100
+    # Combine results from all folds
+    model_results <- do.call(rbind, fold_results)
+
+    # Calculate mean values across folds for each time point
+    summary_stats <- aggregate(
+      cbind(auc, ci_lower, ci_upper) ~ model + time,
+      data = model_results,
+      FUN = mean
     )
 
-    metric_data <- rbind(metric_data, fold_data)
+    all_results <- rbind(all_results, summary_stats)
   }
 
+  # Sort results by model and time
+  all_results <- all_results[order(all_results$model, all_results$time), ]
 
-  # Calculate summary statistics for each time point using
-  # reframe() instead of summarise()
-  summary_stats <- metric_data %>%
-    group_by(time) %>%
-    reframe(
-      mean_metric = mean(metric),
-      # Use pooled standard error approach for AUC
-      pooled_se = sqrt(mean((ci_upper - ci_lower)^2) / (4 * n()),
-      ci_lower = mean_metric - 1.96 * pooled_se,
-      ci_upper = mean_metric + 1.96 * pooled_se
-    )
-    )
-  print(summary_stats)
-  return(summary_stats)
+  return(all_results)
 }
 
-summaries <- lapply(names(models_list), function(model) {
-  summary_stats <- get_auc_ci_all_folds(metrics_list, model)
-  summary_stats$model <- model
-})
-
-auc_summary <- do.call(rbind, summaries)
+auc_summary <- get_auc_ci_all_folds(metrics_list)
 
 # reshape auc_summary to wide format
 wide_auc_summary <- auc_summary %>%
   group_by(model, time) %>%
   mutate(
-    formatted_value = sprintf("%.2f (%.2f-%.2f)", mean_metric, ci_lower, ci_upper)
+    formatted_value = sprintf("%.2f (%.2f-%.2f)", auc, ci_lower, ci_upper)
   ) %>%
   select(model, time, formatted_value) %>%
   pivot_wider(
@@ -669,18 +661,22 @@ wide_auc_summary <- auc_summary %>%
     names_glue = "{ifelse(is.na(.name), 'model', paste0(.name, 'y'))}"
   )
 
-# clean up model names
-wide_auc_summary$model <- c(
-  "pTau217+Demo",
-  "pTau217+Demo+Lancet",
-  "Demo",
-  "Demo+Lancet",
-  "pTau217",
-  "Demo(-APOE)",
-  "Demo+Lancet(-APOE)",
-  "pTau217+Demo(-APOE)",
-  "pTau217+Demo+Lancet(-APOE)"
+
+# map model names to labels
+model_labels <- c(
+  "demographics_lancet" = "Demo+Lancet",
+  "ptau_demographics_lancet" = "pTau217+Demo+Lancet",
+  "demographics" = "Demo",
+  "demographics_no_apoe" = "Demo (-APOE)",
+  "ptau" = "pTau217",
+  "ptau_demographics" = "pTau217+Demo",
+  "ptau_demographics_no_apoe" = "pTau217+Demo (-APOE)",
+  "ptau_demographics_lancet_no_apoe" = "pTau217+Demo+Lancet (-APOE)",
+  "demographics_lancet_no_apoe" = "Demo+Lancet (-APOE)"
 )
+
+# clean up model names
+wide_auc_summary$model <- model_labels[wide_auc_summary$model]
 
 # reorder rows of wide_auc_summary in ascending order of 3y auc
 wide_auc_summary <- wide_auc_summary %>%
@@ -692,8 +688,7 @@ print(xtable(wide_auc_summary), type = "latex")
 
 
 
-
-
+##### FIGURE 1A: AUC over time
 # plot auc over time
 auc_plot <- td_plot(auc_summary %>% filter(model %in%
                                              c("demographics_lancet", "ptau",
@@ -834,7 +829,7 @@ mean_diffs <- auc_summary %>%
   pivot_wider(
     id_cols = time,
     names_from = model,
-    values_from = mean_metric
+    values_from = auc
   ) %>%
   mutate(auc_difference = ptau_demographics_lancet - demographics_lancet) %>%
   select(time, auc_difference)
@@ -886,7 +881,7 @@ p_year <- ggplot(roc_year, aes(x = FPR, y = mean_TPR, color = Model)) +
       year, "years\n",
       "Demo + Lancet: ", 
       sprintf("%.3f (%.3f-%.3f)", 
-        auc_summary$mean_metric[auc_summary$time == year &
+        auc_summary$auc[auc_summary$time == year &
                                auc_summary$model == "demographics_lancet"],
         auc_summary$ci_lower[auc_summary$time == year &
                                auc_summary$model == "demographics_lancet"],
@@ -895,7 +890,7 @@ p_year <- ggplot(roc_year, aes(x = FPR, y = mean_TPR, color = Model)) +
       ), "\n",
       "pTau217: ",
       sprintf("%.3f (%.3f-%.3f)",
-        auc_summary$mean_metric[auc_summary$time == year &
+        auc_summary$auc[auc_summary$time == year &
                                auc_summary$model == "ptau"],
         auc_summary$ci_lower[auc_summary$time == year &
                                auc_summary$model == "ptau"],
@@ -904,7 +899,7 @@ p_year <- ggplot(roc_year, aes(x = FPR, y = mean_TPR, color = Model)) +
       ), "\n",
       "Demo + pTau217 + Lancet: ",
       sprintf("%.3f (%.3f-%.3f)",
-        auc_summary$mean_metric[auc_summary$time == year &
+        auc_summary$auc[auc_summary$time == year &
                                auc_summary$model == "ptau_demographics_lancet"],
         auc_summary$ci_lower[auc_summary$time == year &
                                auc_summary$model == "ptau_demographics_lancet"],
