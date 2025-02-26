@@ -27,115 +27,76 @@ get_publication_theme <- function() {
   return(publication_theme)
 }
 
-td_plot <- function(summary_df, model_colors,
-                    metric = "auc", all_models = FALSE) {
-  # Define colors for all nine models
-  if (all_models) {
-    model_colors <- c(
-      "demographics" = "#440154",           # deep purple
-      "demographics_no_apoe" = "#009E73",   # teal
-      "demographics_lancet" = "#E69F00",    # orange
-      "demographics_lancet_no_apoe" = "#56B4E9", # sky blue
-      "ptau" = "#CC79A7",                  # pink
-      "ptau_demographics" = "#F0E442",      # yellow
-      "ptau_demographics_no_apoe" = "#0072B2", # dark blue
-      "ptau_demographics_lancet_no_apoe" = "#D55E00", # red-orange
-      "ptau_demographics_lancet" = "#009292"  # turquoise
-    )
-
-    model_labels <- c(
-      # "Demo", "Demo (-APOE)",
-      "Demo + Lancet", 
-      #"Demo+ Lancet\n(-APOE)",
-      "pTau217", 
-      # "Demo + pTau217",
-      # "Demo + pTau217\n(-APOE)", 
-      # "Demo + pTau217\n+ Lancet (-APOE)",
-      "Demo + pTau217\n+ Lancet"
-    )
-
-    # Create named vector for mapping model names to labels
-    names(model_labels) <- c(
-      # "demographics", 
-      # "demographics_no_apoe",
-      "demographics_lancet", 
-      # "demographics_lancet_no_apoe",
-      "ptau", 
-      # "ptau_demographics",
-      # "ptau_demographics_no_apoe", 
-      # "ptau_demographics_lancet_no_apoe",
-      "ptau_demographics_lancet"
-    )
-  } else {
-    model_colors <- c(
-      # "demographics" = "#440154", # deep purple
-      # "demographics_no_apoe" = "#009E73",   # teal
-      "demographics_lancet" = "#E69F00",    # orange
-      "ptau" = "#CC79A7",                  # pink
-      "ptau_demographics_lancet" = "#009292"  # turquoise
-    )
-
-    model_labels <- c(
-      # "Demo",
-      # "Demo (-APOE)",
-      "Demo + Lancet",
-      "pTau217",
-      "Demo + pTau217\n+ Lancet"
-    )
-
-    # Create named vector for mapping model names to labels
-    names(model_labels) <- c(
-      # "demographics",
-      # "demographics_no_apoe",
-      "demographics_lancet",
-      "ptau",
-      "ptau_demographics_lancet"
-    )
+td_plot <- function(summary_df, metric = "auc", all_models = FALSE) {
+  # Filter models if all_models is FALSE
+  if (!all_models) {
+    summary_df <- summary_df %>%
+      filter(model %in% c("demographics_lancet", "ptau", "ptau_demographics_lancet"))
   }
 
-  # subset to only include models in model_labels and order by model_labels
-  summary_df <- summary_df %>%
-    filter(model %in% names(model_labels)) %>%
-    mutate(model = factor(model, levels = names(model_labels)))
-
-  # Create base plot based on metric
-  titles <- list(
-    auc = "Time-varying AUROC",
-    brier = "Time-varying Brier score",
-    concordance = "Time-varying Concordance"
+  # Define colors for models
+  model_colors <- c(
+    "demographics_lancet" = "#E69F00",    # orange
+    "ptau" = "#CC79A7",                   # pink
+    "ptau_demographics_lancet" = "#009292" # turquoise
   )
-  
+
+  model_labels <- c(
+    "Demo + Lancet",
+    "pTau217",
+    "Demo + pTau217 + Lancet"
+  )
+  names(model_labels) <- c(
+    "demographics_lancet",
+    "ptau",
+    "ptau_demographics_lancet"
+  )
+
+  # Set y-axis label based on metric
   y_labels <- list(
     auc = "AUROC",
     brier = "Brier Score",
     concordance = "Concordance"
   )
 
+  titles <- list(
+    auc = "Time-varying AUROC",
+    brier = "Time-varying Brier score",
+    concordance = "Time-varying Concordance"
+  )
+
+  # Create base plot using appropriate y-value column
+  if (metric == "auc") {
+    y_col <- "auc"
+    lower_col <- "ci_lower"
+    upper_col <- "ci_upper"
+  } else {
+    y_col <- "mean_metric"
+    lower_col <- "ymin"
+    upper_col <- "ymax"
+  }
+
+  # Create base plot
   base_plot <- ggplot(summary_df,
-                     aes(x = time,
-                         y = mean_metric,
-                         color = model,
-                         fill = model)) +
+    aes(x = time,
+        y = .data[[y_col]],  # Use .data to refer to column dynamically
+        color = model,
+        fill = model)) +
     labs(
       title = titles[[metric]],
       x = "Follow-up Time (years)",
       y = y_labels[[metric]]
     )
 
-  # Add confidence intervals for AUC metric
-  if (metric == "auc") {
-    base_plot$data$ymin <- summary_df$ci_lower
-    base_plot$data$ymax <- summary_df$ci_upper
-  } else {
-    base_plot$data$ymin <- summary_df$ymin
-    base_plot$data$ymax <- summary_df$ymax
-  }
+  # Add confidence intervals
+  base_plot <- base_plot +
+    geom_ribbon(aes(ymin = .data[[lower_col]], 
+                    ymax = .data[[upper_col]]),
+                alpha = 0.1,
+                show.legend = FALSE)
 
   # Add common elements
   base_plot +
-    geom_ribbon(aes(ymin = ymin, ymax = ymax),
-                alpha = 0.1,
-                show.legend = FALSE) +
     geom_line(linewidth = 1.2) +
     geom_point(size = 3, shape = 21, fill = "white") +
     scale_color_manual(values = model_colors,
@@ -311,7 +272,7 @@ calibration_plots <- function(cal_data, times, model_colors) {
   publication_theme <- get_publication_theme()
   model_colors <- c(
       "demographics_lancet" = "#E69F00",    # orange
-      "ptau" = "#CC79A7",                  # pink
+      "ptau" = "#CC79A7",                   # pink
       "ptau_demographics_lancet" = "#009292"  # turquoise
       # "demographics" = "#440154",           # deep purple
       # "demographics_no_apoe" = "#009E73"   # teal
