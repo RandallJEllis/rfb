@@ -256,7 +256,7 @@ def merge_e2_carriers(df):
 
 
 def get_ptau():
-     """
+    """
     Process pTau217 biomarker data and merge with clinical data.
     
     Returns:

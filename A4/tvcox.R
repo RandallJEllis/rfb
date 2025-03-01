@@ -158,6 +158,12 @@ format_df <- function(df, lancet = FALSE, habits, psychwell, vitals) {
     ) %>%
     select(-baseline_age) # Remove the temporary baseline_age column
 
+  # update age2
+  td_data_updated$age2 <- td_data_updated$age^2
+
+  # update age3
+  td_data_updated$age3 <- td_data_updated$age^3
+
   # if (lancet) {
   #   td_data_updated <- cut_time_data(td_data_updated)
   # }
@@ -217,6 +223,8 @@ metrics_list <- list()
 val_df_l <- list()
 train_df_l <- list()
 
+eval_times <- seq(3, 7)
+
 # iterate over folds and run experiments
 for (fold in seq(0, 4)) {
   print(paste0("Fold ", fold + 1))
@@ -270,7 +278,6 @@ for (fold in seq(0, 4)) {
     models_list[[model_name]][[paste0("fold_", fold + 1)]] <- model
 
     # Calculate metrics
-    eval_times <- seq(3, 7)
     metrics_results <- calculate_survival_metrics(
       model = model,
       model_name = model_name,
@@ -420,7 +427,7 @@ nri_result <- nricens(
 
 # Calculate observed event rates within each cell of the reclassification table
 observed_rates <- aggregate(event ~ risk_cat1 + risk_cat2,
-                            data=reclass_df, FUN=mean)
+                            data = reclass_df, FUN = mean)
 
 # Format as a matrix similar to Table 3 in the paper
 observed_matrix <- matrix(NA, nrow=length(risk_labels),
@@ -539,8 +546,8 @@ plot_df <- data.frame(
 # Check the structure
 head(plot_df)
 
-# Create the plot
-ggplot(plot_df, aes(x = Model1, y = Model2, color = Event)) +
+# Create the plot and explicitly print it
+rsp <- ggplot(plot_df, aes(x = Model1, y = Model2, color = Event)) +
   geom_point(alpha = 0.3) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
   scale_color_manual(values = c("Case" = "red", "Control" = "blue")) +
@@ -548,6 +555,16 @@ ggplot(plot_df, aes(x = Model1, y = Model2, color = Event)) +
        title = "Change in Predicted Risk Between Models") +
   theme_minimal() +
   coord_fixed(ratio = 1)
+
+# Explicitly print the plot
+print(rsp)
+
+# Also save the plot to ensure it's being generated
+ggsave("../../tidy_data/A4/risk_shift_plot.pdf",
+       plot = rsp,
+       width = 8,
+       height = 6,
+       dpi = 300)
 
 ### NRI components
 nri_components <- data.frame(
@@ -558,7 +575,7 @@ nri_components <- data.frame(
 )
 
 # Create bar plot with error bars
-ggplot(nri_components, aes(x = Component, y = Estimate, fill = Component)) +
+nri_components_plot <- ggplot(nri_components, aes(x = Component, y = Estimate, fill = Component)) +
   geom_bar(stat = "identity", width = 0.6) +
   geom_errorbar(aes(ymin = Lower, ymax = Upper), width = 0.2) +
   geom_hline(yintercept = 0, linetype = "dashed") +
@@ -566,6 +583,17 @@ ggplot(nri_components, aes(x = Component, y = Estimate, fill = Component)) +
        y = "NRI Value", x = "") +
   theme_minimal() +
   theme(legend.position = "none")
+
+# Explicitly print the plot
+print(nri_components_plot)
+
+# Also save the plot to ensure it's being generated
+ggsave("../../tidy_data/A4/nri_components_plot.pdf",
+       plot = nri_components_plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
+
 
 ### Heatmap of reclassification table
 # Convert reclassification table to data frame
@@ -578,7 +606,7 @@ reclass_df$Percent <- round(100 * reclass_df$Count / total_count, 1)
 reclass_df$Label <- paste0(reclass_df$Count, "\n(", reclass_df$Percent, "%)")
 
 # Create publication-quality heat map
-ggplot(reclass_df, aes(x = New, y = Old, fill = Count)) +
+heatmap_reclass_df <- ggplot(reclass_df, aes(x = New, y = Old, fill = Count)) +
   geom_tile(color = "white", linewidth = 0.5) +
   geom_text(aes(label = Label), 
             # Adjust text color based on background brightness for better contrast
@@ -615,12 +643,13 @@ ggplot(reclass_df, aes(x = New, y = Old, fill = Count)) +
             aes(x = New, y = Old), 
             fill = NA, color = "black", linewidth = 1.2)
 
-# Save the plot with high resolution
-ggsave("../../tidy_data/A4/risk_reclassification_heatmap.pdf",
-       width = 8, height = 7, dpi = 300)
-ggsave("../../tidy_data/A4/risk_reclassification_heatmap.png",
-       width = 8, height = 7, dpi = 300)
+# Explicitly print the plot
+print(heatmap_reclass_df)
 
+# Also save the plot to ensure it's being generated
+ggsave("../../tidy_data/A4/risk_reclassification_heatmap.pdf",
+       plot = heatmap_reclass_df,
+       width = 8, height = 7, dpi = 300)
 
 ### Observed Event Rate Plot
 # Create data frame with observed event rates
@@ -649,7 +678,7 @@ for (i in 1:length(risk_levels)) {
 }
 
 # Plot event rates
-ggplot(event_rates, aes(x = New, y = Old, fill = EventRate)) +
+event_rate_plot <- ggplot(event_rates, aes(x = New, y = Old, fill = EventRate)) +
   geom_tile() +
   geom_text(aes(label = sprintf("%.1f%%", EventRate)), 
             color = ifelse(event_rates$EventRate > 50, "white", "black")) +
@@ -660,26 +689,45 @@ ggplot(event_rates, aes(x = New, y = Old, fill = EventRate)) +
        fill = "Event Rate (%)") +
   theme_minimal()
 
+# Explicitly print the plot
+print(event_rate_plot)
+
+# Also save the plot to ensure it's being generated
+ggsave("../../tidy_data/A4/event_rate_plot.pdf",
+       plot = event_rate_plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
 
 ### Decision Curve Analysis
 library(rmda)
 
+# Create decision curve analysis dataframe
 dca_df <- data.frame(
-  event = reclass_df$event,
-  p.std = nri_result$p.std,
-  p.new = nri_result$p.new
+  # event = reclass_df$event,
+  event = ifelse(rep(1:2, length.out = length(nri_result$p.std)) == 1, 0, 1),
+  p.std = nri_result$p.std[1,],  # Extract first row of matrix
+  p.new = nri_result$p.new[1,]   # Extract first row of matrix
 )
+# dca_df$event <- as.factor(dca_df$event)
+# Verify the data is properly formatted
+print("Data structure:")
+str(dca_df)
+print(paste("Number of events:", sum(dca_df$event)))
+print(paste("Range of p.std:", min(dca_df$p.std), "to", max(dca_df$p.std)))
+print(paste("Range of p.new:", min(dca_df$p.new), "to", max(dca_df$p.new)))
+
 
 # Create decision curve
 decision_curve <- decision_curve(
   formula = event ~ p.std + p.new,
   data = dca_df,
   thresholds = seq(0, 0.5, by = 0.01)
-  # label = c("Standard Model", "New Model")
 )
 
+
 # Plot decision curve
-plot_decision_curve(decision_curve, 
+decision_curve_plot <- plot_decision_curve(decision_curve, 
                     curve.names = c("Standard Model", "New Model"),
                     xlab = "Threshold Probability (%)",
                     ylab = "Net Benefit",
@@ -687,7 +735,15 @@ plot_decision_curve(decision_curve,
                     col = c("blue", "red"),
                     confidence.intervals = FALSE)
 
-                    
+# Explicitly print the plot
+print(decision_curve_plot)
+
+# Also save the plot to ensure it's being generated
+ggsave("../../tidy_data/A4/decision_curve_plot.pdf",
+       plot = decision_curve_plot,
+       width = 8,
+       height = 6,
+       dpi = 300)
 
 ########################################################
 # sensitivity, specificity, PPV, NPV
@@ -706,7 +762,7 @@ for (cutpoint in seq(min(risk_scores), max(risk_scores), length.out = 200)) {
     delta = val_df_l$fold_1_demographics_lancet$event,
     marker = risk_scores,
     cause = 1,
-    weighting ="marginal",
+    weighting = "marginal",
     times = seq(3, 7)
   )
   se_sp_ppv_npv[[paste0("cutpoint_", cutpoint)]] <- se_sp_ppv_npv_results
@@ -841,6 +897,11 @@ pvals_compare_trocs <- compare_tvaurocs(demo_lancet_trocs,
 # print out all p-values
 print("Summary of AUC differences and p-values by time point:")
 print(pvals_compare_trocs$summary)
+print(pvals_compare_trocs$all_results)
+print(range(pvals_compare_trocs$all_results$p_value))
+print(mean(pvals_compare_trocs$all_results$p_value))
+print(sd(pvals_compare_trocs$all_results$p_value))
+print(median(pvals_compare_trocs$all_results$p_value))
 
 # how many p-values are less than 0.05? out of how many total p-values?
 sum(pvals_compare_trocs$all_results$p_value < 0.05) /
@@ -975,18 +1036,11 @@ collate_metric <- function(metrics_list, metric = "auc") {
   return(all_results)
 }
 
-collate_metrics_all_models <- function(metrics_list, metric = "auc") {
-  # Since collate_metric now handles multiple models directly,
-  # we can just call it once and return the results
-  results <- collate_metric(metrics_list, metric = metric)
-  return(results)
-}
-
 # Generate and save results for each metric
 metrics_to_collect <- c("auc", "brier", "concordance")
 
 for (metric in metrics_to_collect) {
-  results <- collate_metrics_all_models(metrics_list, metric)
+  results <- collate_metric(metrics_list, metric)
   write_csv(
     results,
     paste0("../../tidy_data/A4/results_", metric, "_all_models.csv")
@@ -1362,7 +1416,7 @@ ggsave("../../tidy_data/A4/final_brier_Over_Time.pdf",
   dpi = 300
 )
 
-# find year with biggest difference in concordance between the two models
+# find year with biggest difference in brier between the two models
 mean_diffs <- brier_summary %>%
   filter(model %in% c("demographics_lancet", "ptau_demographics_lancet")) %>%
   pivot_wider(
