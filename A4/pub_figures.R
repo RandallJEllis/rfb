@@ -27,30 +27,30 @@ get_publication_theme <- function() {
   return(publication_theme)
 }
 
-td_plot <- function(summary_df, metric = "auc", all_models = FALSE) {
-  # Filter models if all_models is FALSE
-  if (!all_models) {
+td_plot <- function(summary_df, metric = "auc", all_models = FALSE, 
+                    model_colors = NULL, model_labels = NULL) {
+  # Filter models if all_models is FALSE and model_labels is provided
+  if (!all_models && !is.null(model_labels)) {
     summary_df <- summary_df %>%
-      filter(model %in% c("demographics_lancet", "ptau", "ptau_demographics_lancet"))
+      filter(model %in% names(model_labels))
   }
 
-  # Define colors for models
-  model_colors <- c(
-    "demographics_lancet" = "#E69F00",    # orange
-    "ptau" = "#CC79A7",                   # pink
-    "ptau_demographics_lancet" = "#009292" # turquoise
-  )
+  # If model_colors not provided, generate colors using viridis
+  if (is.null(model_colors)) {
+    unique_models <- unique(summary_df$model)
+    model_colors <- setNames(
+      viridis(length(unique_models)),
+      unique_models
+    )
+  }
 
-  model_labels <- c(
-    "Demo + Lancet",
-    "pTau217",
-    "Demo + pTau217 + Lancet"
-  )
-  names(model_labels) <- c(
-    "demographics_lancet",
-    "ptau",
-    "ptau_demographics_lancet"
-  )
+  # If model_labels not provided, use model names directly
+  if (is.null(model_labels)) {
+    model_labels <- setNames(
+      unique(summary_df$model),
+      unique(summary_df$model)
+    )
+  }
 
   # Set y-axis label based on metric
   y_labels <- list(
@@ -157,12 +157,12 @@ process_calibration_data <- function(model_name, model, val_df, time,
 
 # Function to calculate calibration data across all models and folds
 calculate_calibration_data <- function(models_list, val_df_l,
-                                       times = seq(3, 8)) {
-  selected_models <- c(
-    # "demographics", "demographics_no_apoe",
-    "demographics_lancet", "ptau",
-    "ptau_demographics_lancet"
-  )
+                                     times = seq(3, 8),
+                                     selected_models = NULL) {
+  # If no models specified, use all available models
+  if (is.null(selected_models)) {
+    selected_models <- names(models_list)
+  }
 
   cal_data_all <- list()
 
@@ -267,27 +267,25 @@ calculate_calibration_data <- function(models_list, val_df_l,
 }
 
 # Modified plotting function to include confidence intervals
-calibration_plots <- function(cal_data, times, model_colors) {
-
+calibration_plots <- function(cal_data, times, model_colors = NULL, model_labels = NULL) {
   publication_theme <- get_publication_theme()
-  model_colors <- c(
-      "demographics_lancet" = "#E69F00",    # orange
-      "ptau" = "#CC79A7",                   # pink
-      "ptau_demographics_lancet" = "#009292"  # turquoise
-      # "demographics" = "#440154",           # deep purple
-      # "demographics_no_apoe" = "#009E73"   # teal
+  
+  # If model_colors not provided, generate colors using viridis
+  if (is.null(model_colors)) {
+    unique_models <- unique(cal_data$model)
+    model_colors <- setNames(
+      viridis(length(unique_models)),
+      unique_models
     )
+  }
 
-  model_labels <- c(
-      # "Demo", "Demo (-APOE)",
-      "Demo + Lancet", 
-      #"Demo+ Lancet\n(-APOE)",
-      "pTau217", 
-      # "Demo + pTau217",
-      # "Demo + pTau217\n(-APOE)", 
-      # "Demo + pTau217\n+ Lancet (-APOE)",
-      "Demo + pTau217\n+ Lancet"
+  # If model_labels not provided, use model names directly
+  if (is.null(model_labels)) {
+    model_labels <- setNames(
+      unique(cal_data$model),
+      unique(cal_data$model)
     )
+  }
 
   plots <- list()
 
@@ -323,14 +321,22 @@ calibration_plots <- function(cal_data, times, model_colors) {
   return(wrap_plots(plots, ncol = 3))
 }
 
-dca_plots <- function(all_dca_data, times = seq(3, 8), model_colors = NULL) {
+dca_plots <- function(all_dca_data, times = seq(3, 8), 
+                     model_colors = NULL, model_labels = NULL) {
+  # If model_colors not provided, generate colors using viridis
   if (is.null(model_colors)) {
-    model_colors <- c(
-      "demographics" = "#287271",
-      "demographics_no_apoe" = "#B63679", 
-      "demographics_lancet" = "#E69F00",    # orange
-      "ptau" = "#CC79A7",                  # pink
-      "ptau_demographics_lancet" = "#009292"  # turquoise
+    unique_models <- unique(all_dca_data$model)
+    model_colors <- setNames(
+      viridis(length(unique_models)),
+      unique_models
+    )
+  }
+
+  # If model_labels not provided, use model names directly
+  if (is.null(model_labels)) {
+    model_labels <- setNames(
+      unique(all_dca_data$model),
+      unique(all_dca_data$model)
     )
   }
 
