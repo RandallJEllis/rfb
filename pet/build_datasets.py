@@ -116,268 +116,6 @@ def map_time_from_baseline(df, earliest_baseline, id_col='RID', examdate_col='EX
     return df
 
 
-# Create five datasets for five-fold cross-validation, stratified by label and time-to-event
-def create_stratified_folds(data, n_splits=5, n_bins=4, random_state=42):
-    # Aggregate data by id, keeping label and time_to_event
-    bids = (data[['id', 'event', 'time_to_event']]
-            .sort_values(['event', 'time_to_event'], ascending=[False, True])
-            .drop_duplicates('id')
-            .reset_index(drop=True))
-    
-    # Verify event consistency
-    # assert bids['event'].nunique() == data.groupby('BID')['label'].nunique().max(), \
-    #     "Not all BIDs have a consistent event. Please resolve label inconsistencies."
-    
-    # Create time-to-event bins only for cases (event=1)
-    cases = bids[bids['event'] == 1].copy()
-    controls = bids[bids['event'] == 0].copy()
-    
-    # Create bins for cases based on time-to-event
-    cases['time_bin'] = pd.qcut(cases['time_to_event'], q=n_bins, labels=False)
-    # Assign -1 as time_bin for controls
-    controls['time_bin'] = -1
-    
-    # Combine cases and controls
-    bids = pd.concat([cases, controls])
-    
-    # Create a composite stratification variable
-    bids['strata'] = bids['event'].astype(str) + '_' + bids['time_bin'].astype(str)
-    
-    # Initialize StratifiedKFold
-    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
-    
-    # Prepare the data for splitting
-    X = bids['id']
-    y = bids['strata']
-    
-    # Initialize the 'fold' column
-    bids['fold'] = -1
-    
-    # Assign fold numbers
-    for fold_number, (train_idx, val_idx) in enumerate(skf.split(X, y)):
-        bids.loc[val_idx, 'fold'] = fold_number
-    
-    # Verify fold assignment
-    assert bids['fold'].min() >= 0 and bids['fold'].max() < n_splits, "Fold assignment error."
-    
-    return bids[['id', 'fold']]
-
-# Process each fold
-def process_fold(data, fold_assignments, fold):
-    # Merge fold assignments with original data
-    data2 = data.merge(fold_assignments, on='id')
-    
-    # Define validation and training sets
-    val_set = data2[data2['fold'] == fold].copy()
-    train_set = data2[data2['fold'] != fold].copy()
-    
-    # Print fold information
-    print(f"Fold {fold + 1}:")
-    print(f"  Training IDs: {train_set['id'].nunique()}")
-    print(f"  Validation IDs: {val_set['id'].nunique()}")
-    print(f"  Positive class in Training: {train_set['event'].mean() * 100:.2f}%")
-    print(f"  Positive class in Validation: {val_set['event'].mean() * 100:.2f}%")
-    
-    # Print time-to-event distribution for cases
-    train_cases = train_set[train_set['event'] == 1]
-    val_cases = val_set[val_set['event'] == 1]
-    print("\nTime-to-event statistics for cases (years):")
-    print("  Training:")
-    print(f"    Mean: {train_cases['time_to_event'].mean():.2f}")
-    print(f"    Median: {train_cases['time_to_event'].median():.2f}")
-    print("  Validation:")
-    print(f"    Mean: {val_cases['time_to_event'].mean():.2f}")
-    print(f"    Median: {val_cases['time_to_event'].median():.2f}\n")
-    
-    # Preprocess data
-    # zscore AGEYR
-    training_age_mean = train_set.age.mean()
-    training_age_std = train_set.age.std()
-    
-    train_set['age_centered'] = train_set.age - training_age_mean
-    val_set['age_centered'] = val_set.age - training_age_mean
-    
-    train_set['age_centered_squared'] = train_set.age_centered ** 2
-    val_set['age_centered_squared'] = val_set.age_centered ** 2
-
-    #zscore centiloids
-    training_centiloids_mean = train_set.centiloids.mean()
-    training_centiloids_std = train_set.centiloids.std()
-    
-    train_set['centiloids_z'] = (train_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
-    val_set['centiloids_z'] = (val_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
-
-    train_set['centiloids_z_squared'] = train_set.centiloids_z ** 2
-    val_set['centiloids_z_squared'] = val_set.centiloids_z ** 2
-
-    # set id column to string
-    train_set['id'] = train_set['id'].astype(str)
-    val_set['id'] = val_set['id'].astype(str)
-
-    
-    return train_set, val_set
-
-
-def replace_apoe(df):
-        df.loc[df.apoe.isin([23, 23.0, 32, 32.0, '32']), 'apoe'] = '23'
-        df.loc[df.apoe.isin([24, 24.0, 42, 42.0, '42']), 'apoe'] = '24'
-        df.loc[df.apoe.isin([34, 34.0, 43, 43.0, '43']), 'apoe'] = '34'
-        df.loc[df.apoe.isin([22, 22.0, '22']), 'apoe'] = 'e2_carriers'
-        df.loc[df.apoe.isin([23, 23.0, '23']), 'apoe'] = 'e2_carriers'
-        df.loc[df.apoe.isin([33, 33.0]), 'apoe'] = '33'
-        df.loc[df.apoe.isin([44, 44.0]), 'apoe'] = '44'
-        df.loc[df.apoe == "-4-4", 'apoe'] = np.nan # AIBL
-        df.loc[df.apoe == 9, 'apoe'] = np.nan # NACC
-
-
-        # convert apoe column to string
-        df['apoe'] = df['apoe'].astype('category')
-        return df
-
-def add_one_day_to_zero_time(df):
-    df.loc[df.time == 0, 'time'] = 1
-    df.loc[df.time_to_event == 0, 'time_to_event'] = 1
-    return df
-
-def make_cv_folds(output_path):
-    # Load processed datasets
-    adni = pd.read_parquet(output_path + 'adni.parquet')
-    adni = adni.loc[:, ["RID", "CENTILOIDS", "visit_to_days",
-                        "time_to_event", "label", "PTGENDER",
-                        "age", "genotype"]]
-    adni.columns = ["id", "centiloids", "time", "time_to_event",
-                    "event", "sex", "age", "apoe"]
-    adni = replace_apoe(adni)
-
-    # divide time and time_to_event by 365.25
-    adni = add_one_day_to_zero_time(adni)
-    adni['time'] = adni['time'] / 365.25
-    adni['time_to_event'] = adni['time_to_event'] / 365.25
-
-
-    aibl = pd.read_parquet(output_path + 'aibl.parquet')
-    aibl = aibl.loc[:, ["RID", "CENTILOIDS", "visit_to_days",
-                        "time_to_event", "label", "PTGENDER",
-                        "age", "genotype"]]
-    aibl.columns = ["id", "centiloids", "time", "time_to_event",
-                    "event", "sex", "age", "apoe"]
-    aibl = replace_apoe(aibl)
-
-    # divide time and time_to_event by 365.25
-    aibl = add_one_day_to_zero_time(aibl)
-    aibl['time'] = aibl['time'] / 365.25
-    aibl['time_to_event'] = aibl['time_to_event'] / 365.25
-
-
-    habs = pd.read_parquet(output_path + 'habs.parquet')
-    habs = habs.loc[:, ["RID", "CENTILOIDS", "visit_to_days",
-                        "time_to_event", "label", "BiologicalSex",
-                        "PIB_Age", "APOE_haplotype"]]
-    habs.columns = ["id", "centiloids", "time", "time_to_event",
-                    "event", "sex", "age", "apoe"]
-    habs.loc[habs.sex == "F", 'sex'] = 2
-    habs.loc[habs.sex == "M", 'sex'] = 1
-    habs = replace_apoe(habs)
-
-    # divide time and time_to_event by 365.25
-    habs = add_one_day_to_zero_time(habs)
-    habs['time'] = habs['time'] / 365.25
-    habs['time_to_event'] = habs['time_to_event'] / 365.25
-
-    nacc = pd.read_parquet(output_path + 'nacc.parquet')
-    nacc = nacc.loc[:, ["NACCID", "CENTILOIDS", "visit_to_days",
-                        "time_to_event", "label", "SEX",
-                        "age", "NACCAPOE"]]
-    nacc.columns = ["id", "centiloids", "time", "time_to_event",
-                    "event", "sex", "age", "apoe"]
-    # https://files.alz.washington.edu/documentation/dervarprev.pdf
-    # 1 = 33
-    # 2 = 34
-    # 3 = 23
-    # 4 = 44
-    # 5 = 24
-    # 6 = 22
-    # 9 = NA
-    nacc.loc[nacc.apoe == 1, 'apoe'] = '33'
-    nacc.loc[nacc.apoe == 2, 'apoe'] = '34'
-    nacc.loc[nacc.apoe == 3, 'apoe'] = '23'
-    nacc.loc[nacc.apoe == 4, 'apoe'] = '44'
-    nacc.loc[nacc.apoe == 5, 'apoe'] = '24'
-    nacc.loc[nacc.apoe == 6, 'apoe'] = '22'
-    nacc = replace_apoe(nacc)
-
-    # divide time and time_to_event by 365.25
-    nacc = add_one_day_to_zero_time(nacc)
-    nacc['time'] = nacc['time'] / 365.25
-    nacc['time_to_event'] = nacc['time_to_event'] / 365.25
-
-    oasis = pd.read_parquet(output_path + 'oasis.parquet')
-    oasis = oasis.loc[:, ["ID", "Centiloid_fSUVR_TOT_CORTMEAN", "visit_to_days",
-                            "time_to_event", "label", "GENDER",
-                            "age", "APOE"]]
-    oasis.columns = ["id", "centiloids", "time", "time_to_event",
-                    "event", "sex", "age", "apoe"]
-    oasis = replace_apoe(oasis)
-
-    # divide time and time_to_event by 365.25
-    oasis = add_one_day_to_zero_time(oasis)
-    oasis['time'] = oasis['time'] / 365.25
-    oasis['time_to_event'] = oasis['time_to_event'] / 365.25
-
-    # concatenate all datasets and create stratified folds
-    data = pd.concat([adni, aibl, habs, nacc, oasis])
-
-    #### Create folds for each cohort
-    for i, val_set in enumerate([adni, aibl, habs, nacc, oasis]):
-        train_set = [ds for j, ds in enumerate([adni, aibl, habs, nacc, oasis]) if j != i]
-        train_set = pd.concat(train_set)
-
-        # Preprocess data
-        # zscore AGEYR
-        training_age_mean = train_set.age.mean()
-        training_age_std = train_set.age.std()
-        
-        train_set['age_centered'] = train_set.age - training_age_mean
-        val_set['age_centered'] = val_set.age - training_age_mean
-        
-        train_set['age_centered_squared'] = train_set.age_centered ** 2
-        val_set['age_centered_squared'] = val_set.age_centered ** 2
-
-        #zscore centiloids
-        training_centiloids_mean = train_set.centiloids.mean()
-        training_centiloids_std = train_set.centiloids.std()
-        
-        train_set['centiloids_z'] = (train_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
-        val_set['centiloids_z'] = (val_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
-
-        train_set['centiloids_z_squared'] = train_set.centiloids_z ** 2
-        val_set['centiloids_z_squared'] = val_set.centiloids_z ** 2
-
-        # set id column to string
-        train_set['id'] = train_set['id'].astype(str)
-        val_set['id'] = val_set['id'].astype(str)
-
-        train_set.to_parquet(output_path + f'train_{i}_test_by_cohort.parquet')
-        val_set.to_parquet(output_path + f'val_{i}_test_by_cohort.parquet')
-
-
-    #### Create stratified folds combining all cohorts
-    # fold_assignments = create_stratified_folds(data)
-
-    # for fold in range(5):
-    #     # Process the fold
-    #     train_set, val_set = process_fold(data, fold_assignments, fold)
-
-    #     # print overlapping BIDs between training and validation sets
-    #     train_bids = set(train_set['id'])
-    #     val_bids = set(val_set['id'])
-    #     overlap = train_bids.intersection(val_bids)
-    #     print(f"  Overlapping IDs: {len(overlap)}\n")
-
-    #     # Save datasets
-    #     train_set.to_parquet(output_path + f'train_{fold}_new.parquet')
-    #     val_set.to_parquet(output_path + f'val_{fold}_new.parquet')
-
 def process_oasis(oasis_file_path, oasis_diagnoses_file_path, oasis_demo_file_path):
     
     # Load PET centiloid data
@@ -883,6 +621,269 @@ def process_aibl(aibl_cdr_file_path, aibl_centiloids_file_path, aibl_dx_file_pat
     return pet_df
 
 
+# Create five datasets for five-fold cross-validation, stratified by label and time-to-event
+def create_stratified_folds(data, n_splits=5, n_bins=4, random_state=42):
+    # Aggregate data by id, keeping label and time_to_event
+    bids = (data[['id', 'event', 'time_to_event']]
+            .sort_values(['event', 'time_to_event'], ascending=[False, True])
+            .drop_duplicates('id')
+            .reset_index(drop=True))
+    
+    # Verify event consistency
+    # assert bids['event'].nunique() == data.groupby('BID')['label'].nunique().max(), \
+    #     "Not all BIDs have a consistent event. Please resolve label inconsistencies."
+    
+    # Create time-to-event bins only for cases (event=1)
+    cases = bids[bids['event'] == 1].copy()
+    controls = bids[bids['event'] == 0].copy()
+    
+    # Create bins for cases based on time-to-event
+    cases['time_bin'] = pd.qcut(cases['time_to_event'], q=n_bins, labels=False)
+    # Assign -1 as time_bin for controls
+    controls['time_bin'] = -1
+    
+    # Combine cases and controls
+    bids = pd.concat([cases, controls])
+    
+    # Create a composite stratification variable
+    bids['strata'] = bids['event'].astype(str) + '_' + bids['time_bin'].astype(str)
+    
+    # Initialize StratifiedKFold
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    
+    # Prepare the data for splitting
+    X = bids['id']
+    y = bids['strata']
+    
+    # Initialize the 'fold' column
+    bids['fold'] = -1
+    
+    # Assign fold numbers
+    for fold_number, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+        bids.loc[val_idx, 'fold'] = fold_number
+    
+    # Verify fold assignment
+    assert bids['fold'].min() >= 0 and bids['fold'].max() < n_splits, "Fold assignment error."
+    
+    return bids[['id', 'fold']]
+
+# Process each fold
+def process_fold(data, fold_assignments, fold):
+    # Merge fold assignments with original data
+    data2 = data.merge(fold_assignments, on='id')
+    
+    # Define validation and training sets
+    val_set = data2[data2['fold'] == fold].copy()
+    train_set = data2[data2['fold'] != fold].copy()
+    
+    # Print fold information
+    print(f"Fold {fold + 1}:")
+    print(f"  Training IDs: {train_set['id'].nunique()}")
+    print(f"  Validation IDs: {val_set['id'].nunique()}")
+    print(f"  Positive class in Training: {train_set['event'].mean() * 100:.2f}%")
+    print(f"  Positive class in Validation: {val_set['event'].mean() * 100:.2f}%")
+    
+    # Print time-to-event distribution for cases
+    train_cases = train_set[train_set['event'] == 1]
+    val_cases = val_set[val_set['event'] == 1]
+    print("\nTime-to-event statistics for cases (years):")
+    print("  Training:")
+    print(f"    Mean: {train_cases['time_to_event'].mean():.2f}")
+    print(f"    Median: {train_cases['time_to_event'].median():.2f}")
+    print("  Validation:")
+    print(f"    Mean: {val_cases['time_to_event'].mean():.2f}")
+    print(f"    Median: {val_cases['time_to_event'].median():.2f}\n")
+    
+    # Preprocess data
+    # zscore AGEYR
+    training_age_mean = train_set.age.mean()
+    training_age_std = train_set.age.std()
+    
+    train_set['age_centered'] = train_set.age - training_age_mean
+    val_set['age_centered'] = val_set.age - training_age_mean
+    
+    train_set['age_centered_squared'] = train_set.age_centered ** 2
+    val_set['age_centered_squared'] = val_set.age_centered ** 2
+
+    #zscore centiloids
+    training_centiloids_mean = train_set.centiloids.mean()
+    training_centiloids_std = train_set.centiloids.std()
+    
+    train_set['centiloids_z'] = (train_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
+    val_set['centiloids_z'] = (val_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
+
+    train_set['centiloids_z_squared'] = train_set.centiloids_z ** 2
+    val_set['centiloids_z_squared'] = val_set.centiloids_z ** 2
+
+    # set id column to string
+    train_set['id'] = train_set['id'].astype(str)
+    val_set['id'] = val_set['id'].astype(str)
+
+    
+    return train_set, val_set
+
+
+def replace_apoe(df):
+        df.loc[df.apoe.isin([23, 23.0, 32, 32.0, '32']), 'apoe'] = '23'
+        df.loc[df.apoe.isin([24, 24.0, 42, 42.0, '42']), 'apoe'] = '24'
+        df.loc[df.apoe.isin([34, 34.0, 43, 43.0, '43']), 'apoe'] = '34'
+        df.loc[df.apoe.isin([22, 22.0, '22']), 'apoe'] = 'e2_carriers'
+        df.loc[df.apoe.isin([23, 23.0, '23']), 'apoe'] = 'e2_carriers'
+        df.loc[df.apoe.isin([33, 33.0]), 'apoe'] = '33'
+        df.loc[df.apoe.isin([44, 44.0]), 'apoe'] = '44'
+        df.loc[df.apoe == "-4-4", 'apoe'] = np.nan # AIBL
+        df.loc[df.apoe == 9, 'apoe'] = np.nan # NACC
+
+
+        # convert apoe column to string
+        df['apoe'] = df['apoe'].astype('category')
+        return df
+
+def add_one_day_to_zero_time(df):
+    df.loc[df.time == 0, 'time'] = 1
+    df.loc[df.time_to_event == 0, 'time_to_event'] = 1
+    return df
+
+def make_cv_folds(output_path):
+    # Load processed datasets
+    adni = pd.read_parquet(output_path + 'adni.parquet')
+    adni = adni.loc[:, ["RID", "CENTILOIDS", "visit_to_days",
+                        "time_to_event", "label", "PTGENDER",
+                        "age", "genotype"]]
+    adni.columns = ["id", "centiloids", "time", "time_to_event",
+                    "event", "sex", "age", "apoe"]
+    adni = replace_apoe(adni)
+
+    # divide time and time_to_event by 365.25
+    adni = add_one_day_to_zero_time(adni)
+    adni['time'] = adni['time'] / 365.25
+    adni['time_to_event'] = adni['time_to_event'] / 365.25
+
+
+    aibl = pd.read_parquet(output_path + 'aibl.parquet')
+    aibl = aibl.loc[:, ["RID", "CENTILOIDS", "visit_to_days",
+                        "time_to_event", "label", "PTGENDER",
+                        "age", "genotype"]]
+    aibl.columns = ["id", "centiloids", "time", "time_to_event",
+                    "event", "sex", "age", "apoe"]
+    aibl = replace_apoe(aibl)
+
+    # divide time and time_to_event by 365.25
+    aibl = add_one_day_to_zero_time(aibl)
+    aibl['time'] = aibl['time'] / 365.25
+    aibl['time_to_event'] = aibl['time_to_event'] / 365.25
+
+
+    habs = pd.read_parquet(output_path + 'habs.parquet')
+    habs = habs.loc[:, ["RID", "CENTILOIDS", "visit_to_days",
+                        "time_to_event", "label", "BiologicalSex",
+                        "PIB_Age", "APOE_haplotype"]]
+    habs.columns = ["id", "centiloids", "time", "time_to_event",
+                    "event", "sex", "age", "apoe"]
+    habs.loc[habs.sex == "F", 'sex'] = 2
+    habs.loc[habs.sex == "M", 'sex'] = 1
+    habs = replace_apoe(habs)
+
+    # divide time and time_to_event by 365.25
+    habs = add_one_day_to_zero_time(habs)
+    habs['time'] = habs['time'] / 365.25
+    habs['time_to_event'] = habs['time_to_event'] / 365.25
+
+    nacc = pd.read_parquet(output_path + 'nacc.parquet')
+    nacc = nacc.loc[:, ["NACCID", "CENTILOIDS", "visit_to_days",
+                        "time_to_event", "label", "SEX",
+                        "age", "NACCAPOE"]]
+    nacc.columns = ["id", "centiloids", "time", "time_to_event",
+                    "event", "sex", "age", "apoe"]
+    # https://files.alz.washington.edu/documentation/dervarprev.pdf
+    # 1 = 33
+    # 2 = 34
+    # 3 = 23
+    # 4 = 44
+    # 5 = 24
+    # 6 = 22
+    # 9 = NA
+    nacc.loc[nacc.apoe == 1, 'apoe'] = '33'
+    nacc.loc[nacc.apoe == 2, 'apoe'] = '34'
+    nacc.loc[nacc.apoe == 3, 'apoe'] = '23'
+    nacc.loc[nacc.apoe == 4, 'apoe'] = '44'
+    nacc.loc[nacc.apoe == 5, 'apoe'] = '24'
+    nacc.loc[nacc.apoe == 6, 'apoe'] = '22'
+    nacc = replace_apoe(nacc)
+
+    # divide time and time_to_event by 365.25
+    nacc = add_one_day_to_zero_time(nacc)
+    nacc['time'] = nacc['time'] / 365.25
+    nacc['time_to_event'] = nacc['time_to_event'] / 365.25
+
+    oasis = pd.read_parquet(output_path + 'oasis.parquet')
+    oasis = oasis.loc[:, ["ID", "Centiloid_fSUVR_TOT_CORTMEAN", "visit_to_days",
+                            "time_to_event", "label", "GENDER",
+                            "age", "APOE"]]
+    oasis.columns = ["id", "centiloids", "time", "time_to_event",
+                    "event", "sex", "age", "apoe"]
+    oasis = replace_apoe(oasis)
+
+    # divide time and time_to_event by 365.25
+    oasis = add_one_day_to_zero_time(oasis)
+    oasis['time'] = oasis['time'] / 365.25
+    oasis['time_to_event'] = oasis['time_to_event'] / 365.25
+
+    # concatenate all datasets and create stratified folds
+    data = pd.concat([adni, aibl, habs, nacc, oasis])
+
+    #### Create folds for each cohort
+    for i, val_set in enumerate([adni, aibl, habs, nacc, oasis]):
+        train_set = [ds for j, ds in enumerate([adni, aibl, habs, nacc, oasis]) if j != i]
+        train_set = pd.concat(train_set)
+
+        # Preprocess data
+        # zscore AGEYR
+        training_age_mean = train_set.age.mean()
+        training_age_std = train_set.age.std()
+        
+        train_set['age_centered'] = train_set.age - training_age_mean
+        val_set['age_centered'] = val_set.age - training_age_mean
+        
+        train_set['age_centered_squared'] = train_set.age_centered ** 2
+        val_set['age_centered_squared'] = val_set.age_centered ** 2
+
+        #zscore centiloids
+        training_centiloids_mean = train_set.centiloids.mean()
+        training_centiloids_std = train_set.centiloids.std()
+        
+        train_set['centiloids_z'] = (train_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
+        val_set['centiloids_z'] = (val_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
+
+        train_set['centiloids_z_squared'] = train_set.centiloids_z ** 2
+        val_set['centiloids_z_squared'] = val_set.centiloids_z ** 2
+
+        # set id column to string
+        train_set['id'] = train_set['id'].astype(str)
+        val_set['id'] = val_set['id'].astype(str)
+
+        train_set.to_parquet(output_path + f'train_{i}_test_by_cohort.parquet')
+        val_set.to_parquet(output_path + f'val_{i}_test_by_cohort.parquet')
+
+
+    #### Create stratified folds combining all cohorts
+    # fold_assignments = create_stratified_folds(data)
+
+    # for fold in range(5):
+    #     # Process the fold
+    #     train_set, val_set = process_fold(data, fold_assignments, fold)
+
+    #     # print overlapping BIDs between training and validation sets
+    #     train_bids = set(train_set['id'])
+    #     val_bids = set(val_set['id'])
+    #     overlap = train_bids.intersection(val_bids)
+    #     print(f"  Overlapping IDs: {len(overlap)}\n")
+
+    #     # Save datasets
+    #     train_set.to_parquet(output_path + f'train_{fold}_new.parquet')
+    #     val_set.to_parquet(output_path + f'val_{fold}_new.parquet')
+
+    
 if __name__ == '__main__':
     # set file paths for cohorts
     main_path = '../../../datasets/'
