@@ -12,8 +12,8 @@ library(riskRegression)
 library(survminer)
 
 setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-source("pub_figures.R")
-source("metrics.R")
+source("../time2event/pub_figures.R")
+source("../time2event/metrics.R")
 
 # Load fonts
 library(extrafont)
@@ -47,7 +47,7 @@ format_df <- function(df, lancet = FALSE) {
     "age_centered", "age_centered_squared",
     "sex", "apoe"
   )]
-  tv_covar <- df[, c("id", "time", "centiloids_z")]
+  tv_covar <- df[, c("id", "time", "centiloids")]
   colnames(base) <- c(
     "id", "time", "event", "age", "age2",
     "sex", "apoe"
@@ -227,10 +227,10 @@ for (fold in seq(0, 4)) {
 
   # Read and format data
   train_df_raw <- read_parquet(paste0(
-    "../tidy_data/train_", fold, "_new.parquet"
+    "../../pet_all_cohorts/tidy_data/train_", fold, "_test_by_cohort.parquet"
   ))
   val_df_raw <- read_parquet(paste0(
-    "../tidy_data/val_", fold, "_new.parquet"
+    "../../pet_all_cohorts/tidy_data/val_", fold, "_test_by_cohort.parquet"
   ))
 
   # Fit all models
@@ -286,12 +286,6 @@ for (fold in seq(0, 4)) {
   }
 }
 
-# set x-axis limit from 0-20
-# hist(val_df$tstop, breaks = 100, xlim = c(0, 20))
-
-
-
-
 # Save results
 saveRDS(models_list, "../tidy_data/fitted_models_all.rds")
 saveRDS(metrics_list, "../tidy_data/metrics_all.rds")
@@ -326,7 +320,7 @@ find_events_within_horizon <- function(data, horizon, newdata) {
       event_time = ifelse(event_occurred, min(tstop[event == 1]), Inf),
       within_horizon = event_occurred & event_time <= horizon
     )
-  
+
   # Match the event status to the IDs in newdata
   event_status <- numeric(nrow(newdata))
   for (i in 1:nrow(newdata)) {
@@ -541,7 +535,9 @@ sankeyNetwork(Links = links, Nodes = nodes,
 plot_df <- data.frame(
   Model1 = nri_result$p.std[1, ],
   Model2 = nri_result$p.new[1, ],
-  Event = ifelse(rep(1:2, length.out = length(nri_result$p.std)) == 1, "Case", "Control")
+  Event = ifelse(rep(1:2,
+  length.out = length(nri_result$p.std)) == 1,
+  "Case", "Control")
 )
 
 # Check the structure
@@ -607,7 +603,9 @@ ggplot(reclass_df, aes(x = New, y = Old, fill = Count)) +
   theme_minimal(base_family = "Helvetica") +
   theme(
     plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
-    plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(b = 15)),
+    plot.subtitle = element_text(size = 11,
+                                 hjust = 0.5,
+                                 margin = margin(b = 15)),
     plot.caption = element_text(size = 9, hjust = 1, margin = margin(t = 10)),
     axis.title = element_text(face = "bold", size = 12),
     axis.text = element_text(size = 10, face = "bold"),
@@ -751,6 +749,7 @@ for (model_name in names(models_list)) {
 range(unlist(centiloids_pvals))
 mean(unlist(centiloids_coefs))
 sd(unlist(centiloids_coefs))
+median(unlist(centiloids_coefs))
 
 
 
@@ -1124,9 +1123,9 @@ eval_times <- eval_times
 models_to_analyze <- c(
   # "demographics",
   # "demographics_no_apoe",
-  "demographics_lancet",
-  "ptau",
-  "ptau_demographics_lancet"
+  "demographics",
+  "centiloids",
+  "centiloids_demographics"
 )
 
 # Initialize dataframe to store ROC curves
