@@ -9,10 +9,11 @@ library(ggplot2)
 library(survival)
 library(survminer)
 library(riskRegression)
-library(survminer)
 
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-source("pub_figures.R")
+
+setwd('/n/groups/patel/randy/rfb/code/A4/')
+
+source("plot_figures.R")
 source("metrics.R")
 
 # Load fonts
@@ -37,7 +38,8 @@ loadfonts(device = "postscript")
 # }
 
 # tmerge data for all models
-format_df <- function(df, lancet = FALSE, habits, psychwell, vitals) {
+format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
+                      habits, psychwell, vitals, centiloids) {
   df$SEX <- factor(df$SEX)
   df$APOEGN <- factor(df$APOEGN)
   df <- within(df, APOEGN <- relevel(APOEGN, ref = "E3/E3"))
@@ -45,44 +47,55 @@ format_df <- function(df, lancet = FALSE, habits, psychwell, vitals) {
   base <- df[!duplicated(df$BID), c(
     "BID", "time_to_event", "label",
     "AGEYR_centered", "AGEYR_centered_squared",
-    "AGEYR_centered_cubed", "SEX",
-    "EDCCNTU_z", "APOEGN"
+    "AGEYR_centered_cubed", "SEX", "EDCCNTU_z",
+    "APOEGN"
   )]
-  tv_covar <- df[, c("BID", "COLLECTION_DATE_DAYS_CONSENT", "ORRES_boxcox")]
+
   colnames(base) <- c(
-    "id", "time", "event", "age", "age2", "age3",
-    "sex", "educ", "apoe"
+    "id", "time", "event",
+    "age", "age2",
+    "age3", "sex", "educ",
+    "apoe"
   )
+
+  centiloids <- centiloids[centiloids$BID %in% df$BID, c(
+    "BID", "SVUSEDTC_YEARS_CONSENT", "AMYLCENT"
+  )]
+  colnames(centiloids) <- c(
+    "id", "time", "centiloids"
+  )
+
+  tv_covar <- df[, c("BID", "COLLECTION_DATE_DAYS_CONSENT", "ORRES_boxcox")]
   colnames(tv_covar) <- c("id", "time", "ptau")
 
-  if (lancet) {
-    habits <- habits[habits$BID %in% df$BID, c(
-      "BID",
-      "COLLECTION_DATE_DAYS_CONSENT",
-      "SMOKE", "ALCOHOL", "SUBUSE",
-      "AEROBIC", "WALKING"
-    )]
-    psychwell <- psychwell[psychwell$BID %in% df$BID, c(
-      "BID",
-      "COLLECTION_DATE_DAYS_CONSENT",
-      "GDTOTAL", "STAITOTAL"
-    )]
-    vitals <- vitals[vitals$BID %in% df$BID, c(
-      "BID",
-      "COLLECTION_DATE_DAYS_CONSENT",
-      "VSBPSYS", "VSBPDIA"
-    )]
-    colnames(habits) <- c(
-      "id", "time", "smoke", "alcohol", "subuse",
-      "aerobic", "walking"
-    )
-    colnames(psychwell) <- c("id", "time", "gdtotal", "staital")
-    colnames(vitals) <- c("id", "time", "vsbsys", "vsdia")
+  # if (lancet) {
+  habits <- habits[habits$BID %in% df$BID, c(
+    "BID",
+    "COLLECTION_DATE_DAYS_CONSENT",
+    "SMOKE", "ALCOHOL", "SUBUSE",
+    "AEROBIC", "WALKING"
+  )]
+  psychwell <- psychwell[psychwell$BID %in% df$BID, c(
+    "BID",
+    "COLLECTION_DATE_DAYS_CONSENT",
+    "GDTOTAL", "STAITOTAL"
+  )]
+  vitals <- vitals[vitals$BID %in% df$BID, c(
+    "BID",
+    "COLLECTION_DATE_DAYS_CONSENT",
+    "VSBPSYS", "VSBPDIA"
+  )]
+  colnames(habits) <- c(
+    "id", "time", "smoke", "alcohol", "subuse",
+    "aerobic", "walking"
+  )
+  colnames(psychwell) <- c("id", "time", "gdtotal", "staital")
+  colnames(vitals) <- c("id", "time", "vsbsys", "vsdia")
 
-    habits$time <- habits$time / 365.25
-    psychwell$time <- psychwell$time / 365.25
-    vitals$time <- vitals$time / 365.25
-  }
+  habits$time <- habits$time / 365.25
+  psychwell$time <- psychwell$time / 365.25
+  vitals$time <- vitals$time / 365.25
+  # }
 
   base$time <- base$time / 365.25
   tv_covar$time <- tv_covar$time / 365.25
@@ -104,44 +117,56 @@ format_df <- function(df, lancet = FALSE, habits, psychwell, vitals) {
     event = event(time, event)
   )
 
+  # if (ptau) {
+    # Add the ptau column
   td_data <- tmerge(
     td_data,
     tv_covar,
     id = id,
     ptau = tdc(time, ptau)
   )
+  # }
 
-  if (lancet) {
-    td_data <- tmerge(
-      td_data,
-      habits,
-      id = id,
-      smoke = tdc(time, smoke),
-      alcohol = tdc(time, alcohol),
-      subuse = tdc(time, subuse),
-      aerobic = tdc(time, aerobic),
-      walking = tdc(time, walking)
-    )
+  # if (pet) {
+    # Add the centiloids column
+  td_data <- tmerge(
+    td_data,
+    centiloids,
+    id = id,
+    centiloids = tdc(time, centiloids)
+  )
+  # }
 
-    td_data <- tmerge(
-      td_data,
-      psychwell,
-      id = id,
-      gdtotal = tdc(time, gdtotal),
-      staital = tdc(time, staital)
-    )
+  # if (lancet) {
+  td_data <- tmerge(
+    td_data,
+    habits,
+    id = id,
+    smoke = tdc(time, smoke),
+    alcohol = tdc(time, alcohol),
+    subuse = tdc(time, subuse),
+    aerobic = tdc(time, aerobic),
+    walking = tdc(time, walking)
+  )
 
-    td_data <- tmerge(
-      td_data,
-      vitals,
-      id = id,
-      vsbsys = tdc(time, vsbsys),
-      vsdia = tdc(time, vsdia)
-    )
-  }
+  td_data <- tmerge(
+    td_data,
+    psychwell,
+    id = id,
+    gdtotal = tdc(time, gdtotal),
+    staital = tdc(time, staital)
+  )
 
-  td_data <- td_data[order(td_data$id), ]
-  td_data <- td_data[complete.cases(td_data), ]
+  td_data <- tmerge(
+    td_data,
+    vitals,
+    id = id,
+    vsbsys = tdc(time, vsbsys),
+    vsdia = tdc(time, vsdia)
+  )
+  # }
+
+  # td_data <- td_data[complete.cases(td_data), ]
 
   # First, let's store the baseline age for each person
   baseline_ages <- td_data %>%
@@ -150,7 +175,7 @@ format_df <- function(df, lancet = FALSE, habits, psychwell, vitals) {
     select(id, baseline_age = age)
 
   # Now update the age column to reflect actual age at each timepoint
-  td_data_updated <- td_data %>%
+  td_data <- td_data %>%
     left_join(baseline_ages, by = "id") %>%
     mutate(
       # Convert tstart from days to years and add to baseline age
@@ -158,17 +183,30 @@ format_df <- function(df, lancet = FALSE, habits, psychwell, vitals) {
     ) %>%
     select(-baseline_age) # Remove the temporary baseline_age column
 
+
+  td_data <- td_data[order(td_data$id, td_data$tstart), ]
+  # Perform last observation carried forward (LOCF) within each subject
+  td_data <- td_data %>%
+    group_by(id) %>%
+    fill(everything(), .direction = "down") %>%
+    # Also carry first value backward for any remaining NAs
+    fill(everything(), .direction = "up") %>%
+    ungroup()
+
+  # print(dim(td_data))
+  td_data <- td_data[complete.cases(td_data), ]
+  # print(dim(td_data))
   # update age2
-  td_data_updated$age2 <- td_data_updated$age^2
+  td_data$age2 <- td_data$age^2
 
   # update age3
-  td_data_updated$age3 <- td_data_updated$age^3
+  td_data$age3 <- td_data$age^3
 
   # if (lancet) {
   #   td_data_updated <- cut_time_data(td_data_updated)
   # }
 
-  return(td_data_updated)
+  return(td_data)
 }
 
 # read in Lancet data
@@ -176,20 +214,38 @@ habits <- read_parquet("../../tidy_data/A4/habits.parquet")
 habits$SUBUSE <- as.factor(habits$SUBUSE)
 psychwell <- read_parquet("../../tidy_data/A4/psychwell.parquet")
 vitals <- read_parquet("../../tidy_data/A4/vitals.parquet")
+centiloids <- read_parquet("../../tidy_data/A4/centiloids_subjinfo.parquet")
 
 # Define model formulas
 get_model_formula <- function(model_type, lancet = FALSE) {
   base_formulas <- list(
-    "ptau_demographics" = Surv(tstart, tstop, event) ~ ptau + age + age2 +
-      sex + educ + apoe + age * apoe + age2 * apoe,
-    "demographics" = Surv(tstart, tstop, event) ~ age + age2 +
-      sex + educ + apoe + age * apoe + age2 * apoe,
-    "ptau" = Surv(tstart, tstop, event) ~ ptau,
     "demographics_no_apoe" = Surv(tstart, tstop, event) ~ age + age2 +
       sex + educ,
+    "demographics" = Surv(tstart, tstop, event) ~ age + age2 +
+      sex + educ +
+      apoe + age * apoe + age2 * apoe,
+    "lancet" = Surv(tstart, tstop, event) ~ 1,
+    "ptau" = Surv(tstart, tstop, event) ~ ptau,
     "ptau_demographics_no_apoe" = Surv(tstart, tstop, event) ~ ptau +
       age + age2 +
-      sex + educ
+      sex + educ,
+    "ptau_demographics" = Surv(tstart, tstop, event) ~ ptau + age + age2 +
+      sex + educ + 
+      apoe + age * apoe + age2 * apoe,
+    "centiloids" = Surv(tstart, tstop, event) ~ centiloids,
+    "centiloids_demographics_no_apoe" = Surv(tstart, tstop, event) ~ centiloids +
+      age + age2 +
+      sex + educ,
+    "centiloids_demographics" = Surv(tstart, tstop, event) ~ centiloids +
+      age + age2 +
+      sex + educ + apoe + age * apoe + age2 * apoe,
+    "ptau_centiloids" = Surv(tstart, tstop, event) ~ ptau + centiloids,
+    "ptau_centiloids_demographics_no_apoe" = Surv(tstart, tstop, event) ~ ptau + centiloids +
+      age + age2 +
+      sex + educ,
+    "ptau_centiloids_demographics" = Surv(tstart, tstop, event) ~ ptau + centiloids +
+      age + age2 +
+      sex + educ + apoe + age * apoe + age2 * apoe
   )
 
   formula <- base_formulas[[model_type]]
@@ -205,25 +261,42 @@ get_model_formula <- function(model_type, lancet = FALSE) {
   return(formula)
 }
 
-# Initialize lists to store results for all models
-models_list <- list(
-  "ptau_demographics" = list(),
-  "ptau_demographics_lancet" = list(),
-  "demographics" = list(),
-  "demographics_lancet" = list(),
-  "ptau" = list(),
-  "demographics_no_apoe" = list(),
-  "demographics_lancet_no_apoe" = list(),
-  "ptau_demographics_no_apoe" = list(),
-  "ptau_demographics_lancet_no_apoe" = list()
-)
+eval_times <- seq(3, 7)
+
+lancet_vars <- c(
+        "smoke", "alcohol", "aerobic", "walking",
+        "gdtotal", "staital", "vsbsys", "vsdia"
+      )
 
 # Initialize lists to store results for all models
-metrics_list <- list()
+models_list <- list(
+  "demographics_no_apoe" = list(),
+  "demographics" = list(),
+  "demographics_lancet_no_apoe" = list(),
+  "demographics_lancet" = list(),
+  "lancet" = list(),
+  "ptau" = list(),
+  "ptau_demographics_no_apoe" = list(),
+  "ptau_demographics" = list(),
+  "ptau_demographics_lancet_no_apoe" = list(),
+  "ptau_demographics_lancet" = list(),
+  "centiloids" = list(),
+  "centiloids_demographics_no_apoe" = list(),
+  "centiloids_demographics" = list(),
+  "centiloids_demographics_lancet_no_apoe" = list(),
+  "centiloids_demographics_lancet" = list(),
+  "ptau_centiloids" = list(),
+  "ptau_centiloids_demographics_no_apoe" = list(),
+  "ptau_centiloids_demographics" = list(),
+  "ptau_centiloids_demographics_lancet_no_apoe" = list(),
+  "ptau_centiloids_demographics_lancet" = list()
+)
+
 val_df_l <- list()
 train_df_l <- list()
 
-eval_times <- seq(3, 7)
+# Initialize lists to store results for all models
+metrics_list <- list()
 
 # iterate over folds and run experiments
 for (fold in seq(0, 4)) {
@@ -237,35 +310,45 @@ for (fold in seq(0, 4)) {
     "../../tidy_data/A4/val_", fold, "_new.parquet"
   ))
 
+  df <- format_df(train_df_raw, #ptau = is_ptau, lancet = is_lancet, pet = is_pet,
+                    habits, psychwell, vitals, centiloids)
+  val_df <- format_df(val_df_raw, #ptau = is_ptau, lancet = is_lancet,
+                        habits, psychwell, vitals, centiloids)
+
+  means <- apply(df[, lancet_vars], 2, mean, na.rm = TRUE)
+  sds <- apply(df[, lancet_vars], 2, sd, na.rm = TRUE)
+
+  df[, lancet_vars] <- scale(df[, lancet_vars],
+    center = means, scale = sds
+  )
+  val_df[, lancet_vars] <- scale(val_df[, lancet_vars],
+    center = means, scale = sds
+  )
+  
+  train_df_l[[paste0("fold_", fold + 1)]] <- df
+  val_df_l[[paste0("fold_", fold + 1)]] <- val_df
+  
   # Fit all models
   for (model_name in names(models_list)) {
     print(paste("Fitting model:", model_name))
 
     # Determine if this is a Lancet model
     is_lancet <- grepl("lancet", model_name)
+    is_ptau <- grepl("ptau", model_name)
+    is_pet <- grepl("centiloids", model_name)
 
-    df <- format_df(train_df_raw, lancet = is_lancet,
-                    habits, psychwell, vitals)
-    val_df <- format_df(val_df_raw, lancet = is_lancet,
-                        habits, psychwell, vitals)
-    val_df_l[[paste0("fold_", fold + 1, "_", model_name)]] <- val_df
-    train_df_l[[paste0("fold_", fold + 1, "_", model_name)]] <- df
+    # print number of unique ids in df and val_df
+    # print(paste0("Number of unique ids in df: ", length(unique(df$id))))
+    # print(paste0("Number of unique ids in val_df: ", length(unique(val_df$id))))
+    # print(fold)
+    # print(model_name)
+    # print(dim(df))
+    # print(dim(val_df))
+    # val_df_l[[paste0("fold_", fold + 1, "_", model_name)]] <- val_df
+    # train_df_l[[paste0("fold_", fold + 1, "_", model_name)]] <- df
     # Z-score variables if using Lancet variables
-    if (is_lancet) {
-      lancet_vars <- c(
-        "smoke", "alcohol", "aerobic", "walking",
-        "gdtotal", "staital", "vsbsys", "vsdia"
-      )
-      means <- apply(df[, lancet_vars], 2, mean, na.rm = TRUE)
-      sds <- apply(df[, lancet_vars], 2, sd, na.rm = TRUE)
-
-      df[, lancet_vars] <- scale(df[, lancet_vars],
-        center = means, scale = sds
-      )
-      val_df[, lancet_vars] <- scale(val_df[, lancet_vars],
-        center = means, scale = sds
-      )
-    }
+    # if (is_lancet) {
+    # }
 
     # Get base model type
     base_type <- gsub("_lancet", "", model_name)
@@ -275,6 +358,7 @@ for (fold in seq(0, 4)) {
 
     # Fit model
     model <- coxph(formula, data = df, x = TRUE)
+    gc()
     models_list[[model_name]][[paste0("fold_", fold + 1)]] <- model
 
     # Calculate metrics
@@ -287,785 +371,20 @@ for (fold in seq(0, 4)) {
     if (!model_name %in% names(metrics_list)) {
       metrics_list[[model_name]] <- list()
     }
+    gc()
     metrics_list[[model_name]][[paste0("fold_", fold + 1)]] <- metrics_results
+    gc()
   }
 }
 
 # Save results
-saveRDS(models_list, "../../tidy_data/A4/fitted_models_all.rds")
-saveRDS(metrics_list, "../../tidy_data/A4/metrics_all.rds")
-saveRDS(val_df_l, "../../tidy_data/A4/val_df_all.rds")
-saveRDS(train_df_l, "../../tidy_data/A4/train_df_all.rds")
-
-# load results
-metrics_list <- readRDS("../../tidy_data/A4/metrics_all.rds")
-val_df_l <- readRDS("../../tidy_data/A4/val_df_all.rds")
-models_list <- readRDS("../../tidy_data/A4/fitted_models_all.rds")
-train_df_l <- readRDS("../../tidy_data/A4/train_df_all.rds")
-
-########################################################
-# Bayes Information Criterion
-for (model_name in names(models_list)) {
-  for (fold in 1:5) {
-    model <- models_list[[model_name]][[paste0("fold_", fold)]]
-    print(paste0("Model: ", model_name, " Fold: ", fold, " BIC: ", BIC(model)))
-  }
-}
-
-########################################################
-# Clinical risk reclassification
-library(nricens) # For NRI calculations with survival data
-
-find_events_within_horizon <- function(data, horizon, newdata) {
-  # Create a mapping from ID to event status within horizon
-  event_summary <- data %>%
-    group_by(id) %>%
-    summarize(
-      event_occurred = any(event == 1),
-      event_time = ifelse(event_occurred, min(tstop[event == 1]), Inf),
-      within_horizon = event_occurred & event_time <= horizon
-    )
-  
-  # Match the event status to the IDs in newdata
-  event_status <- numeric(nrow(newdata))
-  for (i in 1:nrow(newdata)) {
-    id_match <- which(event_summary$id == newdata$id[i])
-    if (length(id_match) > 0) {
-      event_status[i] <- as.numeric(event_summary$within_horizon[id_match])
-    }
-  }
-
-  return(event_status)
-}
-
-model1 <- models_list$demographics_lancet$fold_1
-model2 <- models_list$ptau_demographics_lancet$fold_1
-df <- train_df_l$fold_1_demographics_lancet
-all.equal(train_df_l$fold_1_demographics_lancet,
-          train_df_l$fold_1_ptau_demographics_lancet) # must be TRUE
-
-# Define prediction time horizon
-horizon <- 5 # years
-
-# Create a baseline dataset for prediction (use data at a specific time point)
-newdata <- df[df$tstart < 5, ] # or another relevant baseline
-
-# Get predicted survival probabilities
-pred_surv1 <- 1 - summary(survfit(model1, newdata = newdata),
-                          times = horizon)$surv
-pred_surv2 <- 1 - summary(survfit(model2, newdata = newdata),
-                          times = horizon)$surv     
-
-# Define risk categories (modify based on your clinical context)
-risk_cats <- c(0, 0.05, 0.10, 0.20, 1)
-risk_labels <- c("0-5%", "5-10%", "10-20%", ">20%")
-
-# Categorize predicted risks
-risk_cat1 <- cut(pred_surv1, breaks=risk_cats, labels=risk_labels, include.lowest=TRUE)
-risk_cat2 <- cut(pred_surv2, breaks=risk_cats, labels=risk_labels, include.lowest=TRUE)
-
-# Create reclassification table
-reclass_table <- table(risk_cat1, risk_cat2)
-print(reclass_table)
-
-# Calculate percentage reclassified in each risk category
-percent_reclass <- numeric(length(risk_labels))
-names(percent_reclass) <- risk_labels
-
-for (i in 1:length(risk_labels)) {
-  cat <- risk_labels[i]
-  n_total <- sum(reclass_table[i,])
-  n_reclass <- n_total - reclass_table[i,i]
-  percent_reclass[i] <- 100 * n_reclass / n_total
-}
-print(percent_reclass)
-
-# Create a dataframe with predicted risks and actual outcomes
-reclass_df <- data.frame(
-  id = newdata$id,  # Use actual IDs from newdata
-  risk_cat1 = risk_cat1,
-  risk_cat2 = risk_cat2,
-  pred_risk1 = pred_surv1,
-  pred_risk2 = pred_surv2
-)
-
-# Add outcome information - pass newdata to ensure proper ID matching
-event_within_horizon <- find_events_within_horizon(df, horizon, newdata)
-reclass_df$event <- event_within_horizon
-
-# Extract relevant time information from your original dataset
-# We need to find the actual observed time (either event time or censoring time)
-time_info <- df %>%
-  group_by(id) %>%
-  summarize(
-    max_time = max(tstop),
-    event_time = ifelse(any(event == 1), min(tstop[event == 1]), max_time),
-    time = pmin(event_time, horizon)  # Censor at horizon for NRI analysis
-  )
-
-# Join this time information to your reclass_df
-reclass_df <- left_join(reclass_df, select(time_info, id, time), by = "id")
-
-# Now check that we have the time column
-head(reclass_df)
-
-# Check dimensions for nricens
-print(paste("Length of pred_surv1:", length(pred_surv1)))
-print(paste("Length of pred_surv2:", length(pred_surv2)))
-print(paste("Length of reclass_df$time:", length(reclass_df$time)))
-print(paste("Length of reclass_df$event:", length(reclass_df$event)))
-
-# Now call nricens with the corrected data
-nri_result <- nricens(
-  time = reclass_df$time,      # Time to event or censoring
-  event = reclass_df$event,    # Event indicator (1=event, 0=censored)
-  p.std = pred_surv1,          # Predicted risks from standard model
-  p.new = pred_surv2,          # Predicted risks from new model
-  cut = risk_cats[-1],         # Cut points for risk categories
-  t0 = horizon                 # Time horizon for prediction
-)
-
-# Calculate observed event rates within each cell of the reclassification table
-observed_rates <- aggregate(event ~ risk_cat1 + risk_cat2,
-                            data = reclass_df, FUN = mean)
-
-# Format as a matrix similar to Table 3 in the paper
-observed_matrix <- matrix(NA, nrow=length(risk_labels),
-                          ncol=length(risk_labels))
-rownames(observed_matrix) <- colnames(observed_matrix) <- risk_labels
-
-for (i in 1:nrow(observed_rates)) {
-  r <- which(risk_labels == observed_rates$risk_cat1[i])
-  c <- which(risk_labels == observed_rates$risk_cat2[i])
-  observed_matrix[r, c] <- round(100 * observed_rates$event[i], 1)
-}
-print(observed_matrix)
-
-
-# Make sure all vectors have the same length before calling nricens
-# Check dimensions of inputs
-print(paste("Length of pred_surv1:", length(pred_surv1)))
-print(paste("Length of pred_surv2:", length(pred_surv2)))
-print(paste("Length of reclass_df$time:", length(reclass_df$time)))
-print(paste("Length of reclass_df$event:", length(reclass_df$event)))
-
-# Make sure we're using the same individuals for all vectors
-# Create a complete data frame with all required variables
-nri_data <- data.frame(
-  id = newdata$id,
-  pred_surv1 = pred_surv1[1,],
-  pred_surv2 = pred_surv2[1,],
-  time = reclass_df$time,
-  event = reclass_df$event
-)
-
-# Remove any rows with NA values
-nri_data <- nri_data[complete.cases(nri_data), ]
-
-# Check the structure of our data
-str(nri_data)
-
-# Make sure time and event are properly formatted
-# time should be numeric and event should be 0/1
-nri_data$time <- as.numeric(nri_data$time)
-nri_data$event <- as.numeric(nri_data$event)
-
-# Try using the function with minimal parameters first
-nri_result <- nricens(
-  time = reclass_df$time,      # Time to event or censoring
-  event = reclass_df$event,    # Event indicator (1=event, 0=censored)
-  p.std = pred_surv1,          # Predicted risks from standard model
-  p.new = pred_surv2,          # Predicted risks from new model
-  cut = risk_cats[-1],         # Cut points for risk categories
-  t0 = horizon                 # Time horizon for prediction
-)
-
-print(summary(nri_result))
-print(nri_result$nri)
-# Overall reclassification table
-print(nri_result$rtab)
-
-# Reclassification table for cases (events)
-print(nri_result$rtab.case)
-
-# Reclassification table for controls (non-events)
-print(nri_result$rtab.ctrl)
-
-# Plots
-### Sankey Plot
-library(networkD3)
-
-# Prepare data for Sankey diagram
-links <- data.frame(
-  source = character(),
-  target = character(),
-  value = numeric(),
-  group = character()
-)
-
-# Get risk categories
-risk_cats_labels <- c("< 5%", "5-10%", "10-20%", "20-100%", "≥ 100%")
-
-# Create links from the reclassification tables
-for (i in 1:nrow(nri_result$rtab)) {
-  for (j in 1:ncol(nri_result$rtab)) {
-    if (nri_result$rtab[i,j] > 0) {
-      # For all individuals
-      links <- rbind(links, data.frame(
-        source = paste("Old:", risk_cats_labels[i]),
-        target = paste("New:", risk_cats_labels[j]),
-        value = nri_result$rtab[i,j],
-        group = "All"
-      ))
-    }
-  }
-}
-
-# Create Sankey diagram
-nodes <- data.frame(
-  name = unique(c(links$source, links$target))
-)
-
-links$source <- match(links$source, nodes$name) - 1
-links$target <- match(links$target, nodes$name) - 1
-
-sankeyNetwork(Links = links, Nodes = nodes,
-              Source = "source", Target = "target",
-              Value = "value", NodeID = "name",
-              LinkGroup = "group", fontSize = 12)
-
-### Risk Shift Plot
-
-# Create a proper data frame
-plot_df <- data.frame(
-  Model1 = nri_result$p.std[1, ],
-  Model2 = nri_result$p.new[1, ],
-  Event = ifelse(rep(1:2, length.out = length(nri_result$p.std)) == 1, "Case", "Control")
-)
-
-# Check the structure
-head(plot_df)
-
-# Create the plot and explicitly print it
-rsp <- ggplot(plot_df, aes(x = Model1, y = Model2, color = Event)) +
-  geom_point(alpha = 0.3) +
-  geom_abline(slope = 1, intercept = 0, linetype = "dashed") +
-  scale_color_manual(values = c("Case" = "red", "Control" = "blue")) +
-  labs(x = "Risk from Model 1", y = "Risk from Model 2",
-       title = "Change in Predicted Risk Between Models") +
-  theme_minimal() +
-  coord_fixed(ratio = 1)
-
-# Explicitly print the plot
-print(rsp)
-
-# Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/risk_shift_plot.pdf",
-       plot = rsp,
-       width = 8,
-       height = 6,
-       dpi = 300)
-
-### NRI components
-nri_components <- data.frame(
-  Component = c("Overall NRI", "Events (NRI+)", "Non-events (NRI-)"),
-  Estimate = c(nri_result$nri[1,1], nri_result$nri[2,1], nri_result$nri[3,1]),
-  Lower = c(nri_result$nri[1,2], nri_result$nri[2,2], nri_result$nri[3,2]),
-  Upper = c(nri_result$nri[1,3], nri_result$nri[2,3], nri_result$nri[3,3])
-)
-
-# Create bar plot with error bars
-nri_components_plot <- ggplot(nri_components, aes(x = Component, y = Estimate, fill = Component)) +
-  geom_bar(stat = "identity", width = 0.6) +
-  geom_errorbar(aes(ymin = Lower, ymax = Upper), width = 0.2) +
-  geom_hline(yintercept = 0, linetype = "dashed") +
-  labs(title = "Net Reclassification Improvement Components",
-       y = "NRI Value", x = "") +
-  theme_minimal() +
-  theme(legend.position = "none")
-
-# Explicitly print the plot
-print(nri_components_plot)
-
-# Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/nri_components_plot.pdf",
-       plot = nri_components_plot,
-       width = 8,
-       height = 6,
-       dpi = 300)
-
-
-### Heatmap of reclassification table
-# Convert reclassification table to data frame
-reclass_df <- as.data.frame(as.table(nri_result$rtab))
-names(reclass_df) <- c("Old", "New", "Count")
-
-# Calculate percentages for text labels
-total_count <- sum(reclass_df$Count)
-reclass_df$Percent <- round(100 * reclass_df$Count / total_count, 1)
-reclass_df$Label <- paste0(reclass_df$Count, "\n(", reclass_df$Percent, "%)")
-
-# Create publication-quality heat map
-heatmap_reclass_df <- ggplot(reclass_df, aes(x = New, y = Old, fill = Count)) +
-  geom_tile(color = "white", linewidth = 0.5) +
-  geom_text(aes(label = Label), 
-            # Adjust text color based on background brightness for better contrast
-            color = ifelse(reclass_df$Count > mean(reclass_df$Count) * 1.5, "white", "black"),
-            fontface = "bold", size = 4) +  # Increased text size
-  scale_fill_viridis_c(option = "mako",    # Changed to "mako" for better contrast
-                       trans = "log", 
-                       name = "Number of\nPatients",
-                       guide = guide_colorbar(title.position = "top",
-                                            barwidth = 10, 
-                                            barheight = 0.5)) +
-  labs(title = "Risk Reclassification Matrix",
-       subtitle = "Demographics + Lancet vs. pTau-217 + Demographics + Lancet",
-       x = "Risk Category with pTau-217 Model", 
-       y = "Risk Category with Demographics Model",
-       caption = "Numbers show count and percentage of total patients") +
-  scale_x_discrete(position = "top") +
-  theme_minimal(base_family = "Helvetica") +
-  theme(
-    plot.title = element_text(face = "bold", size = 14, hjust = 0.5),
-    plot.subtitle = element_text(size = 11, hjust = 0.5, margin = margin(b = 15)),
-    plot.caption = element_text(size = 9, hjust = 1, margin = margin(t = 10)),
-    axis.title = element_text(face = "bold", size = 12),
-    axis.text = element_text(size = 10, face = "bold"),
-    legend.position = "right",
-    legend.title = element_text(size = 10, face = "bold"),
-    legend.text = element_text(size = 9),
-    panel.grid = element_blank(),
-    panel.border = element_rect(fill = NA, color = "gray30", linewidth = 0.5),
-    plot.margin = margin(20, 20, 20, 20)
-  ) +
-  # Add diagonal line highlighting to show unchanged classifications
-  geom_tile(data = subset(reclass_df, Old == New), 
-            aes(x = New, y = Old), 
-            fill = NA, color = "black", linewidth = 1.2)
-
-# Explicitly print the plot
-print(heatmap_reclass_df)
-
-# Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/risk_reclassification_heatmap.pdf",
-       plot = heatmap_reclass_df,
-       width = 8, height = 7, dpi = 300)
-
-### Observed Event Rate Plot
-# Create data frame with observed event rates
-event_rates <- data.frame(
-  Old = character(),
-  New = character(),
-  Count = numeric(),
-  EventRate = numeric()
-)
-
-risk_levels <- colnames(nri_result$rtab)
-
-for (i in 1:length(risk_levels)) {
-  for (j in 1:length(risk_levels)) {
-    total = nri_result$rtab[i,j]
-    if (total > 0) {
-      events = nri_result$rtab.case[i,j]
-      event_rates <- rbind(event_rates, data.frame(
-        Old = risk_levels[i],
-        New = risk_levels[j],
-        Count = total,
-        EventRate = events/total*100
-      ))
-    }
-  }
-}
-
-# Plot event rates
-event_rate_plot <- ggplot(event_rates, aes(x = New, y = Old, fill = EventRate)) +
-  geom_tile() +
-  geom_text(aes(label = sprintf("%.1f%%", EventRate)), 
-            color = ifelse(event_rates$EventRate > 50, "white", "black")) +
-  scale_fill_gradient(low = "white", high = "red") +
-  labs(title = "Observed Event Rate by Risk Reclassification",
-       x = "New Model Risk Category", 
-       y = "Original Model Risk Category",
-       fill = "Event Rate (%)") +
-  theme_minimal()
-
-# Explicitly print the plot
-print(event_rate_plot)
-
-# Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/event_rate_plot.pdf",
-       plot = event_rate_plot,
-       width = 8,
-       height = 6,
-       dpi = 300)
-
-### Decision Curve Analysis
-library(rmda)
-
-# Create decision curve analysis dataframe
-dca_df <- data.frame(
-  # event = reclass_df$event,
-  event = ifelse(rep(1:2, length.out = length(nri_result$p.std)) == 1, 0, 1),
-  p.std = nri_result$p.std[1,],  # Extract first row of matrix
-  p.new = nri_result$p.new[1,]   # Extract first row of matrix
-)
-# dca_df$event <- as.factor(dca_df$event)
-# Verify the data is properly formatted
-print("Data structure:")
-str(dca_df)
-print(paste("Number of events:", sum(dca_df$event)))
-print(paste("Range of p.std:", min(dca_df$p.std), "to", max(dca_df$p.std)))
-print(paste("Range of p.new:", min(dca_df$p.new), "to", max(dca_df$p.new)))
-
-
-# Create decision curve
-decision_curve <- decision_curve(
-  formula = event ~ p.std + p.new,
-  data = dca_df,
-  thresholds = seq(0, 0.5, by = 0.01)
-)
-
-
-# Plot decision curve
-decision_curve_plot <- plot_decision_curve(decision_curve, 
-                    curve.names = c("Standard Model", "New Model"),
-                    xlab = "Threshold Probability (%)",
-                    ylab = "Net Benefit",
-                    cost.benefit.axis = TRUE,
-                    col = c("blue", "red"),
-                    confidence.intervals = FALSE)
-
-# Explicitly print the plot
-print(decision_curve_plot)
-
-# Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/decision_curve_plot.pdf",
-       plot = decision_curve_plot,
-       width = 8,
-       height = 6,
-       dpi = 300)
-
-########################################################
-# sensitivity, specificity, PPV, NPV
-timeROC:::confint.ipcwsurvivalROC(metrics_list$demographics_lancet$fold_1$troc)
-
-timeROC::plotAUCcurve(metrics_list$demographics_lancet$fold_1$troc)
-
-# iterate over all cutpoints and store SeSpPPVNPV for each time point
-risk_scores <- predict(models_list$demographics_lancet$fold_1,
-                       val_df_l$fold_1_demographics_lancet)
-
-se_sp_ppv_npv <- list()
-for (cutpoint in seq(min(risk_scores), max(risk_scores), length.out = 200)) {
-  se_sp_ppv_npv_results <- SeSpPPVNPV(cutpoint = cutpoint,
-    T = val_df_l$fold_1_demographics_lancet$time,
-    delta = val_df_l$fold_1_demographics_lancet$event,
-    marker = risk_scores,
-    cause = 1,
-    weighting = "marginal",
-    times = seq(3, 7)
-  )
-  se_sp_ppv_npv[[paste0("cutpoint_", cutpoint)]] <- se_sp_ppv_npv_results
-}
-
-youden_index_list <- list()
-for (cutpoint in names(se_sp_ppv_npv)) {
-  youden_index <- se_sp_ppv_npv[[cutpoint]]$TP + (1 - se_sp_ppv_npv[[cutpoint]]$FP) - 1
-  youden_index_list[[cutpoint]] <- mean(youden_index)
-}
-
-# find the cutpoint that maximizes Youden's J index
-best_cutpoint <- names(youden_index_list)[which.max(youden_index_list)]
-print(se_sp_ppv_npv[[best_cutpoint]])
-
-
-########################################################
-# pull all ptau coefficients and p-values
-# iterate over all models and folds in models_list to do this
-ptau_coefs <- list()
-ptau_pvals <- list()
-
-# iterate over models that have ptau in them
-for (model_name in names(models_list)) {
-  if (grepl("ptau", model_name)) {
-    for (fold in 1:5) {
-      model <- models_list[[model_name]][[paste0("fold_", fold)]]
-      ptau_coefs[[model_name]][[paste0("fold_", fold)]] <-
-        exp(model$coefficients["ptau"])
-      ptau_pvals[[model_name]][[paste0("fold_", fold)]] <-
-        summary(model)$coefficients["ptau", "Pr(>|z|)"]
-    }
-  }
-}
-
-range(unlist(ptau_pvals))
-mean(unlist(ptau_coefs))
-sd(unlist(ptau_coefs))
-
-
-
-########################################################
-# Fig S1 and Table S1
-# Calculate p-values comparing AUCs between two models at each time point
-# First combine timeROC objects from each fold for each model
-demo_lancet_trocs <- list(
-  metrics_list$demographics_lancet$fold_1$troc,
-  metrics_list$demographics_lancet$fold_2$troc,
-  metrics_list$demographics_lancet$fold_3$troc,
-  metrics_list$demographics_lancet$fold_4$troc,
-  metrics_list$demographics_lancet$fold_5$troc
-)
-
-ptau_demo_lancet_trocs <- list(
-  metrics_list$ptau_demographics_lancet$fold_1$troc,
-  metrics_list$ptau_demographics_lancet$fold_2$troc,
-  metrics_list$ptau_demographics_lancet$fold_3$troc,
-  metrics_list$ptau_demographics_lancet$fold_4$troc,
-  metrics_list$ptau_demographics_lancet$fold_5$troc
-)
-
-compare_tvaurocs <- function(trocs_x, trocs_y) {
-  # Initialize list to store results
-  all_results <- list()
-
-  # Loop through each fold
-  for (fold in seq_along(trocs_x)) {
-
-    # Compare timeROC objects using timeROC::compare
-    comparison <- timeROC::compare(trocs_x[[fold]],
-      trocs_y[[fold]],
-      adjusted = TRUE
-    )
-
-    # Store results for this fold
-    all_results[[fold]] <- data.frame(
-      fold = fold,
-      time = trocs_x[[fold]]$times,
-      auc_x = trocs_x[[fold]]$AUC,
-      auc_y = trocs_y[[fold]]$AUC,
-      auc_diff = trocs_y[[fold]]$AUC - trocs_x[[fold]]$AUC,
-      p_value = comparison$p_values_AUC[2, ]
-    )
-  }
-
-  # Combine results from all folds
-  all_results_df <- do.call(rbind, all_results)
-
-  # Calculate summary statistics
-  summary_stats <- aggregate(
-    cbind(auc_diff, p_value, auc_x, auc_y) ~ time,
-    data = all_results_df,
-    FUN = function(x) c(mean = mean(x), sd = sd(x))
-  )
-
-  # Calculate confidence intervals for each fold
-  ci_data <- data.frame()
-  for (fold in seq_along(trocs_x)) {
-    ci_x <- timeROC:::confint.ipcwsurvivalROC(trocs_x[[fold]])
-    ci_y <- timeROC:::confint.ipcwsurvivalROC(trocs_y[[fold]])
-
-    ci_data <- rbind(ci_data, data.frame(
-      fold = fold,
-      time = trocs_x[[fold]]$times,
-      ci_lower_x = ci_x$CI_AUC[, 1] / 100,
-      ci_upper_x = ci_x$CI_AUC[, 2] / 100,
-      ci_lower_y = ci_y$CI_AUC[, 1] / 100,
-      ci_upper_y = ci_y$CI_AUC[, 2] / 100
-    ))
-  }
-
-  # Calculate mean CIs across folds
-  ci_summary <- aggregate(
-    cbind(ci_lower_x, ci_upper_x, ci_lower_y, ci_upper_y) ~ time,
-    data = ci_data,
-    FUN = mean
-  )
-
-  # Merge with existing summary stats
-  final_summary <- merge(summary_stats, ci_summary, by = "time")
-
-  return(list(
-    all_results = all_results_df,
-    summary = final_summary
-  ))
-}
-
-# After running comparison, create summary table
-pvals_compare_trocs <- compare_tvaurocs(demo_lancet_trocs, 
-                                        ptau_demo_lancet_trocs)
-
-# print out all p-values
-print("Summary of AUC differences and p-values by time point:")
-print(pvals_compare_trocs$summary)
-print(pvals_compare_trocs$all_results)
-print(range(pvals_compare_trocs$all_results$p_value))
-print(mean(pvals_compare_trocs$all_results$p_value))
-print(sd(pvals_compare_trocs$all_results$p_value))
-print(median(pvals_compare_trocs$all_results$p_value))
-
-# how many p-values are less than 0.05? out of how many total p-values?
-sum(pvals_compare_trocs$all_results$p_value < 0.05) /
-  length(pvals_compare_trocs$all_results$p_value)
-
-# Create detailed results table
-results_table <- pvals_compare_trocs$all_results
-write.csv(results_table, "../../tidy_data/A4/auc_comparison_results.csv",
-          row.names = FALSE)
-
-# Table S1 - pivot table of p-values where each row is a fold and each column is a time point
-results_table_wide <- results_table %>%
-  pivot_wider(id_cols = fold, names_from = time, values_from = p_value) %>%
-  mutate(across(-fold, ~round(., digits = 4))) %>%
-  mutate(across(-fold, ~ifelse(. < 0.05, paste0("\\textbf{", ., "}"), as.character(.))))
-
-# latex table of results_table_wide with 4 decimal places
-library(xtable)
-xtable_obj <- xtable(results_table_wide)
-digits(xtable_obj) <- c(0, rep(4, ncol(results_table_wide)))  # Set digits for each column
-print(xtable_obj, type = "latex", sanitize.text.function = function(x) x)  # Don't escape LaTeX commands
-
-# Fig S1 - Histogram of p-values, bin size 0.05
-hist_pvalues <- ggplot(pvals_compare_trocs$all_results,
-                      aes(x = p_value)) +
-  geom_histogram(breaks = seq(0, 1, by = 0.05), 
-                 fill = "#009292", 
-                 alpha = 0.8,
-                 color = "white") +  # Add white lines between bars
-  geom_vline(xintercept = 0.05, linetype = "dashed", color = "red") +
-  labs(
-    title = "Histogram of p-values comparing\nDemographics+Lancet vs. pTau-217+Demographics+Lancet\nacross folds and time points",
-    x = "p-value",
-    y = "Count"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5, size = 12),
-    axis.text = element_text(size = 12),  # Increased from 10
-    axis.title = element_text(size = 14),  # Increased from 11
-    panel.grid.major = element_line(linewidth = 0.3),  # Thicker grid lines
-    panel.grid.minor = element_line(linewidth = 0.15)  # Thicker minor grid lines
-  )
-
-print(hist_pvalues)
-ggsave("../../tidy_data/A4/pvalue_histogram_pTau217_Demo_Lancet_vs_Demo_Lancet.pdf",
-       plot = hist_pvalues,
-       width = 8,
-       height = 6,
-       dpi = 300)
-
-# Boxplots at each time point of AUC differences for pTau217+Demographics+Lancet vs Demographics+Lancet
-library(ggplot2)
-auc_plot <- ggplot(pvals_compare_trocs$all_results,
-       aes(x = factor(time), y = auc_diff)) +
-  geom_boxplot(fill = "#009292", alpha = 0.8) +
-  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
-  labs(
-    title = "AUC Differences Between Models\n(pTau-217+Demographics+Lancet vs Demographics+Lancet)",
-    x = "Time (years)",
-    y = "AUC Difference"
-  ) +
-  theme_minimal() +
-  theme(
-    plot.title = element_text(hjust = 0.5, size = 12),
-    axis.text = element_text(size = 10),
-    axis.title = element_text(size = 11)
-  )
-
-print(auc_plot)
-ggsave(
-  "../../tidy_data/A4/auc_differences_boxplot.pdf",
-  plot = auc_plot,
-  width = 8,
-  height = 6,
-  dpi = 300
-)
-
-
-########################################################
-# Collate metrics
-collate_metric <- function(metrics_list, metric = "auc") {
-  all_results <- data.frame()
-
-  for (model_name in names(metrics_list)) {
-    if (model_name %in% c("demographics_lancet", "ptau_demographics_lancet")) {
-      for (fold in 1:5) {
-        # Print diagnostic information about the validation data
-        print(paste("Model:", model_name, "Fold:", fold))
-        troc <- metrics_list[[model_name]][[paste0("fold_", fold)]]$troc
-        print(paste("Number of IDs:", length(troc$ID)))
-        print("First few IDs:")
-        print(head(troc$ID))
-      }
-    }
-
-    if (metric != "concordance") {
-      # Extract metric values for each fold
-      fold_values <- sapply(1:5, function(fold) {
-        as.numeric(
-          metrics_list[[model_name]][[paste0(
-            "fold_",
-            fold
-          )]][[metric]][[metric]]
-        )
-      })
-    } else {
-      # Extract concordance values for each fold
-      fold_values <- sapply(1:5, function(fold) {
-        as.numeric(
-          metrics_list[[model_name]][[paste0(
-            "fold_",
-            fold
-          )]][[metric]][["AppCindex"]][["coxph"]]
-        )
-      })
-    }
-
-    # Get times for this model (assuming same across folds)
-    times <- as.numeric(metrics_list[[model_name]]$fold_1[[metric]]$time)
-
-    # Create data frame for this model
-    model_df <- data.frame(
-      model = model_name,
-      metric = rep(fold_values),
-      time = rep(times, times = 5),
-      fold = rep(1:5, each = length(times))
-    )
-    all_results <- rbind(all_results, model_df)
-  }
-
-  return(all_results)
-}
-
-# Generate and save results for each metric
-metrics_to_collect <- c("auc", "brier", "concordance")
-
-for (metric in metrics_to_collect) {
-  results <- collate_metric(metrics_list, metric)
-  write_csv(
-    results,
-    paste0("../../tidy_data/A4/results_", metric, "_all_models.csv")
-  )
-}
-
-# AUC, Brier Score, and Concordance Over Time
-auc_results <- collate_metric(metrics_list, metric = "auc")
-brier_results <- collate_metric(metrics_list, metric = "brier")
-concordance_results <- collate_metric(metrics_list, metric = "concordance")
-
-# plot auc over time
-# auc_summary <- auc_results %>%
-#   group_by(model, time) %>%
-#   summarise(
-#     mean_AUC = mean(metric, na.rm = TRUE),
-#     sd_AUC = sd(metric, na.rm = TRUE),
-#     ymin = pmax(mean_AUC - sd_AUC, 0),
-#     ymax = pmin(mean_AUC + sd_AUC, 1),
-#     .groups = "drop"
-#   )
-
-########################################################
-# Function to extract AUROC and CIs for all folds
-get_auc_ci_all_folds <- function(metrics_list) {
+# saveRDS(models_list, paste0("../../tidy_data/A4/fitted_models.rds"))
+qs::qsave(models_list, paste0("../../tidy_data/A4/fitted_models.qs"))
+qs::qsave(val_df_l, paste0("../../tidy_data/A4/val_df_l.qs"))
+qs::qsave(train_df_l, paste0("../../tidy_data/A4/train_df_l.qs"))
+qs::qsave(metrics_list, paste0("../../tidy_data/A4/metrics.qs"))
+
+get_auc_ci_all_folds <- function(metrics_list, summarize = FALSE) {
   # Initialize empty dataframe for results
   all_results <- data.frame()
 
@@ -1089,12 +408,16 @@ get_auc_ci_all_folds <- function(metrics_list) {
     # Combine results from all folds
     model_results <- do.call(rbind, fold_results)
 
-    # Calculate mean values across folds for each time point
-    summary_stats <- aggregate(
-      cbind(auc, ci_lower, ci_upper) ~ model + time,
-      data = model_results,
-      FUN = mean
-    )
+    if (summarize) {
+      # Calculate mean values across folds for each time point
+      summary_stats <- aggregate(
+        cbind(auc, ci_lower, ci_upper) ~ model + time,
+        data = model_results,
+        FUN = mean
+      )
+    } else {
+      summary_stats <- model_results
+    }
 
     all_results <- rbind(all_results, summary_stats)
   }
@@ -1106,612 +429,4 @@ get_auc_ci_all_folds <- function(metrics_list) {
 }
 
 auc_summary <- get_auc_ci_all_folds(metrics_list)
-
-# Table S2 - reshape auc_summary to wide format
-wide_auc_summary <- auc_summary %>%
-  group_by(model, time) %>%
-  mutate(
-    formatted_value = sprintf("%.2f (%.2f-%.2f)", auc, ci_lower, ci_upper)
-  ) %>%
-  select(model, time, formatted_value) %>%
-  pivot_wider(
-    id_cols = model,
-    names_from = time,
-    values_from = formatted_value,
-    names_glue = "{ifelse(is.na(.name), 'model', paste0(.name, 'y'))}"
-  )
-
-
-# map model names to labels
-model_labels <- c(
-  "demographics_lancet" = "Demo+Lancet",
-  "ptau_demographics_lancet" = "pTau217+Demo+Lancet",
-  "demographics" = "Demo",
-  "demographics_no_apoe" = "Demo (-APOE)",
-  "ptau" = "pTau217",
-  "ptau_demographics" = "pTau217+Demo",
-  "ptau_demographics_no_apoe" = "pTau217+Demo (-APOE)",
-  "ptau_demographics_lancet_no_apoe" = "pTau217+Demo+Lancet (-APOE)",
-  "demographics_lancet_no_apoe" = "Demo+Lancet (-APOE)"
-)
-
-# clean up model names
-wide_auc_summary$model <- model_labels[wide_auc_summary$model]
-
-# reorder rows of wide_auc_summary in ascending order of 3y auc
-wide_auc_summary <- wide_auc_summary %>%
-  arrange(wide_auc_summary$`3y`)
-
-# latex table of wide_auc_summary
-library(xtable)
-print(xtable(wide_auc_summary), type = "latex")
-
-
-
-##### FIGURE 1A: AUC over time
-
-width <- 8
-height <- 6
-
-# plot auc over time
-auc_plot <- td_plot(auc_summary %>% filter(model %in%
-                                             c("demographics_lancet", "ptau",
-                                               "ptau_demographics_lancet")),
-                    metric = "auc")
-
-# Display the plot
-print(auc_plot)
-
-# Save plots
-ggsave("../../tidy_data/A4/final_auc_Over_Time.pdf",
-       plot = auc_plot,
-       width = width,
-       height = height,
-       dpi = 300)
-
-# Initialize lists to store ROC data
-roc_data_all <- list()
-
-# Create consistent time points
-eval_times <- eval_times
-
-# Define models to analyze
-models_to_analyze <- c(
-  # "demographics",
-  # "demographics_no_apoe",
-  "demographics_lancet",
-  "ptau",
-  "ptau_demographics_lancet"
-)
-
-# Initialize dataframe to store ROC curves
-all_roc_curves <- data.frame()
-
-for (fold in 0:4) {
-  for (model_name in models_to_analyze) {
-    # Get timeROC object from metrics list
-    troc <- metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$troc
-
-    # Extract ROC curves for each time point
-    for (t in eval_times) {
-      # Get ROC curve data for this time
-      idx <- which(troc$times == t)
-      if (length(idx) > 0) {
-        roc_data <- unique(data.frame(
-          FPR = troc$FP[, idx],
-          TPR = troc$TP[, idx],
-          Time = t,
-          Model = model_name,
-          fold = fold
-        ))
-        all_roc_curves <- rbind(all_roc_curves, roc_data)
-      }
-    }
-  }
-}
-
-# Calculate summary statistics
-roc_summary <- all_roc_curves %>%
-  # First, bin FPR values to create discrete groups
-  mutate(FPR_bin = round(FPR, digits = 2)) %>%
-  group_by(Model, Time, FPR_bin) %>%
-  summarise(
-    mean_TPR = mean(TPR, na.rm = TRUE),
-    # Calculate standard error for each bin
-    pooled_se = sqrt(var(TPR, na.rm = TRUE) / n()),
-    # Calculate confidence intervals
-    ci_lower = mean_TPR - 1.96 * pooled_se,
-    ci_upper = mean_TPR + 1.96 * pooled_se,
-    FPR = mean(FPR_bin),
-    .groups = "drop"
-  ) %>%
-  # Remove any remaining NAs and ensure we have enough data points
-  filter(!is.na(pooled_se)) %>%
-  group_by(Model, Time) %>%
-  filter(n() >= 10) %>%  # Only keep time points with at least 10 data points
-  ungroup()
-
-model_colors <- c(
-  "demographics_lancet" = "#E69F00",    # orange
-  "ptau" = "#CC79A7",                   # pink
-  "ptau_demographics_lancet" = "#009292" # turquoise
-)
-
-# Create faceted plot of ROC curves
-roc_plot <- ggplot(roc_summary, aes(x = FPR, y = mean_TPR, color = Model)) +
-  geom_ribbon(aes(
-    ymin = ci_lower,
-    ymax = ci_upper,
-    fill = Model
-  ), alpha = 0.3, color = NA) +
-  geom_line(linewidth = 1) +
-  geom_abline(
-    slope = 1, intercept = 0,
-    linetype = "dashed", color = "gray50"
-  ) +
-  scale_color_manual(values = model_colors, labels = c(
-    "Demo + Lancet",
-    "pTau217",
-    "Demo + pTau217\n+ Lancet"
-  )) +
-  scale_fill_manual(values = model_colors, labels = c(
-    "Demo + Lancet",
-    "pTau217",
-    "Demo + pTau217\n+ Lancet"
-  ), guide = "none") +
-  facet_wrap(~Time,
-    labeller = labeller(Time = function(x) sprintf("%s years", x))
-  ) +
-  labs(
-    x = "False Positive Rate",
-    y = "True Positive Rate",
-    title = "ROC Curves at Different Time Points"
-  ) +
-  coord_equal() +
-  theme_minimal() +
-  theme(
-    panel.spacing = unit(1, "cm"),
-    axis.text = element_text(size = 8),
-    plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm"),
-    plot.title = element_text(hjust = 0.5)  # Center the title
-  )
-
-# Display the plot
-print(roc_plot)
-
-# Save the plot
-ggsave("../../tidy_data/A4/ROC_curves_by_timepoint.pdf",
-       plot = roc_plot,
-       width = width * 1.5,
-       height = height,
-       dpi = 300)
-
-### Individual year plots
-# Find the year with the largest difference in AUC between the two models
-mean_diffs <- auc_summary %>%
-  filter(model %in% c("demographics_lancet", "ptau_demographics_lancet")) %>%
-  pivot_wider(
-    id_cols = time,
-    names_from = model,
-    values_from = auc
-  ) %>%
-  mutate(auc_difference = ptau_demographics_lancet - demographics_lancet) %>%
-  select(time, auc_difference)
-
-# Print the differences
-print(mean_diffs)
-
-# Find the year with the largest difference in AUC between the two models
-year <- mean_diffs$time[which.max(mean_diffs$auc_difference)]
-
-# Figure 1B - Create individual panel for time = 7
-roc_year <- roc_summary %>%
-  filter(Time == year)
-
-model_labels <- c(
-  "Demo + Lancet",
-  "pTau217",
-  "Demo + pTau217\n+ Lancet"
-)
-
-# Create named vector for mapping model names to labels
-names(model_labels) <- c(
-  "demographics_lancet",
-  "ptau",
-  "ptau_demographics_lancet"
-)
-
-p_year <- ggplot(roc_year, aes(x = FPR, y = mean_TPR, color = Model)) +
-  geom_ribbon(
-    aes(
-      ymin = ci_lower,
-      ymax = ci_upper,
-      fill = Model
-    ),
-    alpha = 0.3,
-    color = NA
-  ) +
-  geom_line(linewidth = 2) +
-  geom_abline(
-    slope = 1, intercept = 0,
-    linetype = "dashed", color = "gray50"
-  ) +
-  scale_color_manual(values = model_colors, labels = model_labels) +
-  scale_fill_manual(values = model_colors, labels = model_labels) +
-  labs(
-    x = "False Positive Rate",
-    y = "True Positive Rate",
-    title = paste(
-      year, "years\n",
-      "Demo + Lancet: ", 
-      sprintf("%.3f (%.3f-%.3f)", 
-        auc_summary$auc[auc_summary$time == year &
-                               auc_summary$model == "demographics_lancet"],
-        auc_summary$ci_lower[auc_summary$time == year &
-                               auc_summary$model == "demographics_lancet"],
-        auc_summary$ci_upper[auc_summary$time == year &
-                               auc_summary$model == "demographics_lancet"]
-      ), "\n",
-      "pTau217: ",
-      sprintf("%.3f (%.3f-%.3f)",
-        auc_summary$auc[auc_summary$time == year &
-                               auc_summary$model == "ptau"],
-        auc_summary$ci_lower[auc_summary$time == year &
-                               auc_summary$model == "ptau"],
-        auc_summary$ci_upper[auc_summary$time == year &
-                               auc_summary$model == "ptau"]
-      ), "\n",
-      "Demo + pTau217 + Lancet: ",
-      sprintf("%.3f (%.3f-%.3f)",
-        auc_summary$auc[auc_summary$time == year &
-                               auc_summary$model == "ptau_demographics_lancet"],
-        auc_summary$ci_lower[auc_summary$time == year &
-                               auc_summary$model == "ptau_demographics_lancet"],
-        auc_summary$ci_upper[auc_summary$time == year &
-                               auc_summary$model == "ptau_demographics_lancet"]
-      )
-    )
-  ) +
-  coord_equal() +
-  get_publication_theme() +
-  theme(
-    legend.position = "bottom",
-    plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm"),
-    panel.border = element_rect(color = "black", fill = NA, linewidth = 0.5)
-  )
-
-print(p_year)
-
-# Save plots
-ggsave(paste0("../../tidy_data/A4/final_ROCcurve_", year, "years.pdf"),
-  plot = p_year,
-  width = width,
-  height = height,
-  dpi = 300
-)
-
-
-# plot brier score over time
-brier_summary <- brier_results %>%
-  group_by(model, time) %>%
-  summarise(
-    mean_metric = mean(metric, na.rm = TRUE),
-    sd_metric = sd(metric, na.rm = TRUE),
-    ymin = pmax(mean_metric - sd_metric, 0),
-    ymax = pmin(mean_metric + sd_metric, 1),
-    .groups = "drop"
-  )
-
-# Figure 1D - plot brier score over time
-brier_plot <- td_plot(brier_summary, metric = "brier", all_models = F)
-
-# Display the plot
-print(brier_plot)
-
-# Save plots
-ggsave("../../tidy_data/A4/final_brier_Over_Time.pdf",
-  plot = brier_plot,
-  width = width,
-  height = height,
-  dpi = 300
-)
-
-# find year with biggest difference in brier between the two models
-mean_diffs <- brier_summary %>%
-  filter(model %in% c("demographics_lancet", "ptau_demographics_lancet")) %>%
-  pivot_wider(
-    id_cols = time,
-    names_from = model,
-    values_from = mean_metric
-  ) %>%
-  mutate(brier_difference = ptau_demographics_lancet -
-        demographics_lancet) %>%
-  select(time, brier_difference) %>%
-  as.data.frame() # Convert to data.frame to avoid tibble's default rounding
-
-print(mean_diffs)
-
-# plot concordance over time
-concordance_summary <- concordance_results %>%
-  group_by(model, time) %>%
-  summarise(
-    mean_metric = mean(metric, na.rm = TRUE),
-    sd_metric = sd(metric, na.rm = TRUE),
-    ymin = pmax(mean_metric - sd_metric, 0),
-    ymax = pmin(mean_metric + sd_metric, 1),
-    .groups = "drop"
-  )
-
-# Figure 1C - plot concordance over time
-concordance_plot <- td_plot(concordance_summary,
-                            metric = "concordance")
-
-# Display the plot
-print(concordance_plot)
-
-# Save plots
-ggsave("../../tidy_data/A4/final_concordance_Over_Time.pdf",
-  plot = concordance_plot,
-  width = width,
-  height = height,
-  dpi = 300
-)
-
-# find year with biggest difference in concordance between the two models
-mean_diffs <- concordance_summary %>%
-  filter(model %in% c("demographics_lancet", "ptau_demographics_lancet")) %>%
-  pivot_wider(
-    id_cols = time,
-    names_from = model,
-    values_from = mean_metric
-  ) %>%
-  mutate(concordance_difference = ptau_demographics_lancet -
-        demographics_lancet) %>%
-  select(time, concordance_difference) %>%
-  as.data.frame() # Convert to data.frame to avoid tibble's default rounding
-
-print(mean_diffs)
-
-########################################################
-# Calculate calibration data
-cal_data_avg <- calculate_calibration_data(models_list, val_df_l)
-
-# Create calibration plots
-plots <- calibration_plots(cal_data_avg, seq(3, 8), model_colors)
-print(plots)
-
-# Save plots
-ggsave("../../tidy_data/A4/final_calibration_plots.pdf",
-  plot = plots,
-  width = 8,
-  height = 6,
-  dpi = 300
-)
-
-########################################################
-# Decision curve analysis
-# Collect predictions and create DCA data
-dca_data_all <- list()
-models_to_analyze <- c(
-  "demographics",
-  "demographics_no_apoe",
-  "demographics_lancet",
-  "ptau",
-  "ptau_demographics_lancet"
-)
-
-# Collect predictions for each time point and model
-for (t in seq(3, 8)) {
-  for (fold in 0:4) {
-    for (model_name in models_to_analyze) {
-      model <- overwrite_na_coef_to_zero(
-        models_list[[model_name]][[paste0("fold_", fold + 1)]]
-      )
-
-      pred_probs <- 1 - pec::predictSurvProb(
-        model,
-        newdata = val_df_l[[paste0("fold_", fold + 1, "_", model_name)]],
-        times = t
-      )
-
-      val_data <- val_df_l[[paste0("fold_", fold + 1, "_", model_name)]]
-      dca_data_all[[paste0("t", t, "_fold",
-                           fold, "_", model_name)]] <- data.frame(
-        fold = fold,
-        time = t,
-        model = model_name,
-        tstop = val_data$tstop,
-        event = val_data$event,
-        pred_prob = pred_probs
-      )
-    }
-  }
-}
-
-# Combine all DCA data
-all_dca_data <- do.call(rbind, dca_data_all)
-
-# Create and save DCA plots
-dca_plots <- dca_plots(all_dca_data)
-print(dca_plots)
-
-ggsave("../../tidy_data/A4/final_DCA_Over_Time.pdf",
-       plot = dca_plots,
-       width = 8,
-       height = 6,
-       dpi = 300
-)
-
-# ########################################################
-# # ROC and Prediction Error Curves
-# # Initialize lists to store ROC data
-# roc_data_all <- list()
-
-# # Create consistent time points
-# eval_times <- seq(3, 8)
-
-# # Define models to analyze
-# models_to_analyze <- c(
-#   "demographics_lancet",
-#   "ptau",
-#   "ptau_demographics_lancet"
-# )
-
-# # Update model colors
-# model_colors <- c(
-#   "demographics_lancet" = "#E69F00",    # orange
-#   "ptau" = "#CC79A7",                   # pink
-#   "ptau_demographics_lancet" = "#009292" # turquoise
-# )
-
-# # Initialize dataframe to store ROC curves
-# all_roc_curves <- data.frame()
-
-# for (fold in 0:4) {
-#   for (model_name in models_to_analyze) {
-#     # Get timeROC object from metrics list
-#     troc <- metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$troc
-    
-#     # Extract ROC curves for each time point
-#     for (t in eval_times) {
-#       # Get ROC curve data for this time
-#       idx <- which(troc$times == t)
-#       if (length(idx) > 0) {
-#         roc_data <- data.frame(
-#           FPR = troc$FP[, idx],
-#           TPR = troc$TP[, idx],
-#           Time = t,
-#           Model = model_name,
-#           fold = fold
-#         )
-#         all_roc_curves <- rbind(all_roc_curves, roc_data)
-#       }
-#     }
-#   }
-# }
-
-# # Calculate summary statistics
-# roc_summary <- all_roc_curves %>%
-#   # First, bin FPR values to create discrete groups
-#   mutate(FPR_bin = round(FPR, digits = 2)) %>%
-#   group_by(Model, Time, FPR_bin) %>%
-#   summarise(
-#     mean_TPR = mean(TPR, na.rm = TRUE),
-#     sd_TPR = sd(TPR, na.rm = TRUE),
-#     FPR = mean(FPR_bin),  # Use the mean FPR within each bin
-#     .groups = "drop"
-#   ) %>%
-#   # Remove any remaining NAs
-#   filter(!is.na(sd_TPR))
-
-# # Plot ROC curves with smoothing and uncertainty
-# p5 <- ggplot(roc_summary, aes(x = FPR, y = mean_TPR, color = Model)) +
-#   geom_ribbon(aes(
-#     ymin = pmax(mean_TPR - sd_TPR, 0),
-#     ymax = pmin(mean_TPR + sd_TPR, 1),
-#     fill = Model
-#   ), alpha = 0.2, color = NA) +
-#   geom_line(linewidth = 1) +
-#   geom_abline(
-#     slope = 1, intercept = 0,
-#     linetype = "dashed", color = "gray50"
-#   ) +
-#   scale_color_manual(
-#     values = model_colors,
-#     labels = c(
-#       "Demo + Lancet",
-#       "pTau217",
-#       "Demo + pTau217\n+ Lancet"
-#     )
-#   ) +
-#   scale_fill_manual(
-#     values = model_colors,
-#     labels = c(
-#       "Demo + Lancet",
-#       "pTau217",
-#       "Demo + pTau217\n+ Lancet"
-#     )
-#   ) +
-#   facet_wrap(~Time,
-#     labeller = labeller(Time = function(x) {
-#       sprintf("%s years", x)
-#     })
-#   ) +
-#   labs(
-#     x = "False Positive Rate",
-#     y = "True Positive Rate",
-#     title = "Dynamic ROC Curves",
-#     subtitle = "At Different Follow-up Times"
-#   ) +
-#   coord_equal() +
-#   get_publication_theme() +
-#   theme(
-#     panel.spacing = unit(1, "cm"),
-#     axis.text.x = element_text(angle = 0, hjust = 0.5, size = 8),
-#     plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm")
-#   )
-
-# print(p5)
-
-# # Save plots
-# ggsave("../../tidy_data/A4/final_ROCcurves_Over_Time.pdf",
-#        plot = p5,
-#        width = 14,
-#        height = 6,
-#        dpi = 300)
-
-# if (lancet) {
-#   year <- 3
-# } else {
-#   year <- 7
-# }
-
-# # Create individual panel for time = 7
-# roc_year <- roc_summary %>%
-#   filter(Time == year)
-
-# p5_year <- ggplot(roc_year, aes(x = FPR, y = mean_TPR, color = Model)) +
-#   geom_ribbon(
-#     aes(
-#       ymin = pmax(mean_TPR - sd_TPR, 0),
-#       ymax = pmin(mean_TPR + sd_TPR, 1),
-#       fill = Model
-#     ),
-#     alpha = 0.2,
-#     color = NA
-#   ) +
-#   geom_smooth(se = FALSE, method = "loess", span = 0.2, linewidth = 1) +
-#   geom_abline(
-#     slope = 1, intercept = 0,
-#     linetype = "dashed", color = "gray50"
-#   ) +
-#   scale_color_manual(values = model_colors) +
-#   scale_fill_manual(values = model_colors) +
-#   labs(
-#     x = "False Positive Rate",
-#     y = "True Positive Rate",
-#     title = paste(
-#       year, "years\n",
-#       auc_stats$Baseline[auc_stats$Time == year], "\n",
-#       auc_stats$Biomarker[auc_stats$Time == year]
-#     )
-#   ) +
-#   coord_equal() +
-#   get_publication_theme() +
-#   theme(
-#     legend.position = "bottom",
-#     plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm"),
-#     panel.border = element_rect(color = "black", fill = NA, linewidth = 1)
-#   )
-
-# print(p5_year)
-
-# # Save plots
-# ggsave("../../tidy_data/A4/final_ROCcurve_7years.pdf",
-#   plot = p5_year,
-#   width = 6,
-#   height = 6,
-#   dpi = 300
-# )
-
-# ########################################################
+write_parquet(auc_summary, "../../tidy_data/A4/auc_summary.parquet")

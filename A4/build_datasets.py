@@ -32,6 +32,8 @@ import sys
 sys.path.append('../../ukb_func')
 import os
 from t2e import *
+from sklearn.model_selection import StratifiedKFold
+from scipy import stats
 
 def vectorized_age_calculation(data):
     """
@@ -106,6 +108,16 @@ def merge_demo(df):
         
     Returns:
         pd.DataFrame: Dataset with added demographic information
+        
+    Notes:
+        Merges the following demographic variables:
+        - AGEYR: Age at baseline
+        - SEX: Biological sex
+        - RACE: Self-reported race
+        - EDCCNTU: Years of education
+        - ETHNIC: Ethnicity
+        - APOEGN: APOE genotype
+        - TX: Treatment assignment
     """
     demo = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SUBJINFO.csv')
     demo = demo[demo.BID.isin(df.BID.unique())]
@@ -126,6 +138,11 @@ def merge_cdr(df, cdr, sv):
         
     Returns:
         tuple: (processed DataFrame, array of case BIDs)
+        
+    Notes:
+        - Cases are defined as subjects with CDR ≥ 0.5 for two consecutive visits
+        - Controls are subjects who never meet case criteria
+        - Time-to-event is calculated from baseline to diagnosis or last visit
     """
     
     # Sort data chronologically
@@ -175,27 +192,23 @@ def merge_cdr(df, cdr, sv):
 def fix_time_dependent_labels(df, cases_bid, id_col='BID', time_col='stop', 
                         time_to_event_col='time_to_event', label_col='label'):
     """
-    Prepare time-to-event data for survival analysis by:
-    1. Correctly setting labels based on event times
-    2. Keeping only observations up to and including the first occurrence of case status
+    Prepare time-to-event data for survival analysis by correctly handling time-dependent labels.
     
-    Parameters:
-    -----------
-    df : pandas.DataFrame
-        DataFrame containing time-to-event data
-    id_col : str
-        Name of the ID column
-    time_col : str
-        Name of the time column
-    time_to_event_col : str
-        Name of the column containing time to event
-    label_col : str
-        Name of the label column
+    Args:
+        df (pd.DataFrame): DataFrame containing time-to-event data
+        cases_bid (array-like): Array of BIDs identified as cases
+        id_col (str): Name of the ID column
+        time_col (str): Name of the time column
+        time_to_event_col (str): Name of the column containing time to event
+        label_col (str): Name of the label column
     
     Returns:
-    --------
-    pandas.DataFrame
-        DataFrame with corrected labels and trimmed to first case occurrence
+        pd.DataFrame: DataFrame with corrected labels and trimmed to first case occurrence
+        
+    Notes:
+        - For cases, keeps only observations up to and including first occurrence of case status
+        - For controls, keeps all observations
+        - Ensures correct temporal alignment of labels with events
     """
     # First, correctly set all labels based on event times
     df_fixed = df.copy()
@@ -321,12 +334,196 @@ def get_ptau():
     data = merge_e2_carriers(data)
     return data, cases_bid
 
+# Create five datasets for five-fold cross-validation, stratified by label and time-to-event
+def create_stratified_folds(data, n_splits=5, n_bins=4, random_state=42):
+    """
+    Create stratified cross-validation folds based on label and time-to-event.
+    
+    Args:
+        data (pd.DataFrame): Input dataset
+        n_splits (int): Number of folds for cross-validation
+        n_bins (int): Number of bins for stratifying time-to-event
+        random_state (int): Random seed for reproducibility
+    
+    Returns:
+        pd.DataFrame: DataFrame with BID and fold assignments
+        
+    Notes:
+        - Stratifies by both case/control status and time-to-event quartiles
+        - Ensures balanced distribution of cases across folds
+        - Maintains temporal distribution within case groups
+    """
+    # Aggregate data by BID, keeping label and time_to_event
+    bids = (data[['BID', 'label', 'time_to_event']]
+            .sort_values(['label', 'time_to_event'], ascending=[False, True])
+            .drop_duplicates('BID')
+            .reset_index(drop=True))
+    
+    # Verify label consistency
+    # assert bids['label'].nunique() == data.groupby('BID')['label'].nunique().max(), \
+    #     "Not all BIDs have a consistent label. Please resolve label inconsistencies."
+    
+    # Create time-to-event bins only for cases (label=1)
+    cases = bids[bids['label'] == 1].copy()
+    controls = bids[bids['label'] == 0].copy()
+    
+    # Create bins for cases based on time-to-event
+    cases['time_bin'] = pd.qcut(cases['time_to_event'], q=n_bins, labels=False)
+    # Assign -1 as time_bin for controls
+    controls['time_bin'] = -1
+    
+    # Combine cases and controls
+    bids = pd.concat([cases, controls])
+    
+    # Create a composite stratification variable
+    bids['strata'] = bids['label'].astype(str) + '_' + bids['time_bin'].astype(str)
+    
+    # Initialize StratifiedKFold
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    
+    # Prepare the data for splitting
+    X = bids['BID']
+    y = bids['strata']
+    
+    # Initialize the 'fold' column
+    bids['fold'] = -1
+    
+    # Assign fold numbers
+    for fold_number, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+        bids.loc[val_idx, 'fold'] = fold_number
+    
+    # Verify fold assignment
+    assert bids['fold'].min() >= 0 and bids['fold'].max() < n_splits, "Fold assignment error."
+    
+    return bids[['BID', 'fold']]
+
+# Process each fold
+def process_fold(data, fold_assignments, fold, cases_bid):
+    """
+    Process individual cross-validation fold with appropriate data transformations.
+    
+    Args:
+        data (pd.DataFrame): Complete dataset
+        fold_assignments (pd.DataFrame): Fold assignments for each BID
+        fold (int): Current fold number
+        cases_bid (array-like): Array of case BIDs
+    
+    Returns:
+        tuple: (train_set, val_set) processed training and validation datasets
+        
+    Notes:
+        Performs the following transformations:
+        - Age centering and standardization
+        - Education level standardization
+        - pTau217 (ORRES) standardization and Box-Cox transformation
+        - Time variable scaling
+        - Prints detailed fold statistics for quality control
+    """
+    # Merge fold assignments with original data
+    data2 = data.merge(fold_assignments, on='BID')
+    
+    # Define validation and training sets
+    val_set = data2[data2['fold'] == fold].copy()
+    train_set = data2[data2['fold'] != fold].copy()
+    
+    # Print fold information
+    print(f"Fold {fold + 1}:")
+    print(f"  Training BIDs: {train_set['BID'].nunique()}")
+    print(f"  Validation BIDs: {val_set['BID'].nunique()}")
+    print(f"  Positive class in Training: {train_set['label'].mean() * 100:.2f}%")
+    print(f"  Positive class in Validation: {val_set['label'].mean() * 100:.2f}%")
+    
+    # Print time-to-event distribution for cases
+    train_cases = train_set[train_set['label'] == 1]
+    val_cases = val_set[val_set['label'] == 1]
+    print("\nTime-to-event statistics for cases (years):")
+    print("  Training:")
+    print(f"    Mean: {train_cases['time_to_event'].mean():.2f}")
+    print(f"    Median: {train_cases['time_to_event'].median():.2f}")
+    print("  Validation:")
+    print(f"    Mean: {val_cases['time_to_event'].mean():.2f}")
+    print(f"    Median: {val_cases['time_to_event'].median():.2f}\n")
+    
+    # Preprocess data
+    # zscore AGEYR
+    training_age_mean = train_set.AGEYR.mean()
+    training_age_std = train_set.AGEYR.std()
+    train_set['AGEYR_z'] = (train_set.AGEYR - training_age_mean) / training_age_std
+    val_set['AGEYR_z'] = (val_set.AGEYR - training_age_mean) / training_age_std
+    
+    train_set['AGEYR_centered'] = train_set.AGEYR - training_age_mean
+    val_set['AGEYR_centered'] = val_set.AGEYR - training_age_mean
+    
+    # square and cube age
+    train_set['AGEYR_z_squared'] = train_set.AGEYR_z ** 2
+    train_set['AGEYR_z_cubed'] = train_set.AGEYR_z ** 3
+    val_set['AGEYR_z_squared'] = val_set.AGEYR_z ** 2
+    val_set['AGEYR_z_cubed'] = val_set.AGEYR_z ** 3
+    
+    train_set['AGEYR_centered_squared'] = train_set.AGEYR_centered ** 2
+    train_set['AGEYR_centered_cubed'] = train_set.AGEYR_centered ** 3
+    val_set['AGEYR_centered_squared'] = val_set.AGEYR_centered ** 2
+    val_set['AGEYR_centered_cubed'] = val_set.AGEYR_centered ** 3
+    
+    # zscore EDCCNTU
+    training_edc_mean = train_set.EDCCNTU.mean()
+    training_edc_std = train_set.EDCCNTU.std()
+    train_set['EDCCNTU_z'] = (train_set.EDCCNTU - training_edc_mean) / training_edc_std
+    val_set['EDCCNTU_z'] = (val_set.EDCCNTU - training_edc_mean) / training_edc_std
+    
+    # zscore ORRES
+    training_orres_mean = train_set.ORRES.mean()
+    training_orres_std = train_set.ORRES.std()
+    train_set['ORRES_z'] = (train_set.ORRES - training_orres_mean) / training_orres_std
+    val_set['ORRES_z'] = (val_set.ORRES - training_orres_mean) / training_orres_std
+    
+    # boxcox transform ORRES
+    train_set['ORRES_boxcox'], lambda_val = stats.boxcox(train_set.ORRES)
+    val_set['ORRES_boxcox'] = stats.boxcox(val_set.ORRES, lmbda=lambda_val)
+    
+    # scale time variables
+    train_set['COLLECTION_DATE_DAYS_CONSENT_yr'] = train_set.COLLECTION_DATE_DAYS_CONSENT
+    train_set['time_to_event_yr'] = train_set.time_to_event 
+    val_set['COLLECTION_DATE_DAYS_CONSENT_yr'] = val_set.COLLECTION_DATE_DAYS_CONSENT
+    val_set['time_to_event_yr'] = val_set.time_to_event
+    
+    return train_set, val_set
+
 def main():
     """
-    Main execution function. Processes data and saves to parquet file.
+    Main execution function for data processing pipeline.
+    
+    Process Flow:
+    1. Load and process pTau217 and CDR data
+    2. Create stratified cross-validation folds
+    3. Process each fold with appropriate transformations
+    4. Save processed datasets as parquet files
+    
+    Output Files:
+    - ptau217_allvisits.parquet: Complete processed dataset
+    - train_{fold}_new.parquet: Training data for each fold
+    - val_{fold}_new.parquet: Validation data for each fold
     """
     data, cases_bid = get_ptau()
     data.to_parquet('../../tidy_data/A4/ptau217_allvisits.parquet')
+
+    fold_assignments = create_stratified_folds(data)
+    val_sets = []
+
+    for fold in range(5):
+        # Process the fold
+        train_set, val_set = process_fold(data, fold_assignments, fold, cases_bid)
+        val_sets.append(val_set)
+
+        # print overlapping BIDs between training and validation sets
+        train_bids = set(train_set['BID'])
+        val_bids = set(val_set['BID'])
+        overlap = train_bids.intersection(val_bids)
+        print(f"  Overlapping BIDs: {len(overlap)}\n")
+
+        # Save datasets
+        train_set.to_parquet(f'../../tidy_data/A4/train_{fold}_new.parquet')
+        val_set.to_parquet(f'../../tidy_data/A4/val_{fold}_new.parquet')
 
 if __name__ == '__main__':
     main()
