@@ -82,20 +82,20 @@ def find_first_or_last_visit(df_list, id_col='RID', examdate_col='EXAMDATE', fir
     for df in df_list[2:]:
         merged = merged.merge(df, on=id_col, how='outer')
     
+   # Find all columns that contain the first/last date information
+    date_cols = [col for col in merged.columns if col.startswith(f'{first_or_last}_{examdate_col}')]
+    
+    # Apply min or max function across all date columns
     if first_or_last == 'first':
-        merged[examdate_col] = merged.apply(lambda row: min(row[f'{first_or_last}_{examdate_col}_x'], 
-                                                        row[f'{first_or_last}_{examdate_col}_y']) 
-                                        if pd.notna(row[f'{first_or_last}_{examdate_col}_x']) and pd.notna(row[f'{first_or_last}_{examdate_col}_y']) 
-                                        else row[f'{first_or_last}_{examdate_col}_x'] 
-                                        if pd.notna(row[f'{first_or_last}_{examdate_col}_x']) 
-                                        else row[f'{first_or_last}_{examdate_col}_y'], axis=1)
+        merged[examdate_col] = merged.apply(
+            lambda row: min([row[col] for col in date_cols if pd.notna(row[col])], default=pd.NaT), 
+            axis=1
+        )
     elif first_or_last == 'last':
-        merged[examdate_col] = merged.apply(lambda row: max(row[f'{first_or_last}_{examdate_col}_x'], 
-                                                        row[f'{first_or_last}_{examdate_col}_y']) 
-                                        if pd.notna(row[f'{first_or_last}_{examdate_col}_x']) and pd.notna(row[f'{first_or_last}_{examdate_col}_y']) 
-                                        else row[f'{first_or_last}_{examdate_col}_x'] 
-                                        if pd.notna(row[f'{first_or_last}_{examdate_col}_x']) 
-                                        else row[f'{first_or_last}_{examdate_col}_y'], axis=1)
+        merged[examdate_col] = merged.apply(
+            lambda row: max([row[col] for col in date_cols if pd.notna(row[col])], default=pd.NaT), 
+            axis=1
+        )
     
     return merged
     
@@ -116,159 +116,7 @@ def map_time_from_baseline(df, earliest_baseline, id_col='RID', examdate_col='EX
     return df
 
 
-# Create five datasets for five-fold cross-validation, stratified by label and time-to-event
-def create_stratified_folds(data, n_splits=5, n_bins=4, random_state=42):
-    # Aggregate data by id, keeping label and time_to_event
-    bids = (data[['id', 'event', 'time_to_event']]
-            .sort_values(['event', 'time_to_event'], ascending=[False, True])
-            .drop_duplicates('id')
-            .reset_index(drop=True))
-    
-    # Verify event consistency
-    # assert bids['event'].nunique() == data.groupby('BID')['label'].nunique().max(), \
-    #     "Not all BIDs have a consistent event. Please resolve label inconsistencies."
-    
-    # Create time-to-event bins only for cases (event=1)
-    cases = bids[bids['event'] == 1].copy()
-    controls = bids[bids['event'] == 0].copy()
-    
-    # Create bins for cases based on time-to-event
-    cases['time_bin'] = pd.qcut(cases['time_to_event'], q=n_bins, labels=False)
-    # Assign -1 as time_bin for controls
-    controls['time_bin'] = -1
-    
-    # Combine cases and controls
-    bids = pd.concat([cases, controls])
-    
-    # Create a composite stratification variable
-    bids['strata'] = bids['event'].astype(str) + '_' + bids['time_bin'].astype(str)
-    
-    # Initialize StratifiedKFold
-    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
-    
-    # Prepare the data for splitting
-    X = bids['id']
-    y = bids['strata']
-    
-    # Initialize the 'fold' column
-    bids['fold'] = -1
-    
-    # Assign fold numbers
-    for fold_number, (train_idx, val_idx) in enumerate(skf.split(X, y)):
-        bids.loc[val_idx, 'fold'] = fold_number
-    
-    # Verify fold assignment
-    assert bids['fold'].min() >= 0 and bids['fold'].max() < n_splits, "Fold assignment error."
-    
-    return bids[['id', 'fold']]
-
-# Process each fold
-def process_fold(data, fold_assignments, fold):
-    # Merge fold assignments with original data
-    data2 = data.merge(fold_assignments, on='id')
-    
-    # Define validation and training sets
-    val_set = data2[data2['fold'] == fold].copy()
-    train_set = data2[data2['fold'] != fold].copy()
-    
-    # Print fold information
-    print(f"Fold {fold + 1}:")
-    print(f"  Training IDs: {train_set['id'].nunique()}")
-    print(f"  Validation IDs: {val_set['id'].nunique()}")
-    print(f"  Positive class in Training: {train_set['event'].mean() * 100:.2f}%")
-    print(f"  Positive class in Validation: {val_set['event'].mean() * 100:.2f}%")
-    
-    # Print time-to-event distribution for cases
-    train_cases = train_set[train_set['event'] == 1]
-    val_cases = val_set[val_set['event'] == 1]
-    print("\nTime-to-event statistics for cases (years):")
-    print("  Training:")
-    print(f"    Mean: {train_cases['time_to_event'].mean():.2f}")
-    print(f"    Median: {train_cases['time_to_event'].median():.2f}")
-    print("  Validation:")
-    print(f"    Mean: {val_cases['time_to_event'].mean():.2f}")
-    print(f"    Median: {val_cases['time_to_event'].median():.2f}\n")
-    
-    # Preprocess data
-    # zscore AGEYR
-    training_age_mean = train_set.age.mean()
-    training_age_std = train_set.age.std()
-    
-    train_set['age_centered'] = train_set.age - training_age_mean
-    val_set['age_centered'] = val_set.age - training_age_mean
-    
-    train_set['age_centered_squared'] = train_set.age_centered ** 2
-    val_set['age_centered_squared'] = val_set.age_centered ** 2
-
-    #zscore centiloids
-    training_centiloids_mean = train_set.centiloids.mean()
-    training_centiloids_std = train_set.centiloids.std()
-    
-    train_set['centiloids_z'] = (train_set.centiloids - training_centiloids_mean) / training_centiloids_std
-    val_set['centiloids_z'] = (val_set.centiloids - training_centiloids_mean) / training_centiloids_std
-
-    train_set['centiloids_z_squared'] = train_set.centiloids_z ** 2
-    val_set['centiloids_z_squared'] = val_set.centiloids_z ** 2
-
-    # set id column to string
-    train_set['id'] = train_set['id'].astype(str)
-    val_set['id'] = val_set['id'].astype(str)
-
-    
-    return train_set, val_set
-
-
-def replace_apoe(df):
-        df.loc[df.apoe.isin([23, 23.0, 32, 32.0, '32']), 'apoe'] = '23'
-        df.loc[df.apoe.isin([24, 24.0, 42, 42.0, '42']), 'apoe'] = '24'
-        df.loc[df.apoe.isin([34, 34.0, 43, 43.0, '43']), 'apoe'] = '34'
-        df.loc[df.apoe.isin([22, 22.0, '22']), 'apoe'] = 'e2_carriers'
-        df.loc[df.apoe.isin([23, 23.0, '23']), 'apoe'] = 'e2_carriers'
-        df.loc[df.apoe.isin([33, 33.0]), 'apoe'] = '33'
-        df.loc[df.apoe.isin([44, 44.0]), 'apoe'] = '44'
-        df.loc[df.apoe == "-4-4", 'apoe'] = np.nan # AIBL
-        df.loc[df.apoe == 9, 'apoe'] = np.nan # NACC
-
-
-        # convert apoe column to string
-        df['apoe'] = df['apoe'].astype('category')
-        return df
-
-def add_one_day_to_zero_time(df):
-    df.loc[df.time == 0, 'time'] = 1
-    df.loc[df.time_to_event == 0, 'time_to_event'] = 1
-    return df
-
-
-if __name__ == '__main__':
-    # set file paths for cohorts
-    main_path = '../../../datasets/'
-    oasis_file_path = main_path + 'OASIS/csv/raw/OASIS3_amyloid_centiloid.csv'
-    oasis_diagnoses_file_path = main_path + 'OASIS/csv/raw/OASISdiagTable.csv'
-    oasis_demo_file_path = main_path + 'OASIS/csv/raw/OASIS3_demographics.csv'
-
-    nacc_file_path = main_path + 'NACC/csv/raw/investigator_ftldlbd_nacc65.csv'
-    nacc_centiloids_file_path = main_path + 'NACC/csv/raw/investigator_scan_pet_nacc65/investigator_scan_amyloidpetgaain_nacc65.csv'
-
-    habs_file_path = main_path + 'HABS/csv/raw/ClinicalMeasures_HABS_DataRelease_2.0.csv'
-    habs_centiloids_file_path = main_path + 'HABS/csv/processed/HABS_CENTILOIDS.csv'
-    habs_demo_file_path = main_path + 'HABS/csv/raw/Demographics_HABS_DataRelease_2.0.csv'
-    habs_pib_file_path = main_path + 'HABS/csv/raw/PIB_FS6_DVR_HABS_DataRelease_2.0.csv'
-
-    adni_pet_file_path = main_path + 'ALL_ADNI_LONIdownload/csv/raw/PET_UCBerkeley/UCBERKELEY_AMY_6MM_17Oct2023.csv'
-    adni_dx_file_path = main_path + 'ALL_ADNI_LONIdownload/csv/raw/DXSUM_PDXCONV_ADNIALLcsv.csv'
-    adni_apoe_file_path = main_path + 'ALL_ADNI_LONIdownload/csv/raw/APOERES_01Jun2023.csv'
-    adni_demo_file_path = main_path + 'ALL_ADNI_LONIdownload/csv/raw/PTDEMOG_29Nov2023.csv'
-
-    aibl_cdr_file_path = main_path + 'AIBL/csv/raw/aibl_cdr_01-Jun-2018.csv'
-    aibl_centiloids_file_path = main_path + 'AIBL/csv/processed/AIBL_CENTILOIDS_varuna.csv'
-    aibl_dx_file_path = main_path + 'AIBL/csv/raw/aibl_pdxconv_01-Jun-2018.csv'
-    aibl_demo_file_path = main_path + 'AIBL/csv/raw/aibl_ptdemog_01-Jun-2018.csv'
-    aibl_apoe_file_path = main_path + 'AIBL/csv/raw/aibl_apoeres_01-Jun-2018.csv'
-
-    #######################
-    # Process OASIS Data #
-    #######################
+def process_oasis(oasis_file_path, oasis_diagnoses_file_path, oasis_demo_file_path):
     
     # Load PET centiloid data
     df = pd.read_csv(oasis_file_path)
@@ -298,7 +146,6 @@ if __name__ == '__main__':
     cases_dx_ids = cases_dx.OASISID.unique()
     pet_pts = df.ID.unique()
     cases_pet = np.intersect1d(cases_dx_ids, pet_pts)
-    print(f'Number of cases with PET data: {len(cases_pet)}')
 
     latest_date = find_first_or_last_visit([df, diagnoses], id_col='ID', examdate_col='day', first_or_last='last')
 
@@ -337,15 +184,18 @@ if __name__ == '__main__':
     pet_df = pet_df.merge(demo.loc[:,['OASISID', 'AgeatEntry', 'GENDER', 'EDUC', 'SES', 'race', 'APOE']], left_on='ID', right_on='OASISID', how='left')
     pet_df = pet_df.rename({'AgeatEntry': 'age'}, axis=1)
     pet_df['age'] = (pet_df['age'] + (pet_df['visit_to_days'] / 365.25))
-    pet_df.to_parquet('../tidy_data/oasis.parquet')
+    return pet_df
 
 
-    #######################
-    # Process NACC Data #
-    #######################
-    
+def process_nacc(nacc_file_path, nacc_centiloids_file_path):
     # Load raw NACC data
-    df = pd.read_csv(nacc_file_path)
+    # check if nacc_file_path ends in csv or parquet
+    if nacc_file_path.endswith('.csv'):
+        df = pd.read_csv(nacc_file_path)
+    elif nacc_file_path.endswith('.parquet'):
+        df = pd.read_parquet(nacc_file_path)
+    else:
+        raise ValueError(f"Invalid file extension: {nacc_file_path}")
 
     # Select relevant columns for analysis
     df = df.loc[:, ['NACCID', 'NACCADC', 'VISITDAY', 'VISITMO', 'VISITYR', 'NACCACTV',
@@ -491,19 +341,10 @@ if __name__ == '__main__':
 
     # Calculate age at examination
     pet_df['age'] = (pet_df['VISITDATE'] - pet_df['BIRTHDAY']).dt.days / 365.25
-
-    # Save processed dataset
-    pet_df.to_parquet('../tidy_data/nacc.parquet')
+    return pet_df
 
 
-
-
-
-
-    #######################
-    # Process HABS Data #
-    #######################
-
+def process_habs(habs_file_path, habs_centiloids_file_path, habs_demo_file_path, habs_pib_file_path):
     # Load clinical diagnosis data
     dx = pd.read_csv(habs_file_path)
     dx['NP_SessionDate'] = pd.to_datetime(dx['NP_SessionDate'])
@@ -594,25 +435,15 @@ if __name__ == '__main__':
 
     # Merge PIB PET data with main dataset
     pet_df = pet_df.merge(pib[['RID', 'EXAMDATE', 'PIB_Age']], on=['RID', 'EXAMDATE'], how='left')
-
-    # Save processed dataset
-    pet_df.to_parquet('../tidy_data/habs.parquet')
+    return pet_df
 
 
-
-
-
-
-
-
-    #######################
-    # Process ADNI Data #
-    #######################
-
+def process_adni(adni_pet_file_path, adni_dx_file_path, adni_apoe_file_path, adni_demo_file_path):
     # Load PET amyloid data from UC Berkeley analysis
     df = pd.read_csv(adni_pet_file_path)
     df.rename({'SCANDATE': 'EXAMDATE'}, axis=1, inplace=True)
     df['EXAMDATE'] = df['EXAMDATE'].apply(parse_dates)
+    df = df.iloc[:, :20]
 
     # Load clinical diagnosis data
     dx = pd.read_csv(adni_dx_file_path)
@@ -622,7 +453,7 @@ if __name__ == '__main__':
 
     # Load APOE genotype data
     apoe = pd.read_csv(adni_apoe_file_path)
-    apoe['genotype'] = apoe['APGEN1'].astype(str) + apoe['APGEN2'].astype(str)
+    # apoe['genotype'] = apoe['APGEN1'].astype(str) + apoe['APGEN2'].astype(str)
 
     # Load and clean demographic data
     demo = pd.read_csv(adni_demo_file_path)
@@ -698,21 +529,11 @@ if __name__ == '__main__':
     pet_df['age'] = pet_df['EXAMDATE'].dt.year - pet_df['PTDOB'].dt.year
 
     # Add APOE genotype information
-    pet_df = pet_df.merge(apoe[['RID', 'genotype']], on='RID', how='left')
-
-    # Save processed dataset
-    pet_df.to_parquet('../tidy_data/adni.parquet')
+    pet_df = pet_df.merge(apoe[['RID', 'GENOTYPE']], on='RID', how='left')
+    return pet_df
 
 
-
-
-
-
-
-    #######################
-    # Process AIBL Data #
-    #######################
-
+def process_aibl(aibl_cdr_file_path, aibl_centiloids_file_path, aibl_dx_file_path, aibl_demo_file_path, aibl_apoe_file_path):
     # Load and preprocess CDR (Clinical Dementia Rating) data
     cdr = pd.read_csv(aibl_cdr_file_path)
     cdr['EXAMDATE'] = cdr['EXAMDATE'].apply(parse_dates)
@@ -798,18 +619,135 @@ if __name__ == '__main__':
     apoe = pd.read_csv(aibl_apoe_file_path)
     apoe['genotype'] = apoe['APGEN1'].astype(str) + apoe['APGEN2'].astype(str)
     pet_df = pet_df.merge(apoe[['RID', 'genotype']], on='RID', how='left')
-
-    # Save processed dataset
-    pet_df.to_parquet('../tidy_data/aibl.parquet')
+    return pet_df
 
 
+# Create five datasets for five-fold cross-validation, stratified by label and time-to-event
+def create_stratified_folds(data, n_splits=5, n_bins=4, random_state=42):
+    # Aggregate data by id, keeping label and time_to_event
+    bids = (data[['id', 'event', 'time_to_event']]
+            .sort_values(['event', 'time_to_event'], ascending=[False, True])
+            .drop_duplicates('id')
+            .reset_index(drop=True))
+    
+    # Verify event consistency
+    # assert bids['event'].nunique() == data.groupby('BID')['label'].nunique().max(), \
+    #     "Not all BIDs have a consistent event. Please resolve label inconsistencies."
+    
+    # Create time-to-event bins only for cases (event=1)
+    cases = bids[bids['event'] == 1].copy()
+    controls = bids[bids['event'] == 0].copy()
+    
+    # Create bins for cases based on time-to-event
+    cases['time_bin'] = pd.qcut(cases['time_to_event'], q=n_bins, labels=False)
+    # Assign -1 as time_bin for controls
+    controls['time_bin'] = -1
+    
+    # Combine cases and controls
+    bids = pd.concat([cases, controls])
+    
+    # Create a composite stratification variable
+    bids['strata'] = bids['event'].astype(str) + '_' + bids['time_bin'].astype(str)
+    
+    # Initialize StratifiedKFold
+    skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
+    
+    # Prepare the data for splitting
+    X = bids['id']
+    y = bids['strata']
+    
+    # Initialize the 'fold' column
+    bids['fold'] = -1
+    
+    # Assign fold numbers
+    for fold_number, (train_idx, val_idx) in enumerate(skf.split(X, y)):
+        bids.loc[val_idx, 'fold'] = fold_number
+    
+    # Verify fold assignment
+    assert bids['fold'].min() >= 0 and bids['fold'].max() < n_splits, "Fold assignment error."
+    
+    return bids[['id', 'fold']]
 
-    #################################
-    # Create cross-validation folds #
-    #################################
+# Process each fold
+def process_fold(data, fold_assignments, fold):
+    # Merge fold assignments with original data
+    data2 = data.merge(fold_assignments, on='id')
+    
+    # Define validation and training sets
+    val_set = data2[data2['fold'] == fold].copy()
+    train_set = data2[data2['fold'] != fold].copy()
+    
+    # Print fold information
+    print(f"Fold {fold + 1}:")
+    print(f"  Training IDs: {train_set['id'].nunique()}")
+    print(f"  Validation IDs: {val_set['id'].nunique()}")
+    print(f"  Positive class in Training: {train_set['event'].mean() * 100:.2f}%")
+    print(f"  Positive class in Validation: {val_set['event'].mean() * 100:.2f}%")
+    
+    # Print time-to-event distribution for cases
+    train_cases = train_set[train_set['event'] == 1]
+    val_cases = val_set[val_set['event'] == 1]
+    print("\nTime-to-event statistics for cases (years):")
+    print("  Training:")
+    print(f"    Mean: {train_cases['time_to_event'].mean():.2f}")
+    print(f"    Median: {train_cases['time_to_event'].median():.2f}")
+    print("  Validation:")
+    print(f"    Mean: {val_cases['time_to_event'].mean():.2f}")
+    print(f"    Median: {val_cases['time_to_event'].median():.2f}\n")
+    
+    # Preprocess data
+    # zscore AGEYR
+    training_age_mean = train_set.age.mean()
+    training_age_std = train_set.age.std()
+    
+    train_set['age_centered'] = train_set.age - training_age_mean
+    val_set['age_centered'] = val_set.age - training_age_mean
+    
+    train_set['age_centered_squared'] = train_set.age_centered ** 2
+    val_set['age_centered_squared'] = val_set.age_centered ** 2
 
+    #zscore centiloids
+    training_centiloids_mean = train_set.centiloids.mean()
+    training_centiloids_std = train_set.centiloids.std()
+    
+    train_set['centiloids_z'] = (train_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
+    val_set['centiloids_z'] = (val_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
+
+    train_set['centiloids_z_squared'] = train_set.centiloids_z ** 2
+    val_set['centiloids_z_squared'] = val_set.centiloids_z ** 2
+
+    # set id column to string
+    train_set['id'] = train_set['id'].astype(str)
+    val_set['id'] = val_set['id'].astype(str)
+
+    
+    return train_set, val_set
+
+
+def replace_apoe(df):
+        df.loc[df.apoe.isin([23, 23.0, 32, 32.0, '32']), 'apoe'] = '23'
+        df.loc[df.apoe.isin([24, 24.0, 42, 42.0, '42']), 'apoe'] = '24'
+        df.loc[df.apoe.isin([34, 34.0, 43, 43.0, '43']), 'apoe'] = '34'
+        df.loc[df.apoe.isin([22, 22.0, '22']), 'apoe'] = 'e2_carriers'
+        df.loc[df.apoe.isin([23, 23.0, '23']), 'apoe'] = 'e2_carriers'
+        df.loc[df.apoe.isin([33, 33.0]), 'apoe'] = '33'
+        df.loc[df.apoe.isin([44, 44.0]), 'apoe'] = '44'
+        df.loc[df.apoe == "-4-4", 'apoe'] = np.nan # AIBL
+        df.loc[df.apoe == 9, 'apoe'] = np.nan # NACC
+
+
+        # convert apoe column to string
+        df['apoe'] = df['apoe'].astype('category')
+        return df
+
+def add_one_day_to_zero_time(df):
+    df.loc[df.time == 0, 'time'] = 1
+    df.loc[df.time_to_event == 0, 'time_to_event'] = 1
+    return df
+
+def make_cv_folds(output_path):
     # Load processed datasets
-    adni = pd.read_parquet('../tidy_data/adni.parquet')
+    adni = pd.read_parquet(output_path + 'adni.parquet')
     adni = adni.loc[:, ["RID", "CENTILOIDS", "visit_to_days",
                         "time_to_event", "label", "PTGENDER",
                         "age", "genotype"]]
@@ -823,7 +761,7 @@ if __name__ == '__main__':
     adni['time_to_event'] = adni['time_to_event'] / 365.25
 
 
-    aibl = pd.read_parquet('../tidy_data/aibl.parquet')
+    aibl = pd.read_parquet(output_path + 'aibl.parquet')
     aibl = aibl.loc[:, ["RID", "CENTILOIDS", "visit_to_days",
                         "time_to_event", "label", "PTGENDER",
                         "age", "genotype"]]
@@ -837,7 +775,7 @@ if __name__ == '__main__':
     aibl['time_to_event'] = aibl['time_to_event'] / 365.25
 
 
-    habs = pd.read_parquet('../tidy_data/habs.parquet')
+    habs = pd.read_parquet(output_path + 'habs.parquet')
     habs = habs.loc[:, ["RID", "CENTILOIDS", "visit_to_days",
                         "time_to_event", "label", "BiologicalSex",
                         "PIB_Age", "APOE_haplotype"]]
@@ -852,7 +790,7 @@ if __name__ == '__main__':
     habs['time'] = habs['time'] / 365.25
     habs['time_to_event'] = habs['time_to_event'] / 365.25
 
-    nacc = pd.read_parquet('../tidy_data/nacc.parquet')
+    nacc = pd.read_parquet(output_path + 'nacc.parquet')
     nacc = nacc.loc[:, ["NACCID", "CENTILOIDS", "visit_to_days",
                         "time_to_event", "label", "SEX",
                         "age", "NACCAPOE"]]
@@ -879,7 +817,7 @@ if __name__ == '__main__':
     nacc['time'] = nacc['time'] / 365.25
     nacc['time_to_event'] = nacc['time_to_event'] / 365.25
 
-    oasis = pd.read_parquet('../tidy_data/oasis.parquet')
+    oasis = pd.read_parquet(output_path + 'oasis.parquet')
     oasis = oasis.loc[:, ["ID", "Centiloid_fSUVR_TOT_CORTMEAN", "visit_to_days",
                             "time_to_event", "label", "GENDER",
                             "age", "APOE"]]
@@ -894,20 +832,125 @@ if __name__ == '__main__':
 
     # concatenate all datasets and create stratified folds
     data = pd.concat([adni, aibl, habs, nacc, oasis])
-    fold_assignments = create_stratified_folds(data)
-    val_sets = []
 
-    for fold in range(5):
-        # Process the fold
-        train_set, val_set = process_fold(data, fold_assignments, fold)
-        val_sets.append(val_set)
+    #### Create folds for each cohort
+    for i, val_set in enumerate([adni, aibl, habs, nacc, oasis]):
+        train_set = [ds for j, ds in enumerate([adni, aibl, habs, nacc, oasis]) if j != i]
+        train_set = pd.concat(train_set)
 
-        # print overlapping BIDs between training and validation sets
-        train_bids = set(train_set['id'])
-        val_bids = set(val_set['id'])
-        overlap = train_bids.intersection(val_bids)
-        print(f"  Overlapping IDs: {len(overlap)}\n")
+        # Preprocess data
+        # zscore AGEYR
+        training_age_mean = train_set.age.mean()
+        training_age_std = train_set.age.std()
+        
+        train_set['age_centered'] = train_set.age - training_age_mean
+        val_set['age_centered'] = val_set.age - training_age_mean
+        
+        train_set['age_centered_squared'] = train_set.age_centered ** 2
+        val_set['age_centered_squared'] = val_set.age_centered ** 2
 
-        # Save datasets
-        train_set.to_parquet(f'../tidy_data/train_{fold}_new.parquet')
-        val_set.to_parquet(f'../tidy_data/val_{fold}_new.parquet')
+        #zscore centiloids
+        training_centiloids_mean = train_set.centiloids.mean()
+        training_centiloids_std = train_set.centiloids.std()
+        
+        train_set['centiloids_z'] = (train_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
+        val_set['centiloids_z'] = (val_set.centiloids - training_centiloids_mean) #/ training_centiloids_std
+
+        train_set['centiloids_z_squared'] = train_set.centiloids_z ** 2
+        val_set['centiloids_z_squared'] = val_set.centiloids_z ** 2
+
+        # set id column to string
+        train_set['id'] = train_set['id'].astype(str)
+        val_set['id'] = val_set['id'].astype(str)
+
+        train_set.to_parquet(output_path + f'train_{i}_test_by_cohort.parquet')
+        val_set.to_parquet(output_path + f'val_{i}_test_by_cohort.parquet')
+
+
+    #### Create stratified folds combining all cohorts
+    # fold_assignments = create_stratified_folds(data)
+
+    # for fold in range(5):
+    #     # Process the fold
+    #     train_set, val_set = process_fold(data, fold_assignments, fold)
+
+    #     # print overlapping BIDs between training and validation sets
+    #     train_bids = set(train_set['id'])
+    #     val_bids = set(val_set['id'])
+    #     overlap = train_bids.intersection(val_bids)
+    #     print(f"  Overlapping IDs: {len(overlap)}\n")
+
+    #     # Save datasets
+    #     train_set.to_parquet(output_path + f'train_{fold}_new.parquet')
+    #     val_set.to_parquet(output_path + f'val_{fold}_new.parquet')
+
+    
+if __name__ == '__main__':
+    # set file paths for cohorts
+    main_path = '../../../datasets/'
+
+    oasis_file_path = main_path + 'OASIS/csv/raw/OASIS3_amyloid_centiloid.csv'
+    oasis_diagnoses_file_path = main_path + 'OASIS/csv/raw/OASISdiagTable.csv'
+    oasis_demo_file_path = main_path + 'OASIS/csv/raw/OASIS3_demographics.csv'
+
+    nacc_file_path = '../../pet_all_cohorts/tidy_data/investigator_ftldlbd_nacc65.parquet'
+    nacc_centiloids_file_path = main_path + 'NACC/csv/raw/investigator_scan_pet_nacc65/investigator_scan_amyloidpetgaain_nacc65.csv'
+
+    habs_file_path = main_path + 'HABS/csv/raw/ClinicalMeasures_HABS_DataRelease_2.0.csv'
+    habs_centiloids_file_path = main_path + 'HABS/csv/processed/HABS_CENTILOIDS.csv'
+    habs_demo_file_path = main_path + 'HABS/csv/raw/Demographics_HABS_DataRelease_2.0.csv'
+    habs_pib_file_path = main_path + 'HABS/csv/raw/PIB_FS6_DVR_HABS_DataRelease_2.0.csv'
+
+    adni_pet_file_path = main_path + 'ALL_ADNI_LONIdownload/csv/raw/PET_UCBerkeley/UCBERKELEY_AMY_6MM_17Oct2023.csv'
+    adni_dx_file_path = main_path + 'ALL_ADNI_LONIdownload/csv/raw/DXSUM_PDXCONV_ADNIALLcsv.csv'
+    adni_apoe_file_path = main_path + 'ALL_ADNI_LONIdownload/csv/raw/APOERES_01Jun2023.csv'
+    adni_demo_file_path = main_path + 'ALL_ADNI_LONIdownload/csv/raw/PTDEMOG_29Nov2023.csv'
+
+    aibl_cdr_file_path = main_path + 'AIBL/csv/raw/aibl_cdr_01-Jun-2018.csv'
+    aibl_centiloids_file_path = main_path + 'AIBL/csv/processed/AIBL_CENTILOIDS_varuna.csv'
+    aibl_dx_file_path = main_path + 'AIBL/csv/raw/aibl_pdxconv_01-Jun-2018.csv'
+    aibl_demo_file_path = main_path + 'AIBL/csv/raw/aibl_ptdemog_01-Jun-2018.csv'
+    aibl_apoe_file_path = main_path + 'AIBL/csv/raw/aibl_apoeres_01-Jun-2018.csv'
+
+    output_path = '../../pet_all_cohorts/tidy_data/'
+
+    
+    #######################
+    # Process OASIS Data #
+    #######################
+    oasis_df = process_oasis(oasis_file_path, oasis_diagnoses_file_path, oasis_demo_file_path)
+    oasis_df.to_parquet(output_path + 'oasis.parquet')
+
+
+    #######################
+    # Process NACC Data #
+    #######################
+    nacc_df = process_nacc(nacc_file_path, nacc_centiloids_file_path)
+    nacc_df.to_parquet(output_path + 'nacc.parquet')
+
+
+    #######################
+    # Process HABS Data #
+    #######################
+    habs_df = process_habs(habs_file_path, habs_centiloids_file_path, habs_demo_file_path, habs_pib_file_path)
+    habs_df.to_parquet(output_path + 'habs.parquet')
+
+
+    #######################
+    # Process ADNI Data #
+    #######################
+    adni_df = process_adni(adni_pet_file_path, adni_dx_file_path, adni_apoe_file_path, adni_demo_file_path)
+    adni_df.to_parquet(output_path + 'adni.parquet')
+
+
+    #######################
+    # Process AIBL Data #
+    #######################
+    aibl_df = process_aibl(aibl_cdr_file_path, aibl_centiloids_file_path, aibl_dx_file_path, aibl_demo_file_path, aibl_apoe_file_path)
+    aibl_df.to_parquet(output_path + 'aibl.parquet')
+
+
+    #################################
+    # Create cross-validation folds #
+    #################################
+    make_cv_folds(output_path)

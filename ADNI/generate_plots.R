@@ -1,11 +1,19 @@
-library(arrow)
 library(ggplot2)
 library(xtable)
 
-setwd('/n/groups/patel/randy/rfb/code/A4/')
 
-source("plot_figures.R")
-source("metrics.R")
+current_script_path <- commandArgs() %>% 
+  grep("--file=", ., value = TRUE) %>% 
+  gsub("--file=", "", .)
+
+if (length(current_script_path) > 0) {
+  setwd(dirname(current_script_path))
+} else if (rstudioapi::isAvailable()) {
+  setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+}
+
+source("../A4/plot_figures.R")
+source("../A4/metrics.R")
 
 # Load fonts
 library(extrafont)
@@ -13,11 +21,9 @@ extrafont::loadfonts()
 font_import()
 loadfonts(device = "postscript")
 
-models_list <- qs::qread("../../tidy_data/A4/amyloid_positive/fitted_models.qs")
-metrics_list <- qs::qread("../../tidy_data/A4/amyloid_positive/metrics.qs")
-val_df_l <- qs::qread("../../tidy_data/A4/amyloid_positive/val_df_l.qs")
-
-save_path <- "../../tidy_data/A4/amyloid_positive/"
+main_path <- "../../tidy_data/ADNI/"
+models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
+metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
 
 ########################################################
 # Bayes Information Criterion
@@ -113,41 +119,73 @@ sd(unlist(centiloids_coefs))
 # Fig S1 and Table S1
 # Calculate p-values comparing AUCs between two models at each time point
 # First combine timeROC objects from each fold for each model
-demo_lancet_trocs <- list(
-  metrics_list$demographics_lancet$fold_1$troc,
-  metrics_list$demographics_lancet$fold_2$troc,
-  metrics_list$demographics_lancet$fold_3$troc,
-  metrics_list$demographics_lancet$fold_4$troc,
-  metrics_list$demographics_lancet$fold_5$troc
+# demo_lancet_trocs <- list(
+#   metrics_list$demographics_lancet$fold_1$troc,
+#   metrics_list$demographics_lancet$fold_2$troc,
+#   metrics_list$demographics_lancet$fold_3$troc,
+#   metrics_list$demographics_lancet$fold_4$troc,
+#   metrics_list$demographics_lancet$fold_5$troc
+# )
+
+# ptau_demo_lancet_trocs <- list(
+#   metrics_list$ptau_demographics_lancet$fold_1$troc,
+#   metrics_list$ptau_demographics_lancet$fold_2$troc,
+#   metrics_list$ptau_demographics_lancet$fold_3$troc,
+#   metrics_list$ptau_demographics_lancet$fold_4$troc,
+#   metrics_list$ptau_demographics_lancet$fold_5$troc
+# )
+
+# centiloids_demo_lancet_trocs <- list(
+#   metrics_list$centiloids_demographics_lancet$fold_1$troc,
+#   metrics_list$centiloids_demographics_lancet$fold_2$troc,
+#   metrics_list$centiloids_demographics_lancet$fold_3$troc,
+#   metrics_list$centiloids_demographics_lancet$fold_4$troc,
+#   metrics_list$centiloids_demographics_lancet$fold_5$troc
+# )
+
+# ptau_centiloids_demo_lancet_trocs <- list(
+#   metrics_list$ptau_centiloids_demographics_lancet$fold_1$troc,
+#   metrics_list$ptau_centiloids_demographics_lancet$fold_2$troc,
+#   metrics_list$ptau_centiloids_demographics_lancet$fold_3$troc,
+#   metrics_list$ptau_centiloids_demographics_lancet$fold_4$troc,
+#   metrics_list$ptau_centiloids_demographics_lancet$fold_5$troc
+# )
+
+demo_trocs <- list(
+  metrics_list$demographics$fold_1$troc,
+  metrics_list$demographics$fold_2$troc,
+  metrics_list$demographics$fold_3$troc,
+  metrics_list$demographics$fold_4$troc,
+  metrics_list$demographics$fold_5$troc
 )
 
-ptau_demo_lancet_trocs <- list(
-  metrics_list$ptau_demographics_lancet$fold_1$troc,
-  metrics_list$ptau_demographics_lancet$fold_2$troc,
-  metrics_list$ptau_demographics_lancet$fold_3$troc,
-  metrics_list$ptau_demographics_lancet$fold_4$troc,
-  metrics_list$ptau_demographics_lancet$fold_5$troc
+ptau_demo_trocs <- list(
+  metrics_list$ptau_demographics$fold_1$troc,
+  metrics_list$ptau_demographics$fold_2$troc,
+  metrics_list$ptau_demographics$fold_3$troc,
+  metrics_list$ptau_demographics$fold_4$troc,
+  metrics_list$ptau_demographics$fold_5$troc
 )
 
-centiloids_demo_lancet_trocs <- list(
-  metrics_list$centiloids_demographics_lancet$fold_1$troc,
-  metrics_list$centiloids_demographics_lancet$fold_2$troc,
-  metrics_list$centiloids_demographics_lancet$fold_3$troc,
-  metrics_list$centiloids_demographics_lancet$fold_4$troc,
-  metrics_list$centiloids_demographics_lancet$fold_5$troc
+centiloids_demo_trocs <- list(
+  metrics_list$centiloids_demographics$fold_1$troc,
+  metrics_list$centiloids_demographics$fold_2$troc,
+  metrics_list$centiloids_demographics$fold_3$troc,
+  metrics_list$centiloids_demographics$fold_4$troc,
+  metrics_list$centiloids_demographics$fold_5$troc
 )
 
-ptau_centiloids_demo_lancet_trocs <- list(
-  metrics_list$ptau_centiloids_demographics_lancet$fold_1$troc,
-  metrics_list$ptau_centiloids_demographics_lancet$fold_2$troc,
-  metrics_list$ptau_centiloids_demographics_lancet$fold_3$troc,
-  metrics_list$ptau_centiloids_demographics_lancet$fold_4$troc,
-  metrics_list$ptau_centiloids_demographics_lancet$fold_5$troc
+ptau_centiloids_demo_trocs <- list(
+  metrics_list$ptau_centiloids_demographics$fold_1$troc,
+  metrics_list$ptau_centiloids_demographics$fold_2$troc,
+  metrics_list$ptau_centiloids_demographics$fold_3$troc,
+  metrics_list$ptau_centiloids_demographics$fold_4$troc,
+  metrics_list$ptau_centiloids_demographics$fold_5$troc
 )
 
 # demo+lancet vs ptau+demo+lancet
-pvals_compare_trocs <- compare_tvaurocs(demo_lancet_trocs,
-                                        ptau_demo_lancet_trocs)
+pvals_compare_trocs <- compare_tvaurocs(demo_trocs,
+                                        ptau_demo_trocs)
 
 # print out all p-values
 print("Summary of AUC differences and p-values by time point:")
@@ -162,7 +200,7 @@ sum(pvals_compare_trocs$all_results$p_value < 0.05) /
 
 # Create detailed results table
 results_table <- pvals_compare_trocs$all_results
-write.csv(results_table, paste0(save_path, "auc_comparison_results_demo_lancet_vs_ptau_demo_lancet.csv"),
+write.csv(results_table, paste0(main_path, "auc_comparison_results_demo_vs_ptau_demo.csv"),
           row.names = FALSE)
 
 # Table S1 - pivot table of p-values where each row is a fold and each column is a time point
@@ -199,7 +237,7 @@ hist_pvalues <- ggplot(pvals_compare_trocs$all_results,
   )
 
 print(hist_pvalues)
-ggsave(paste0(save_path, "pvalue_histogram_pTau217_Demo_Lancet_vs_Demo_Lancet.pdf"),
+ggsave(paste0(main_path, "adni_pvalue_histogram_ptau_demo_vs_demo.pdf"),
        plot = hist_pvalues,
        width = 8,
        height = 6,
@@ -233,8 +271,8 @@ ggsave(paste0(save_path, "pvalue_histogram_pTau217_Demo_Lancet_vs_Demo_Lancet.pd
 # )
 
 # demo+lancet vs centiloids+demo+lancet
-pvals_compare_trocs <- compare_tvaurocs(demo_lancet_trocs,
-                                        centiloids_demo_lancet_trocs)
+pvals_compare_trocs <- compare_tvaurocs(demo_trocs,
+                                        centiloids_demo_trocs)
 
 # print out all p-values
 print("Summary of AUC differences and p-values by time point:")
@@ -249,7 +287,7 @@ sum(pvals_compare_trocs$all_results$p_value < 0.05) /
 
 # Create detailed results table
 results_table <- pvals_compare_trocs$all_results
-write.csv(results_table, paste0(save_path, "auc_comparison_results_demo_lancet_vs_centiloids_demo_lancet.csv"),
+write.csv(results_table, paste0(main_path, "auc_comparison_results_demo_vs_centiloids_demo.csv"),
           row.names = FALSE)
 
 # Table S2 - pivot table of p-values where each row is a fold and each column is a time point
@@ -287,7 +325,7 @@ hist_pvalues <- ggplot(pvals_compare_trocs$all_results,
   )
 
 print(hist_pvalues)
-ggsave(paste0(save_path, "pvalue_histogram_centiloids_Demo_Lancet_vs_Demo_Lancet.pdf"),
+ggsave(paste0(main_path, "adni_pvalue_histogram_centiloids_demo_vs_demo.pdf"),
        plot = hist_pvalues,
        width = 8,
        height = 6,
@@ -301,7 +339,7 @@ for (metric in metrics_to_collect) {
   results <- collate_metric(metrics_list, metric)
   write_csv(
     results,
-    paste0(save_path, "results_", metric, "_all_models.csv")
+    paste0(main_path, "results_", metric, "_all_models.csv")
   )
 }
 
@@ -324,7 +362,7 @@ for (metric in metrics_to_collect) {
 ########################################################
 # Function to extract AUROC and CIs for all folds
 
-auc_summary <- read_parquet(paste0(save_path, "auc_summary.parquet"))
+auc_summary <- read_parquet(paste0(main_path, "auc_summary.parquet"))
 agg_auc_summary <- aggregate(
   cbind(auc, ci_lower, ci_upper) ~ model + time,
   data = auc_summary,
@@ -391,17 +429,17 @@ print(xtable(wide_auc_summary), type = "latex")
 
 width <- 8
 height <- 6
-model_names <- c("demographics_lancet",
+model_names <- c("demographics",
                   "ptau",
-                  "ptau_demographics_lancet",
+                  "ptau_demographics",
                   "centiloids",
-                  "centiloids_demographics_lancet",
-                  "ptau_centiloids_demographics_lancet")
+                  "centiloids_demographics",
+                  "ptau_centiloids_demographics")
 
 auc_plot <- plot_auc_over_time(auc_summary, model_names)
-
+print(auc_plot)
 # Save plots
-ggsave(paste0(save_path, "final_auc_Over_Time.pdf"),
+ggsave(paste0(main_path, "final_auc_Over_Time.pdf"),
        plot = auc_plot,
        width = width,
        height = height,
@@ -411,7 +449,7 @@ ggsave(paste0(save_path, "final_auc_Over_Time.pdf"),
 
 roc_plot <- plot_all_roc_curves(model_names, eval_times=seq(3, 7))
 # Save the plot
-ggsave(paste0(save_path, "ROC_curves_by_timepoint.pdf"),
+ggsave(paste0(main_path, "ROC_curves_by_timepoint.pdf"),
        plot = roc_plot,
        width = width * 1.5,
        height = height,
@@ -506,7 +544,7 @@ p_year <- plot_roc_biggest_year_difference(auc_summary,
                                            model_names,
                                            eval_times=seq(3, 7))
 # Save plots
-ggsave(paste0(save_path, "final_ROCcurve_", p_year$year, "years.pdf"),
+ggsave(paste0(main_path, "final_ROCcurve_", p_year$year, "years.pdf"),
   plot = p_year$plot,
   width = width,
   height = height,
@@ -543,7 +581,7 @@ brier_plot <- plot_brier_over_time()
 print(brier_plot)
 
 # Save plots
-ggsave(paste0(save_path, "final_brier_Over_Time.pdf"),
+ggsave(paste0(main_path, "final_brier_Over_Time.pdf"),
   plot = brier_plot,
   width = width,
   height = height,
@@ -595,7 +633,7 @@ concordance_plot <- td_plot(concordance_summary,
 print(concordance_plot)
 
 # Save plots
-ggsave(paste0(save_path, "final_concordance_Over_Time.pdf"),
+ggsave(paste0(main_path, "final_concordance_Over_Time.pdf"),
   plot = concordance_plot,
   width = width,
   height = height,
@@ -626,7 +664,7 @@ plots <- calibration_plots(cal_data_avg, seq(3, 8), model_colors)
 print(plots)
 
 # Save plots
-ggsave("../../tidy_data/A4/final_calibration_plots.pdf",
+ggsave(paste0(main_path, "final_calibration_plots.pdf"),
   plot = plots,
   width = 8,
   height = 6,
@@ -680,7 +718,7 @@ all_dca_data <- do.call(rbind, dca_data_all)
 dca_plots <- dca_plots(all_dca_data)
 print(dca_plots)
 
-ggsave("../../tidy_data/A4/final_DCA_Over_Time.pdf",
+ggsave(paste0(main_path, "final_DCA_Over_Time.pdf"),
        plot = dca_plots,
        width = 8,
        height = 6,
@@ -936,7 +974,7 @@ rsp <- ggplot(plot_df, aes(x = Model1, y = Model2, color = Event)) +
 print(rsp)
 
 # Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/risk_shift_plot.pdf",
+ggsave(paste0(main_path, "risk_shift_plot.pdf"),
        plot = rsp,
        width = 8,
        height = 6,
@@ -964,7 +1002,7 @@ nri_components_plot <- ggplot(nri_components, aes(x = Component, y = Estimate, f
 print(nri_components_plot)
 
 # Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/nri_components_plot.pdf",
+ggsave(paste0(main_path, "nri_components_plot.pdf"),
        plot = nri_components_plot,
        width = 8,
        height = 6,
@@ -1023,7 +1061,7 @@ heatmap_reclass_df <- ggplot(reclass_df, aes(x = New, y = Old, fill = Count)) +
 print(heatmap_reclass_df)
 
 # Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/risk_reclassification_heatmap.pdf",
+ggsave(paste0(main_path, "risk_reclassification_heatmap.pdf"),
        plot = heatmap_reclass_df,
        width = 8, height = 7, dpi = 300)
 
@@ -1069,7 +1107,7 @@ event_rate_plot <- ggplot(event_rates, aes(x = New, y = Old, fill = EventRate)) 
 print(event_rate_plot)
 
 # Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/event_rate_plot.pdf",
+ggsave(paste0(main_path, "event_rate_plot.pdf"),
        plot = event_rate_plot,
        width = 8,
        height = 6,
@@ -1115,7 +1153,7 @@ decision_curve_plot <- plot_decision_curve(decision_curve,
 print(decision_curve_plot)
 
 # Also save the plot to ensure it's being generated
-ggsave("../../tidy_data/A4/decision_curve_plot.pdf",
+ggsave(paste0(main_path, "decision_curve_plot.pdf"),
        plot = decision_curve_plot,
        width = 8,
        height = 6,
@@ -1234,7 +1272,7 @@ ggsave("../../tidy_data/A4/decision_curve_plot.pdf",
 # print(p5)
 
 # # Save plots
-# ggsave("../../tidy_data/A4/final_ROCcurves_Over_Time.pdf",
+# ggsave(paste0(main_path, "final_ROCcurves_Over_Time.pdf"),
 #        plot = p5,
 #        width = 14,
 #        height = 6,
@@ -1297,20 +1335,48 @@ ggsave("../../tidy_data/A4/decision_curve_plot.pdf",
 # ########################################################
 
 # Function to calculate SeSpPPVNPV for a model and fold
+calculate_SeSpPPVNPV <- function(model, val_data, times) {
+  risk_scores <- predict(model, val_data)
+  
+  # Find optimal cutpoint using Youden's index
+  se_sp_ppv_npv <- list()
+  for (cutpoint in seq(min(risk_scores), max(risk_scores), length.out = 200)) {
+    se_sp_ppv_npv_results <- SeSpPPVNPV(
+      cutpoint = cutpoint,
+      T = val_data$time,
+      delta = val_data$event,
+      marker = risk_scores,
+      cause = 1,
+      weighting = "marginal",
+      times = times
+    )
+    se_sp_ppv_npv[[paste0("cutpoint_", cutpoint)]] <- se_sp_ppv_npv_results
+  }
+  
+  youden_index_list <- list()
+  for (cutpoint in names(se_sp_ppv_npv)) {
+    youden_index <- se_sp_ppv_npv[[cutpoint]]$TP + (1 - se_sp_ppv_npv[[cutpoint]]$FP) - 1
+    youden_index_list[[cutpoint]] <- mean(youden_index)
+  }
+  
+  best_cutpoint <- names(youden_index_list)[which.max(youden_index_list)]
+  return(se_sp_ppv_npv[[best_cutpoint]])
+}
+
 # Initialize list to store results
 metrics_over_time <- list()
 
 # Calculate metrics for each model and fold
-for (model_name in c("demographics_lancet",
-                     "ptau",
+for (model_name in c("demographics",
+                     "lancet",
+                     "demographics_lancet",
                      "ptau_demographics_lancet",
-                     "centiloids",
                      "centiloids_demographics_lancet",
                      "ptau_centiloids_demographics_lancet")) {#names(models_list)) {
   metrics_over_time[[model_name]] <- list()
   for (fold in 1:5) {
     model <- models_list[[model_name]][[paste0("fold_", fold)]]
-    val_data <- val_df_l[[paste0("fold_", fold)]]
+    val_data <- val_df_l[[paste0("fold_", fold, "_", model_name)]]
     
     metrics <- calculate_SeSpPPVNPV(model, val_data, times = seq(3, 7))
     
@@ -1337,36 +1403,24 @@ metrics_summary <- all_metrics %>%
   group_by(model, time) %>%
   summarise(
     mean_sensitivity = mean(sensitivity, na.rm = TRUE),
-    sd_sensitivity = sd(sensitivity, na.rm = TRUE) / sqrt(n()),
+    se_sensitivity = sd(sensitivity, na.rm = TRUE) / sqrt(n()),
     mean_specificity = mean(specificity, na.rm = TRUE),
-    sd_specificity = sd(specificity, na.rm = TRUE) / sqrt(n()),
+    se_specificity = sd(specificity, na.rm = TRUE) / sqrt(n()),
     mean_ppv = mean(ppv, na.rm = TRUE),
-    sd_ppv = sd(ppv, na.rm = TRUE) / sqrt(n()),
+    se_ppv = sd(ppv, na.rm = TRUE) / sqrt(n()),
     mean_npv = mean(npv, na.rm = TRUE),
-    sd_npv = sd(npv, na.rm = TRUE) / sqrt(n()),
+    se_npv = sd(npv, na.rm = TRUE) / sqrt(n()),
     .groups = "drop"
   )
 
 # Create plots for each metric
-plot_metric <- function(data, metric) {
-
-  color_label_info <- get_colors_labels()
-  colors <- color_label_info$colors
-  labels <- color_label_info$labels
-
-  # set y-axis label to capitalize first letter unless it's PPV or NPV
-  if (!metric %in% c("ppv", "npv")) {
-    y_label <- tools::toTitleCase(metric)
-  } else {
-    y_label <- toupper(tools::toTitleCase(metric))
-  }
-
+plot_metric <- function(data, metric, title) {
   ggplot(data, aes(x = time, y = get(paste0("mean_", metric)), color = model)) +
     geom_line(linewidth = 1) +
     geom_ribbon(
       aes(
-        ymin = get(paste0("mean_", metric)) - get(paste0("sd_", metric)),
-        ymax = get(paste0("mean_", metric)) + get(paste0("sd_", metric)),
+        ymin = get(paste0("mean_", metric)) - get(paste0("se_", metric)),
+        ymax = get(paste0("mean_", metric)) + get(paste0("se_", metric)),
         fill = model
       ),
       alpha = 0.2,
@@ -1374,74 +1428,42 @@ plot_metric <- function(data, metric) {
     ) +
     # Add white circles at each time point
     geom_point(aes(fill = model), color = "white", size = 3, shape = 21) +
-    scale_color_manual(values = colors, labels = labels) +
-    scale_fill_manual(values = colors, labels = labels) +
-
-    
     labs(
+      title = title,
       x = "Time (years)",
-      y = y_label,
+      y = metric,
       color = "Model",
       fill = "Model"  # Add fill legend
     ) +
     theme_minimal() +
     theme(
       plot.title = element_text(hjust = 0.5),
-      legend.position = "right",
-      axis.text = element_text(size = 12, face = "bold"),  # Make axis text larger and bold
-      axis.title = element_text(size = 14, face = "bold")  # Make axis titles larger and bold
+      legend.position = "bottom"
     )
 }
 
 # Create individual plots
-sensitivity_plot <- plot_metric(metrics_summary, "sensitivity")
-specificity_plot <- plot_metric(metrics_summary, "specificity")
-ppv_plot <- plot_metric(metrics_summary, "ppv")
-npv_plot <- plot_metric(metrics_summary, "npv")
+sensitivity_plot <- plot_metric(metrics_summary, "sensitivity", "Sensitivity Over Time")
+specificity_plot <- plot_metric(metrics_summary, "specificity", "Specificity Over Time")
+ppv_plot <- plot_metric(metrics_summary, "ppv", "Positive Predictive Value Over Time")
+npv_plot <- plot_metric(metrics_summary, "npv", "Negative Predictive Value Over Time")
 
-width <- 8
-height <- 6
-dpi <- 300
-ggsave(
-  paste0(save_path, "sensitivity_plot.pdf"),
-  plot = sensitivity_plot,
-  width = width,
-  height = height,
-  dpi = dpi
+# Combine plots into a single figure
+combined_plot <- gridExtra::grid.arrange(
+  sensitivity_plot,
+  specificity_plot,
+  ppv_plot,
+  npv_plot,
+  ncol = 2,
+  nrow = 2
 )
 
+# Save the combined plot
 ggsave(
-  paste0(save_path, "specificity_plot.pdf"),
-  plot = specificity_plot,
-  width = width,
-  height = height,
-  dpi = dpi
+  paste0(main_path, "diagnostic_metrics_over_time.pdf"),
+  plot = combined_plot,
+  width = 12,
+  height = 10,
+  dpi = 300
 )
-
-ggsave(
-  paste0(save_path, "ppv_plot.pdf"),
-  plot = ppv_plot,
-  width = width,
-  height = height,
-  dpi = dpi
-)
-
-ggsave(
-  paste0(save_path, "npv_plot.pdf"),
-  plot = npv_plot,
-  width = width,
-  height = height,
-  dpi = dpi
-)
-
-
-
-# # Save the combined plot
-# ggsave(
-#   paste0(save_path, "diagnostic_metrics_over_time.pdf"),
-#   plot = combined_plot,
-#   width = 12,
-#   height = 10,
-#   dpi = 300
-# )
 

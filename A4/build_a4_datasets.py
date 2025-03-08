@@ -31,9 +31,12 @@ import numpy as np
 import sys
 sys.path.append('../../ukb_func')
 import os
-from t2e import *
+# from t2e import *
 from sklearn.model_selection import StratifiedKFold
 from scipy import stats
+
+N_SPLITS = 5
+N_BINS = 4
 
 def vectorized_age_calculation(data):
     """
@@ -127,7 +130,7 @@ def merge_demo(df):
         how='left')
     return df
 
-def merge_cdr(df, cdr, sv):
+def phenotype_cdr(df, cdr, sv):
     """
     Process CDR data and merge with main dataset.
     
@@ -267,6 +270,16 @@ def merge_e2_carriers(df):
     })
     return df
 
+def load_ptau_data(file_path):
+    ptau217 = pd.read_csv(file_path)
+    ptau217.drop(columns=['TESTCD', 'TEST', 'STAT', 'REASND', 'NAM', 'SPEC', 'METHOD', 'COMMENT', 'COMMENT2'], inplace=True)
+    return ptau217
+
+def clean_ptau_data(ptau217):
+    ptau217 = ptau217[ptau217['ORRES'].notna()]
+    ptau217 = ptau217[~ptau217['ORRES'].isin(['<LLOQ', '>ULOQ'])].reset_index(drop=True)
+    ptau217['ORRES'] = ptau217['ORRES'].astype(float)
+    return ptau217
 
 def get_ptau():
     """
@@ -276,32 +289,14 @@ def get_ptau():
         tuple: (processed DataFrame, array of case BIDs)
     """
     # Load and clean pTau217 data
-    ptau217 = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/External Data/biomarker_pTau217.csv')
-    ptau217.drop(columns=['TESTCD', 'TEST', 'STAT', 'REASND', 'NAM', 'SPEC', 'METHOD', 'COMMENT', 'COMMENT2'], inplace=True)
-    
+    ptau217 = load_ptau_data(f'../../raw_data/A4_oct302024/clinical/External Data/biomarker_pTau217.csv')
     ptau217 = ptau217.sort_values(by=['BID', 'VISCODE'])
-    print(ptau217.shape)
-
-    # Remove invalid values and convert to float
-    ptau217 = ptau217[ptau217['ORRES'].notna()]
-    ptau217 = ptau217[ ~ ptau217['ORRES'].isin(['<LLOQ', '>ULOQ'])].reset_index(drop=True)
-    ptau217['ORRES'] = ptau217['ORRES'].astype(float)
-
-    # print the number of patients with ptau217 data
-    ptau217_pts = ptau217.BID.unique()
-    print(f'{len(ptau217_pts)} patients have pTau217 data')
+    ptau217 = clean_ptau_data(ptau217)
 
     # cases are defined by having a Clinical Dementia Rating (CDR) of 0.5 or higher for two consecutive visits
     # this definition is used to define "functional impairment" in this paper: https://link.springer.com/content/pdf/10.14283/jpad.2024.122.pdf
     # Load CDR data
     cdr = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Raw Data/cdr.csv')
-    cdr_pts = cdr.BID.unique()
-    print(f'{len(cdr_pts)} patients have CDR data')
-
-    # print the number of patients with both ptau217 and CDR data
-    cdr_ptau217 = np.intersect1d(ptau217_pts, cdr_pts)
-    print(f'{len(cdr_ptau217)} patients have both pTau217 and CDR data')
-
     cdr = cdr.sort_values(by=['BID', 'VISCODE'])
 
     sv = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SV.csv')
@@ -311,7 +306,7 @@ def get_ptau():
     cdr = cdr.merge(sv[['BID', 'VISCODE', 'SVUSEDTC_DAYS_CONSENT']], on=['BID', 'VISCODE'])
 
     # Process and merge all data
-    data, cases_bid = merge_cdr(ptau217, cdr, sv)
+    data, cases_bid = phenotype_cdr(ptau217, cdr, sv)
     data = merge_demo(data)
 
     # Fix specific data point based on external validation
@@ -335,7 +330,7 @@ def get_ptau():
     return data, cases_bid
 
 # Create five datasets for five-fold cross-validation, stratified by label and time-to-event
-def create_stratified_folds(data, n_splits=5, n_bins=4, random_state=42):
+def create_stratified_folds(data, n_splits=N_SPLITS, n_bins=N_BINS, random_state=42):
     """
     Create stratified cross-validation folds based on label and time-to-event.
     
@@ -354,9 +349,9 @@ def create_stratified_folds(data, n_splits=5, n_bins=4, random_state=42):
         - Maintains temporal distribution within case groups
     """
     # Aggregate data by BID, keeping label and time_to_event
-    bids = (data[['BID', 'label', 'time_to_event']]
+    bids = (data[['id', 'label', 'time_to_event']]
             .sort_values(['label', 'time_to_event'], ascending=[False, True])
-            .drop_duplicates('BID')
+            .drop_duplicates('id')
             .reset_index(drop=True))
     
     # Verify label consistency
@@ -382,7 +377,7 @@ def create_stratified_folds(data, n_splits=5, n_bins=4, random_state=42):
     skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=random_state)
     
     # Prepare the data for splitting
-    X = bids['BID']
+    X = bids['id']
     y = bids['strata']
     
     # Initialize the 'fold' column
@@ -395,10 +390,10 @@ def create_stratified_folds(data, n_splits=5, n_bins=4, random_state=42):
     # Verify fold assignment
     assert bids['fold'].min() >= 0 and bids['fold'].max() < n_splits, "Fold assignment error."
     
-    return bids[['BID', 'fold']]
+    return bids[['id', 'fold']]
 
 # Process each fold
-def process_fold(data, fold_assignments, fold, cases_bid):
+def process_fold(data, id_col, fold_assignments, fold):
     """
     Process individual cross-validation fold with appropriate data transformations.
     
@@ -406,7 +401,6 @@ def process_fold(data, fold_assignments, fold, cases_bid):
         data (pd.DataFrame): Complete dataset
         fold_assignments (pd.DataFrame): Fold assignments for each BID
         fold (int): Current fold number
-        cases_bid (array-like): Array of case BIDs
     
     Returns:
         tuple: (train_set, val_set) processed training and validation datasets
@@ -420,7 +414,7 @@ def process_fold(data, fold_assignments, fold, cases_bid):
         - Prints detailed fold statistics for quality control
     """
     # Merge fold assignments with original data
-    data2 = data.merge(fold_assignments, on='BID')
+    data2 = data.merge(fold_assignments, on=id_col)
     
     # Define validation and training sets
     val_set = data2[data2['fold'] == fold].copy()
@@ -428,8 +422,8 @@ def process_fold(data, fold_assignments, fold, cases_bid):
     
     # Print fold information
     print(f"Fold {fold + 1}:")
-    print(f"  Training BIDs: {train_set['BID'].nunique()}")
-    print(f"  Validation BIDs: {val_set['BID'].nunique()}")
+    print(f"  Training BIDs: {train_set[id_col].nunique()}")
+    print(f"  Validation BIDs: {val_set[id_col].nunique()}")
     print(f"  Positive class in Training: {train_set['label'].mean() * 100:.2f}%")
     print(f"  Positive class in Validation: {val_set['label'].mean() * 100:.2f}%")
     
@@ -446,49 +440,108 @@ def process_fold(data, fold_assignments, fold, cases_bid):
     
     # Preprocess data
     # zscore AGEYR
-    training_age_mean = train_set.AGEYR.mean()
-    training_age_std = train_set.AGEYR.std()
-    train_set['AGEYR_z'] = (train_set.AGEYR - training_age_mean) / training_age_std
-    val_set['AGEYR_z'] = (val_set.AGEYR - training_age_mean) / training_age_std
+    training_age_mean = train_set.age.mean()
+    training_age_std = train_set.age.std()
+    train_set['age_z'] = (train_set.age - training_age_mean) / training_age_std
+    val_set['age_z'] = (val_set.age - training_age_mean) / training_age_std
     
-    train_set['AGEYR_centered'] = train_set.AGEYR - training_age_mean
-    val_set['AGEYR_centered'] = val_set.AGEYR - training_age_mean
+    train_set['age_centered'] = train_set.age - training_age_mean
+    val_set['age_centered'] = val_set.age - training_age_mean
     
     # square and cube age
-    train_set['AGEYR_z_squared'] = train_set.AGEYR_z ** 2
-    train_set['AGEYR_z_cubed'] = train_set.AGEYR_z ** 3
-    val_set['AGEYR_z_squared'] = val_set.AGEYR_z ** 2
-    val_set['AGEYR_z_cubed'] = val_set.AGEYR_z ** 3
+    train_set['age_z_squared'] = train_set.age_z ** 2
+    train_set['age_z_cubed'] = train_set.age_z ** 3
+    val_set['age_z_squared'] = val_set.age_z ** 2
+    val_set['age_z_cubed'] = val_set.age_z ** 3
     
-    train_set['AGEYR_centered_squared'] = train_set.AGEYR_centered ** 2
-    train_set['AGEYR_centered_cubed'] = train_set.AGEYR_centered ** 3
-    val_set['AGEYR_centered_squared'] = val_set.AGEYR_centered ** 2
-    val_set['AGEYR_centered_cubed'] = val_set.AGEYR_centered ** 3
+    train_set['age_centered_squared'] = train_set.age_centered ** 2
+    train_set['age_centered_cubed'] = train_set.age_centered ** 3
+    val_set['age_centered_squared'] = val_set.age_centered ** 2
+    val_set['age_centered_cubed'] = val_set.age_centered ** 3
     
     # zscore EDCCNTU
-    training_edc_mean = train_set.EDCCNTU.mean()
-    training_edc_std = train_set.EDCCNTU.std()
-    train_set['EDCCNTU_z'] = (train_set.EDCCNTU - training_edc_mean) / training_edc_std
-    val_set['EDCCNTU_z'] = (val_set.EDCCNTU - training_edc_mean) / training_edc_std
+    training_edc_mean = train_set.educ.mean()
+    training_edc_std = train_set.educ.std()
+    train_set['educ_z'] = (train_set.educ - training_edc_mean) / training_edc_std
+    val_set['educ_z'] = (val_set.educ - training_edc_mean) / training_edc_std
     
     # zscore ORRES
-    training_orres_mean = train_set.ORRES.mean()
-    training_orres_std = train_set.ORRES.std()
-    train_set['ORRES_z'] = (train_set.ORRES - training_orres_mean) / training_orres_std
-    val_set['ORRES_z'] = (val_set.ORRES - training_orres_mean) / training_orres_std
+    training_ptau_mean = train_set.ptau.mean()
+    training_ptau_std = train_set.ptau.std()
+    train_set['ptau_z'] = (train_set.ptau - training_ptau_mean) / training_ptau_std
+    val_set['ptau_z'] = (val_set.ptau - training_ptau_mean) / training_ptau_std
     
     # boxcox transform ORRES
-    train_set['ORRES_boxcox'], lambda_val = stats.boxcox(train_set.ORRES)
-    val_set['ORRES_boxcox'] = stats.boxcox(val_set.ORRES, lmbda=lambda_val)
+    train_set['ptau_boxcox'], lambda_val = stats.boxcox(train_set.ptau)
+    val_set['ptau_boxcox'] = stats.boxcox(val_set.ptau, lmbda=lambda_val)
     
     # scale time variables
-    train_set['COLLECTION_DATE_DAYS_CONSENT_yr'] = train_set.COLLECTION_DATE_DAYS_CONSENT
+    train_set['visit_to_days_yr'] = train_set.visit_to_days
     train_set['time_to_event_yr'] = train_set.time_to_event 
-    val_set['COLLECTION_DATE_DAYS_CONSENT_yr'] = val_set.COLLECTION_DATE_DAYS_CONSENT
+    val_set['visit_to_days_yr'] = val_set.visit_to_days
     val_set['time_to_event_yr'] = val_set.time_to_event
     
     return train_set, val_set
 
+def get_centiloids(data):
+    """
+    Process centiloid data and merge with clinical data.
+    
+    Args:
+        data (pd.DataFrame): Input dataset
+    """
+
+    # import SUBJINFO which has centiloid values
+    subjinfo = pd.read_csv('../../raw_data/A4_oct302024/clinical/Derived Data/SUBJINFO.csv')
+    subjinfo = subjinfo[subjinfo.BID.isin(data.id)]
+    
+    '''
+    imaging_pet_va has a column called scan_date_DAYS_CONSENT which has completely incorrect values.
+    The only unique value for VISCODE is 2, and the range of scan_date_DAYS_CONSENT is 1027 to 2290.
+    Why would the second visit of a study be 1000 days after the first visit? The answer is that the column is wrong.
+    To remedy this, we will use the SV.csv file to get the correct number of days since consent for VISCODE 2.
+    '''
+
+    imaging_pet_va = pd.read_csv('../../raw_data/A4_oct302024/clinical/External Data/imaging_PET_VA.csv')
+    imaging_pet_va = imaging_pet_va[imaging_pet_va.BID.isin(data.id)]
+    
+    sv = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SV.csv')
+    sv.rename(columns={'VISITCD': 'VISCODE'}, inplace=True)
+        
+    # Merge CDR and visit data
+    imaging_pet_va = imaging_pet_va.merge(sv[['BID', 'VISCODE', 'SVUSEDTC_DAYS_CONSENT', 'SVUSEDTC_DAYS_T0']], on=['BID', 'VISCODE'])
+    subjinfo = subjinfo.merge(imaging_pet_va, on='BID', how='left')
+    
+    subjinfo['SVUSEDTC_YEARS_CONSENT'] = subjinfo['SVUSEDTC_DAYS_CONSENT'] / 365.25
+    subjinfo['SVUSEDTC_YEARS_T0'] = subjinfo['SVUSEDTC_DAYS_T0'] / 365.25
+
+    return subjinfo
+
+
+def save_cv_folds(data, output_dir):
+    """
+    Save cross-validation folds as parquet files.
+    
+    Args:
+        data (pd.DataFrame): Input dataset
+    """
+
+    fold_assignments = create_stratified_folds(data)
+
+    for fold in range(5):
+        # Process the fold
+        train_set, val_set = process_fold(data, 'id', fold_assignments, fold)
+
+        # print overlapping BIDs between training and validation sets
+        train_bids = set(train_set['id'])
+        val_bids = set(val_set['id'])
+        overlap = train_bids.intersection(val_bids)
+        print(f"  Overlapping BIDs: {len(overlap)}\n")
+
+        # Save datasets
+        train_set.to_parquet(f'{output_dir}/train_{fold}.parquet')
+        val_set.to_parquet(f'{output_dir}/val_{fold}.parquet')
+    
 def main():
     """
     Main execution function for data processing pipeline.
@@ -504,26 +557,28 @@ def main():
     - train_{fold}_new.parquet: Training data for each fold
     - val_{fold}_new.parquet: Validation data for each fold
     """
-    data, cases_bid = get_ptau()
-    data.to_parquet('../../tidy_data/A4/ptau217_allvisits.parquet')
+    data, _ = get_ptau()
+    data.rename(columns={'BID': 'id', 'COLLECTION_DATE_DAYS_CONSENT': 'visit_to_days',
+                         'AGEYR': 'age', 'EDCCNTU': 'educ', 'ORRES': 'ptau'}, inplace=True)
+    data.to_parquet('../../tidy_data/A4/ptau_base.parquet')
 
-    fold_assignments = create_stratified_folds(data)
-    val_sets = []
+    centiloids = get_centiloids(data)
+    centiloids.to_parquet('../../tidy_data/A4/centiloids_subjinfo.parquet')
 
-    for fold in range(5):
-        # Process the fold
-        train_set, val_set = process_fold(data, fold_assignments, fold, cases_bid)
-        val_sets.append(val_set)
+    save_cv_folds(data, '../../tidy_data/A4')
 
-        # print overlapping BIDs between training and validation sets
-        train_bids = set(train_set['BID'])
-        val_bids = set(val_set['BID'])
-        overlap = train_bids.intersection(val_bids)
-        print(f"  Overlapping BIDs: {len(overlap)}\n")
+    # save datasets for sensitivity analysis with only amyloid-positive patients
+    # subset positive-PET for sensitivity analysis
+    centiloids_positive = centiloids[centiloids.overall_score == 'positive']
+    data_positive = data[data.id.isin(centiloids_positive.BID)]
+    data_positive = data_positive.merge(centiloids_positive[['BID', 'AMYLCENT', 'overall_score']],
+                                                left_on='id', right_on='BID', how='left')
 
-        # Save datasets
-        train_set.to_parquet(f'../../tidy_data/A4/train_{fold}_new.parquet')
-        val_set.to_parquet(f'../../tidy_data/A4/val_{fold}_new.parquet')
+    # save ptau_pet_positive and subjinfo_positive
+    data_positive.to_parquet('../../tidy_data/A4/amyloid_positive/ptau_pet_positive.parquet')
+    centiloids_positive.to_parquet('../../tidy_data/A4/amyloid_positive/centiloids_pet_positive.parquet')
 
-if __name__ == '__main__':
+    save_cv_folds(data_positive, '../../tidy_data/A4/amyloid_positive')
+    
+if __name__ == "__main__":
     main()

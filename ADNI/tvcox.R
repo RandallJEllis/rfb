@@ -22,8 +22,8 @@ if (length(current_script_path) > 0) {
 }
 
 
-source("plot_figures.R")
-source("metrics.R")
+source("../A4/plot_figures.R")
+source("../A4/metrics.R")
 
 # Load fonts
 library(extrafont)
@@ -48,16 +48,17 @@ loadfonts(device = "postscript")
 
 # tmerge data for all models
 format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
-                      habits, psychwell, vitals, centiloids) {
-  df$SEX <- factor(df$SEX)
-  df$APOEGN <- factor(df$APOEGN)
-  df <- within(df, APOEGN <- relevel(APOEGN, ref = "E3/E3"))
+                      #habits, psychwell, vitals, 
+                      centiloids) {
+  df$PTGENDER <- factor(df$PTGENDER)
+  df$GENOTYPE <- factor(df$GENOTYPE)
+  df <- within(df, GENOTYPE <- relevel(GENOTYPE, ref = "3/3"))
 
   base <- df[!duplicated(df$id), c(
-    "id", "time_to_event", "label",
+    "id", "time_to_event_yr", "label",
     "age_centered", "age_centered_squared",
-    "age_centered_cubed", "SEX", "educ_z",
-    "APOEGN"
+    "age_centered_cubed", "PTGENDER", "educ_z",
+    "GENOTYPE"
   )]
 
   colnames(base) <- c(
@@ -67,47 +68,49 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
     "apoe"
   )
 
-  centiloids <- centiloids[centiloids$BID %in% df$BID, c(
-    "BID", "SVUSEDTC_YEARS_CONSENT", "AMYLCENT"
+  centiloids <- centiloids[centiloids$RID %in% df$id, c(
+    "RID", "visit_to_days", "CENTILOIDS"
   )]
   colnames(centiloids) <- c(
     "id", "time", "centiloids"
   )
 
-  tv_covar <- df[, c("id", "visit_to_days", "ptau_boxcox")]
+  tv_covar <- df[, c("id", "visit_to_days_yr", "ptau_boxcox")]
   colnames(tv_covar) <- c("id", "time", "ptau")
 
-  # if (lancet) {
-  habits <- habits[habits$BID %in% df$id, c(
-    "BID",
-    "COLLECTION_DATE_DAYS_CONSENT",
-    "SMOKE", "ALCOHOL", "SUBUSE",
-    "AEROBIC", "WALKING"
-  )]
-  psychwell <- psychwell[psychwell$BID %in% df$id, c(
-    "BID",
-    "COLLECTION_DATE_DAYS_CONSENT",
-    "GDTOTAL", "STAITOTAL"
-  )]
-  vitals <- vitals[vitals$BID %in% df$id, c(
-    "BID",
-    "COLLECTION_DATE_DAYS_CONSENT",
-    "VSBPSYS", "VSBPDIA"
-  )]
-  colnames(habits) <- c(
-    "id", "time", "smoke", "alcohol", "subuse",
-    "aerobic", "walking"
-  )
-  colnames(psychwell) <- c("id", "time", "gdtotal", "staital")
-  colnames(vitals) <- c("id", "time", "vsbsys", "vsdia")
+  # # if (lancet) {
+  # habits <- habits[habits$BID %in% df$BID, c(
+  #   "BID",
+  #   "COLLECTION_DATE_DAYS_CONSENT",
+  #   "SMOKE", "ALCOHOL", "SUBUSE",
+  #   "AEROBIC", "WALKING"
+  # )]
+  # psychwell <- psychwell[psychwell$BID %in% df$BID, c(
+  #   "BID",
+  #   "COLLECTION_DATE_DAYS_CONSENT",
+  #   "GDTOTAL", "STAITOTAL"
+  # )]
+  # vitals <- vitals[vitals$BID %in% df$BID, c(
+  #   "BID",
+  #   "COLLECTION_DATE_DAYS_CONSENT",
+  #   "VSBPSYS", "VSBPDIA"
+  # )]
+  # colnames(habits) <- c(
+  #   "id", "time", "smoke", "alcohol", "subuse",
+  #   "aerobic", "walking"
+  # )
+  # colnames(psychwell) <- c("id", "time", "gdtotal", "staital")
+  # colnames(vitals) <- c("id", "time", "vsbsys", "vsdia")
 
-  habits$time <- habits$time / 365.25
-  psychwell$time <- psychwell$time / 365.25
-  vitals$time <- vitals$time / 365.25
-  # }
+  # habits$time <- habits$time / 365.25
+  # psychwell$time <- psychwell$time / 365.25
+  # vitals$time <- vitals$time / 365.25
+  # # }
+
 
   base$time <- base$time / 365.25
   tv_covar$time <- tv_covar$time / 365.25
+  centiloids$time <- centiloids$time / 365.25
 
   # Create initial time-dependent data
   td_data <- tmerge(
@@ -146,34 +149,34 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   )
   # }
 
-  # if (lancet) {
-  td_data <- tmerge(
-    td_data,
-    habits,
-    id = id,
-    smoke = tdc(time, smoke),
-    alcohol = tdc(time, alcohol),
-    subuse = tdc(time, subuse),
-    aerobic = tdc(time, aerobic),
-    walking = tdc(time, walking)
-  )
+  # # if (lancet) {
+  # td_data <- tmerge(
+  #   td_data,
+  #   habits,
+  #   id = id,
+  #   smoke = tdc(time, smoke),
+  #   alcohol = tdc(time, alcohol),
+  #   subuse = tdc(time, subuse),
+  #   aerobic = tdc(time, aerobic),
+  #   walking = tdc(time, walking)
+  # )
 
-  td_data <- tmerge(
-    td_data,
-    psychwell,
-    id = id,
-    gdtotal = tdc(time, gdtotal),
-    staital = tdc(time, staital)
-  )
+  # td_data <- tmerge(
+  #   td_data,
+  #   psychwell,
+  #   id = id,
+  #   gdtotal = tdc(time, gdtotal),
+  #   staital = tdc(time, staital)
+  # )
 
-  td_data <- tmerge(
-    td_data,
-    vitals,
-    id = id,
-    vsbsys = tdc(time, vsbsys),
-    vsdia = tdc(time, vsdia)
-  )
-  # }
+  # td_data <- tmerge(
+  #   td_data,
+  #   vitals,
+  #   id = id,
+  #   vsbsys = tdc(time, vsbsys),
+  #   vsdia = tdc(time, vsdia)
+  # )
+  # # }
 
   # td_data <- td_data[complete.cases(td_data), ]
 
@@ -219,11 +222,11 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
 }
 
 # read in Lancet data
-habits <- read_parquet("../../tidy_data/A4/habits.parquet")
-habits$SUBUSE <- as.factor(habits$SUBUSE)
-psychwell <- read_parquet("../../tidy_data/A4/psychwell.parquet")
-vitals <- read_parquet("../../tidy_data/A4/vitals.parquet")
-centiloids <- read_parquet("../../tidy_data/A4/centiloids_subjinfo.parquet")
+# habits <- read_parquet("../../tidy_data/A4/habits.parquet")
+# habits$SUBUSE <- as.factor(habits$SUBUSE)
+# psychwell <- read_parquet("../../tidy_data/A4/psychwell.parquet")
+# vitals <- read_parquet("../../tidy_data/A4/vitals.parquet")
+centiloids <- read_parquet("../../tidy_data/ADNI/pet.parquet")
 
 # Define model formulas
 get_model_formula <- function(model_type, lancet = FALSE) {
@@ -272,33 +275,33 @@ get_model_formula <- function(model_type, lancet = FALSE) {
 
 eval_times <- seq(3, 7)
 
-lancet_vars <- c(
-        "smoke", "alcohol", "aerobic", "walking",
-        "gdtotal", "staital", "vsbsys", "vsdia"
-      )
+# lancet_vars <- c(
+#         "smoke", "alcohol", "aerobic", "walking",
+#         "gdtotal", "staital", "vsbsys", "vsdia"
+#       )
 
 # Initialize lists to store results for all models
 models_list <- list(
   "demographics_no_apoe" = list(),
   "demographics" = list(),
-  "demographics_lancet_no_apoe" = list(),
-  "demographics_lancet" = list(),
-  "lancet" = list(),
+  # "demographics_lancet_no_apoe" = list(),
+  # "demographics_lancet" = list(),
+  # "lancet" = list(),
   "ptau" = list(),
   "ptau_demographics_no_apoe" = list(),
   "ptau_demographics" = list(),
-  "ptau_demographics_lancet_no_apoe" = list(),
-  "ptau_demographics_lancet" = list(),
+  # "ptau_demographics_lancet_no_apoe" = list(),
+  # "ptau_demographics_lancet" = list(),
   "centiloids" = list(),
   "centiloids_demographics_no_apoe" = list(),
   "centiloids_demographics" = list(),
-  "centiloids_demographics_lancet_no_apoe" = list(),
-  "centiloids_demographics_lancet" = list(),
+  # "centiloids_demographics_lancet_no_apoe" = list(),
+  # "centiloids_demographics_lancet" = list(),
   "ptau_centiloids" = list(),
   "ptau_centiloids_demographics_no_apoe" = list(),
-  "ptau_centiloids_demographics" = list(),
-  "ptau_centiloids_demographics_lancet_no_apoe" = list(),
-  "ptau_centiloids_demographics_lancet" = list()
+  "ptau_centiloids_demographics" = list()
+  # "ptau_centiloids_demographics_lancet_no_apoe" = list(),
+  # "ptau_centiloids_demographics_lancet" = list()
 )
 
 val_df_l <- list()
@@ -313,30 +316,32 @@ for (fold in seq(0, 4)) {
 
   # Read and format data
   train_df_raw <- read_parquet(paste0(
-    "../../tidy_data/A4/train_", fold, "_amyloid_positive.parquet"
+    "../../tidy_data/ADNI/train_", fold, "_new.parquet"
   ))
   val_df_raw <- read_parquet(paste0(
-    "../../tidy_data/A4/val_", fold, "_amyloid_positive.parquet"
+    "../../tidy_data/ADNI/val_", fold, "_new.parquet"
   ))
 
   df <- format_df(train_df_raw, #ptau = is_ptau, lancet = is_lancet, pet = is_pet,
-                    habits, psychwell, vitals, centiloids)
+                    #habits, psychwell, vitals, 
+                    centiloids)
   val_df <- format_df(val_df_raw, #ptau = is_ptau, lancet = is_lancet,
-                        habits, psychwell, vitals, centiloids)
+                        #habits, psychwell, vitals, 
+                        centiloids)
 
-  means <- apply(df[, lancet_vars], 2, mean, na.rm = TRUE)
-  sds <- apply(df[, lancet_vars], 2, sd, na.rm = TRUE)
+  # means <- apply(df[, lancet_vars], 2, mean, na.rm = TRUE)
+  # sds <- apply(df[, lancet_vars], 2, sd, na.rm = TRUE)
 
-  df[, lancet_vars] <- scale(df[, lancet_vars],
-    center = means, scale = sds
-  )
-  val_df[, lancet_vars] <- scale(val_df[, lancet_vars],
-    center = means, scale = sds
-  )
-  
+  # df[, lancet_vars] <- scale(df[, lancet_vars],
+  #   center = means, scale = sds
+  # )
+  # val_df[, lancet_vars] <- scale(val_df[, lancet_vars],
+  #   center = means, scale = sds
+  # )
+
   train_df_l[[paste0("fold_", fold + 1)]] <- df
   val_df_l[[paste0("fold_", fold + 1)]] <- val_df
-  
+
   # Fit all models
   for (model_name in names(models_list)) {
     print(paste("Fitting model:", model_name))
@@ -346,19 +351,6 @@ for (fold in seq(0, 4)) {
     is_ptau <- grepl("ptau", model_name)
     is_pet <- grepl("centiloids", model_name)
 
-    # print number of unique ids in df and val_df
-    # print(paste0("Number of unique ids in df: ", length(unique(df$id))))
-    # print(paste0("Number of unique ids in val_df: ", length(unique(val_df$id))))
-    # print(fold)
-    # print(model_name)
-    # print(dim(df))
-    # print(dim(val_df))
-    # val_df_l[[paste0("fold_", fold + 1, "_", model_name)]] <- val_df
-    # train_df_l[[paste0("fold_", fold + 1, "_", model_name)]] <- df
-    # Z-score variables if using Lancet variables
-    # if (is_lancet) {
-    # }
-
     # Get base model type
     base_type <- gsub("_lancet", "", model_name)
 
@@ -366,7 +358,22 @@ for (fold in seq(0, 4)) {
     formula <- get_model_formula(base_type, is_lancet)
 
     # Fit model
-    model <- coxph(formula, data = df, x = TRUE)
+    # if model gives overflow error, remove age2*apoe
+    tryCatch({
+      model <- coxph(formula, data = df, x = TRUE)
+    }, error = function(e) {
+      formula <- update(formula, . ~ . - age2 * apoe)
+      model <- coxph(formula, data = df, x = TRUE)
+    })
+
+    # if model still gives overflow error, remove age*apoe
+    tryCatch({
+      model <- coxph(formula, data = df, x = TRUE)
+    }, error = function(e) {
+      formula <- update(formula, . ~ . - age * apoe)
+      model <- coxph(formula, data = df, x = TRUE)
+    })
+    
     gc()
     models_list[[model_name]][[paste0("fold_", fold + 1)]] <- model
 
@@ -387,10 +394,11 @@ for (fold in seq(0, 4)) {
 }
 
 # Save results
-qs::qsave(models_list, paste0("../../tidy_data/A4/amyloid_positive/fitted_models.qs"))
-qs::qsave(val_df_l, paste0("../../tidy_data/A4/amyloid_positive/val_df_l.qs"))
-qs::qsave(train_df_l, paste0("../../tidy_data/A4/amyloid_positive/train_df_l.qs"))
-qs::qsave(metrics_list, paste0("../../tidy_data/A4/amyloid_positive/metrics.qs"))
+# saveRDS(models_list, paste0("../../tidy_data/A4/fitted_models.rds"))
+qs::qsave(models_list, paste0("../../tidy_data/ADNI/fitted_models.qs"))
+qs::qsave(val_df_l, paste0("../../tidy_data/ADNI/val_df_l.qs"))
+qs::qsave(train_df_l, paste0("../../tidy_data/ADNI/train_df_l.qs"))
+qs::qsave(metrics_list, paste0("../../tidy_data/ADNI/metrics.qs"))
 
 get_auc_ci_all_folds <- function(metrics_list, summarize = FALSE) {
   # Initialize empty dataframe for results
@@ -437,4 +445,29 @@ get_auc_ci_all_folds <- function(metrics_list, summarize = FALSE) {
 }
 
 auc_summary <- get_auc_ci_all_folds(metrics_list)
-write_parquet(auc_summary, "../../tidy_data/A4/amyloid_positive/auc_summary.parquet")
+write_parquet(auc_summary, "../../tidy_data/ADNI/auc_summary.parquet")
+
+
+# drop duplicates based on certain columns
+train_df_l <- qs::qread(paste0("../../tidy_data/ADNI/train_df_l.qs"))
+
+# keep last row for each id
+train_df_l_no_duplicates <- lapply(train_df_l, function(df) {
+  df %>%
+    group_by(id) %>%
+    slice_tail(n = 1) %>%
+    ungroup()
+})
+
+
+
+# count apoe genotypes in cases and controls, normalize by total number of cases or controls
+train_df_l_no_duplicates$fold_1 %>% 
+  group_by(event) %>%
+  count(apoe) %>%
+  mutate(apoe_freq = n / sum(n))
+
+
+length(unique(train_df_raw$id))
+length(unique(val_df_raw$id))
+length(unique(centiloids$id))
