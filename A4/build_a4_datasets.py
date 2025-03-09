@@ -518,7 +518,7 @@ def get_centiloids(data):
     return subjinfo
 
 
-def save_cv_folds(data, output_dir):
+def save_cv_folds(data, output_dir, n_splits=N_SPLITS):
     """
     Save cross-validation folds as parquet files.
     
@@ -528,7 +528,7 @@ def save_cv_folds(data, output_dir):
 
     fold_assignments = create_stratified_folds(data)
 
-    for fold in range(5):
+    for fold in range(n_splits):
         # Process the fold
         train_set, val_set = process_fold(data, 'id', fold_assignments, fold)
 
@@ -565,7 +565,7 @@ def main():
     centiloids = get_centiloids(data)
     centiloids.to_parquet('../../tidy_data/A4/centiloids_subjinfo.parquet')
 
-    save_cv_folds(data, '../../tidy_data/A4')
+    save_cv_folds(data, '../../tidy_data/A4', N_SPLITS)
 
     # save datasets for sensitivity analysis with only amyloid-positive patients
     # subset positive-PET for sensitivity analysis
@@ -578,7 +578,7 @@ def main():
     data_positive.to_parquet('../../tidy_data/A4/amyloid_positive/ptau_pet_positive.parquet')
     centiloids_positive.to_parquet('../../tidy_data/A4/amyloid_positive/centiloids_pet_positive.parquet')
 
-    save_cv_folds(data_positive, '../../tidy_data/A4/amyloid_positive')
+    save_cv_folds(data_positive, '../../tidy_data/A4/amyloid_positive', N_SPLITS)
     
 if __name__ == "__main__":
     main()

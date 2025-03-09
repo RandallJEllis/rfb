@@ -866,8 +866,6 @@ create_additional_figures <- function(models, val_data_dict, times) {
 
 
 plot_auc_over_time <- function(auc_summary, model_names) {
-  
-
   sub_auc_summary <- auc_summary %>% 
     filter(model %in% model_names) %>%
     mutate(fold = as.factor(fold), # Make fold a factor for better grouping
@@ -889,62 +887,6 @@ plot_auc_over_time <- function(auc_summary, model_names) {
 
   return(auc_plot)
 }
-
-pull_roc_summary <- function(model_names, eval_times) {
-  # Initialize lists to store ROC data
-  roc_data_all <- list()
-
-  # Initialize dataframe to store ROC curves
-  all_roc_curves <- data.frame()
-
-  for (fold in 0:4) {
-    for (model_name in model_names) {
-      # Get timeROC object from metrics list
-      troc <- metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$troc
-
-      # Extract ROC curves for each time point
-      for (t in eval_times) {
-        # Get ROC curve data for this time
-        idx <- which(troc$times == t)
-        if (length(idx) > 0) {
-          roc_data <- unique(data.frame(
-            FPR = troc$FP[, idx],
-            TPR = troc$TP[, idx],
-            Time = t,
-            Model = model_name,
-            fold = fold
-          ))
-          all_roc_curves <- rbind(all_roc_curves, roc_data)
-        }
-      }
-    }
-  }
-
-  # Calculate summary statistics
-  roc_summary <- all_roc_curves %>%
-    # First, bin FPR values to create discrete groups
-    mutate(FPR_bin = round(FPR, digits = 2)) %>%
-    group_by(Model, Time, FPR_bin) %>%
-    summarise(
-      mean_TPR = mean(TPR, na.rm = TRUE),
-      # Calculate standard error for each bin
-      pooled_se = sqrt(var(TPR, na.rm = TRUE) / n()),
-      # Calculate confidence intervals
-      ci_lower = mean_TPR - 1.96 * pooled_se,
-      ci_upper = mean_TPR + 1.96 * pooled_se,
-      FPR = mean(FPR_bin),
-      .groups = "drop"
-    ) %>%
-    # Remove any remaining NAs and ensure we have enough data points
-    filter(!is.na(pooled_se)) %>%
-    group_by(Model, Time) %>%
-    filter(n() >= 10) %>%  # Only keep time points with at least 10 data points
-    ungroup()
-  roc_summary$Model <- factor(roc_summary$Model, levels=model_names)
-
-  return(roc_summary)
-}
-
 
 plot_all_roc_curves <- function(model_names, eval_times) {
   width <- 8
@@ -999,7 +941,6 @@ plot_all_roc_curves <- function(model_names, eval_times) {
 
   return(roc_plot)
 }
-
 
 plot_roc_biggest_year_difference <- function(auc_summary, agg_auc_summary, model_names, eval_times) {
   lookup_model_colors <- get_colors_labels()$colors
@@ -1080,4 +1021,251 @@ plot_roc_biggest_year_difference <- function(auc_summary, agg_auc_summary, model
 
   # return plot and year
   return(list(plot = p_year, year = year))
+}
+
+plot_brier_over_time <- function(metrics_list, model_names) {
+  brier_results <- collate_metric(metrics_list, metric = "brier")
+  brier_summary <- brier_results %>%
+    group_by(model, time) %>%
+  summarise(
+    mean_metric = mean(metric, na.rm = TRUE),
+    sd_metric = sd(metric, na.rm = TRUE),
+    ymin = pmax(mean_metric - sd_metric, 0),
+    ymax = pmin(mean_metric + sd_metric, 1),
+    .groups = "drop"
+  )
+  brier_summary$model <- factor(brier_summary$model, levels=model_names)
+
+  # Figure 1D - plot brier score over time
+  brier_plot <- td_plot(brier_summary,
+                        model_names=model_names,
+                        metric = "brier",
+                        all_models = F)
+
+  return(brier_plot)
+}
+
+plot_concordance_over_time <- function(metrics_list, model_names) {
+  concordance_results <- collate_metric(metrics_list, metric = "concordance")
+  cc_sub <- concordance_results %>%
+    filter(model %in% model_names) %>%
+    mutate(fold = as.factor(fold),
+          metric = metric)
+  cc_sub$model <- factor(cc_sub$model, levels=model_names)
+
+  concordance_summary <- concordance_results %>%
+    group_by(model, time) %>%
+    summarise(
+      mean_metric = mean(metric, na.rm = TRUE),
+      sd_metric = sd(metric, na.rm = TRUE),
+      ymin = pmax(mean_metric - sd_metric, 0),
+      ymax = pmin(mean_metric + sd_metric, 1),
+      .groups = "drop"
+    )
+  concordance_summary$model <- factor(concordance_summary$model, levels=model_names)
+
+
+  # Figure 1C - plot concordance over time
+  concordance_plot <- td_plot(concordance_summary,
+                              concordance_results,
+                              model_names=model_names,
+                              metric = "concordance")
+
+  return(concordance_plot)
+}
+
+
+histogram_pvals <- function(results_table) {
+  # Fig S1 - Histogram of p-values, bin size 0.05
+  hist_pvalues <- ggplot(pvals_compare_trocs$all_results,
+                        aes(x = p_value)) +
+  geom_histogram(breaks = seq(0, 1, by = 0.05), 
+                 fill = "#009292", 
+                 alpha = 0.8,
+                 color = "white") +  # Add white lines between bars
+  geom_vline(xintercept = 0.05, linetype = "dashed", color = "red") +
+  labs(
+    x = "p-value",
+    y = "Count"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, size = 12),
+    axis.text = element_text(size = 12),  # Increased from 10
+    axis.title = element_text(size = 14),  # Increased from 11
+    panel.grid.major = element_line(linewidth = 0.3),  # Thicker grid lines
+    panel.grid.minor = element_line(linewidth = 0.15)  # Thicker minor grid lines
+  )
+  return(hist_pvalues)
+}
+
+plot_SeSpPPVNPV <- function(data, metric) {
+
+  color_label_info <- get_colors_labels()
+  colors <- color_label_info$colors
+  labels <- color_label_info$labels
+
+  # set y-axis label to capitalize first letter unless it's PPV or NPV
+  if (!metric %in% c("ppv", "npv")) {
+    y_label <- tools::toTitleCase(metric)
+  } else {
+    y_label <- toupper(tools::toTitleCase(metric))
+  }
+
+  ggplot(data, aes(x = time, y = get(paste0("mean_", metric)), color = model)) +
+    geom_ribbon(
+      aes(
+        ymin = get(paste0("mean_", metric)) - get(paste0("sd_", metric)),
+        ymax = get(paste0("mean_", metric)) + get(paste0("sd_", metric)),
+        fill = model
+      ),
+      alpha = 0.2,
+      color = NA
+    ) +
+    geom_line(linewidth = 1) +
+    # Add white circles at each time point
+    geom_point(aes(color = model), fill = "white", size = 3, shape = 21) +
+    scale_color_manual(values = colors, labels = labels) +
+    scale_fill_manual(values = colors, labels = labels) +
+    labs(
+      x = "Time (years)",
+      y = y_label,
+      color = "Model",
+      fill = "Model"  # Add fill legend
+    ) +
+    theme_bw(base_size = 14) +
+    theme(
+      plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
+      plot.subtitle = element_text(size = 14, hjust = 0.5),
+      axis.title = element_text(face = "bold", size = 14),
+      axis.text = element_text(size = 12),
+      legend.title = element_text(face = "bold", size = 14),
+      legend.text = element_text(size = 12),
+      panel.grid.minor = element_blank(),
+      panel.grid = element_blank(),
+      panel.background = element_rect(fill = "white", color = NA),
+      legend.position = "right"
+    )
+}
+
+save_all_figures <- function(model_names, models_list, metrics_list, val_df_l, width, height, dpi, main_path) {
+  ##### FIGURE 1A: AUC over time
+  # AUROC and CIs 
+  print("Plotting AUC over time")
+  auc_summary <- read_parquet(paste0(main_path, "auc_summary.parquet"))
+  agg_auc_summary <- aggregate(
+    cbind(auc, ci_lower, ci_upper) ~ model + time,
+    data = auc_summary,
+    FUN = mean
+  )
+  auc_plot <- plot_auc_over_time(auc_summary, model_names)
+
+  # Save plots
+  ggsave(paste0(main_path, "final_auc_Over_Time.pdf"),
+        plot = auc_plot,
+        width = width,
+        height = height,
+        dpi = 300)
+
+  print("Plotting individual year ROC curves")
+  roc_plot <- plot_all_roc_curves(model_names, eval_times=seq(3, 7))
+  # Save the plot
+  ggsave(paste0(main_path, "ROC_curves_by_timepoint.pdf"),
+        plot = roc_plot,
+        width = width * 1.5,
+        height = height,
+        dpi = 300)
+
+
+  # Find the year with the largest difference in AUC between demographics_lancet and ptau_demographics_lancet
+  print("Plotting ROC curve for the year with the largest difference in AUC")
+  p_year <- plot_roc_biggest_year_difference(auc_summary,
+                                            agg_auc_summary, 
+                                            model_names,
+                                            eval_times=seq(3, 7))
+  # Save plots
+  ggsave(paste0(main_path, "final_ROCcurve_", p_year$year, "years.pdf"),
+    plot = p_year$plot,
+    width = width,
+    height = height,
+    dpi = 300
+  )
+
+
+  ###### Figure 1D: BRIER SCORE - plot brier score over time
+  print("Plotting Brier score over time")
+  brier_plot <- plot_brier_over_time(metrics_list, model_names)
+
+  # Save plots
+  ggsave(paste0(main_path, "final_brier_Over_Time.pdf"),
+    plot = brier_plot,
+    width = width,
+    height = height,
+    dpi = 300
+  )
+
+  ##### Figure 1C: plot concordance over time
+  print("Plotting concordance over time")
+  concordance_plot <- plot_concordance_over_time(metrics_list, model_names)
+
+  # Save plots
+  ggsave(paste0(main_path, "final_concordance_Over_Time.pdf"),
+    plot = concordance_plot,
+    width = width,
+    height = height,
+    dpi = 300
+  )
+
+  ########################################################
+  # Sensitivity, Specificity, PPV, NPV
+  # Function to calculate SeSpPPVNPV for a model and fold
+  # Initialize list to store results
+
+  ##### Figure 1E: Sensitivity, Specificity, PPV, NPV
+  print("Plotting sensitivity, specificity, PPV, NPV")
+  # check if file exists
+  if (!file.exists(paste0(main_path, "spspppvnpv_summary.parquet"))) {
+    df_spspppvnpv <- SpSpPPVNPV_summary(models_list, model_names, val_df_l)
+    write_parquet(df_spspppvnpv, paste0(main_path, "spspppvnpv_summary.parquet"))
+  } else {
+    df_spspppvnpv <- read_parquet(paste0(main_path, "spspppvnpv_summary.parquet"))
+  }
+
+  # Create individual plots
+  sensitivity_plot <- plot_SeSpPPVNPV(df_spspppvnpv, "sensitivity")
+  specificity_plot <- plot_SeSpPPVNPV(df_spspppvnpv, "specificity")
+  ppv_plot <- plot_SeSpPPVNPV(df_spspppvnpv, "ppv")
+  npv_plot <- plot_SeSpPPVNPV(df_spspppvnpv, "npv")
+
+  ggsave(
+    paste0(main_path, "sensitivity_plot.pdf"),
+    plot = sensitivity_plot,
+    width = width,
+    height = height,
+    dpi = dpi
+  )
+
+  ggsave(
+    paste0(main_path, "specificity_plot.pdf"),
+    plot = specificity_plot,
+    width = width,
+    height = height,
+    dpi = dpi
+  )
+
+  ggsave(
+    paste0(main_path, "ppv_plot.pdf"),
+    plot = ppv_plot,
+    width = width,
+    height = height,
+    dpi = dpi
+  )
+
+  ggsave(
+    paste0(main_path, "npv_plot.pdf"),
+    plot = npv_plot,
+    width = width,
+    height = height,
+    dpi = dpi
+  )
 }

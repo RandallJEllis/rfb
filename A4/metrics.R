@@ -246,6 +246,17 @@ compare_tvaurocs <- function(trocs_x, trocs_y) {
   
   # Merge with existing summary stats
   final_summary <- merge(summary_stats, ci_summary, by = "time")
+
+  # print out all p-values
+  print("Summary of AUC differences and p-values by time point:")
+  print(range(pvals_compare_trocs$all_results$p_value))
+  print(mean(pvals_compare_trocs$all_results$p_value))
+  print(sd(pvals_compare_trocs$all_results$p_value))
+  print(median(pvals_compare_trocs$all_results$p_value))
+
+  # how many p-values are less than 0.05? out of how many total p-values?
+  sum(pvals_compare_trocs$all_results$p_value < 0.05) /
+    length(pvals_compare_trocs$all_results$p_value)
   
   return(list(
     all_results = all_results_df,
@@ -322,4 +333,293 @@ calculate_SeSpPPVNPV <- function(model, val_data, times) {
   
   best_cutpoint <- names(youden_index_list)[which.max(youden_index_list)]
   return(se_sp_ppv_npv[[best_cutpoint]])
+}
+
+
+SpSpPPVNPV_summary <- function(models_list, model_names, val_df_l) {
+  metrics_over_time <- list()
+
+  # Calculate metrics for each model and fold
+  for (model_name in model_names) {
+    metrics_over_time[[model_name]] <- list()
+    for (fold in 1:5) {
+      model <- models_list[[model_name]][[paste0("fold_", fold)]]
+      val_data <- val_df_l[[paste0("fold_", fold)]]
+      
+      metrics <- calculate_SeSpPPVNPV(model, val_data, times = seq(3, 7))
+      
+      # Store results in a data frame
+      metrics_df <- data.frame(
+        time = metrics$times,
+        sensitivity = metrics$TP,
+        specificity = 1 - metrics$FP,
+        ppv = metrics$PPV,
+        npv = metrics$NPV,
+        model = model_name,
+        fold = fold
+      )
+      
+      metrics_over_time[[model_name]][[fold]] <- metrics_df
+    }
+  }
+
+  # Combine all results into a single data frame
+  all_metrics <- do.call(rbind, lapply(metrics_over_time, function(x) do.call(rbind, x)))
+
+  # Calculate mean and standard error for each metric
+  metrics_summary <- all_metrics %>%
+    group_by(model, time) %>%
+    summarise(
+      mean_sensitivity = mean(sensitivity, na.rm = TRUE),
+      sd_sensitivity = sd(sensitivity, na.rm = TRUE) / sqrt(n()),
+      mean_specificity = mean(specificity, na.rm = TRUE),
+      sd_specificity = sd(specificity, na.rm = TRUE) / sqrt(n()),
+      mean_ppv = mean(ppv, na.rm = TRUE),
+      sd_ppv = sd(ppv, na.rm = TRUE) / sqrt(n()),
+      mean_npv = mean(npv, na.rm = TRUE),
+      sd_npv = sd(npv, na.rm = TRUE) / sqrt(n()),
+      .groups = "drop"
+    )
+
+  return(metrics_summary)
+}
+
+
+print_model_stats <- function(models_list, var_string) {
+
+  coefs <- list()
+  pvals <- list()
+
+  # iterate over models that have ptau in them
+  for (model_name in names(models_list)) {
+    if (grepl(var_string, model_name)) {
+      for (fold in 1:5) {
+        model <- models_list[[model_name]][[paste0("fold_", fold)]]
+        coefs[[model_name]][[paste0("fold_", fold)]] <-
+          exp(model$coefficients[var_string])
+        pvals[[model_name]][[paste0("fold_", fold)]] <-
+          summary(model)$coefficients[var_string, "Pr(>|z|)"]
+      }
+    }
+  }
+
+  print(paste0(var_string, " p-values:"))
+  print(paste0("Range: ", range(unlist(pvals))))
+  print(paste0("Mean: ", mean(unlist(pvals))))
+  print(paste0("SD: ", sd(unlist(pvals))))
+  print(paste0(var_string, " coefficients:"))
+  print(paste0("Range: ", range(unlist(coefs))))
+  print(paste0("Mean: ", mean(unlist(coefs))))
+  print(paste0("SD: ", sd(unlist(coefs))))
+}
+
+
+
+pull_trocs <- function(model_name) {
+  list(
+    metrics_list[[model_name]]$fold_1$troc,
+    metrics_list[[model_name]]$fold_2$troc,
+    metrics_list[[model_name]]$fold_3$troc,
+    metrics_list[[model_name]]$fold_4$troc,
+    metrics_list[[model_name]]$fold_5$troc
+  )
+}
+
+
+print_pvalue_latex_table <- function(results_table) {
+  results_table_wide <- results_table %>%
+    pivot_wider(id_cols = fold, names_from = time, values_from = p_value) %>%
+    mutate(across(-fold, ~round(., digits = 4))) %>%
+  mutate(across(-fold, ~ifelse(. < 0.05, paste0("\\textbf{", ., "}"), as.character(.))))
+
+# latex table of results_table_wide with 4 decimal places
+  xtable_obj <- xtable(results_table_wide)
+  digits(xtable_obj) <- c(0, rep(4, ncol(results_table_wide)))  # Set digits for each column
+  print(xtable_obj, type = "latex", sanitize.text.function = function(x) x)  # Don't escape LaTeX commands
+}
+
+pull_roc_summary <- function(model_names, eval_times) {
+  # Initialize lists to store ROC data
+  roc_data_all <- list()
+
+  # Initialize dataframe to store ROC curves
+  all_roc_curves <- data.frame()
+
+  for (fold in 0:4) {
+    for (model_name in model_names) {
+      # Get timeROC object from metrics list
+      troc <- metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$troc
+
+      # Extract ROC curves for each time point
+      for (t in eval_times) {
+        # Get ROC curve data for this time
+        idx <- which(troc$times == t)
+        if (length(idx) > 0) {
+          roc_data <- unique(data.frame(
+            FPR = troc$FP[, idx],
+            TPR = troc$TP[, idx],
+            Time = t,
+            Model = model_name,
+            fold = fold
+          ))
+          all_roc_curves <- rbind(all_roc_curves, roc_data)
+        }
+      }
+    }
+  }
+
+  # Calculate summary statistics
+  roc_summary <- all_roc_curves %>%
+    # First, bin FPR values to create discrete groups
+    mutate(FPR_bin = round(FPR, digits = 2)) %>%
+    group_by(Model, Time, FPR_bin) %>%
+    summarise(
+      mean_TPR = mean(TPR, na.rm = TRUE),
+      # Calculate standard error for each bin
+      pooled_se = sqrt(var(TPR, na.rm = TRUE) / n()),
+      # Calculate confidence intervals
+      ci_lower = mean_TPR - 1.96 * pooled_se,
+      ci_upper = mean_TPR + 1.96 * pooled_se,
+      FPR = mean(FPR_bin),
+      .groups = "drop"
+    ) %>%
+    # Remove any remaining NAs and ensure we have enough data points
+    filter(!is.na(pooled_se)) %>%
+    group_by(Model, Time) %>%
+    filter(n() >= 10) %>%  # Only keep time points with at least 10 data points
+    ungroup()
+  roc_summary$Model <- factor(roc_summary$Model, levels=model_names)
+
+  return(roc_summary)
+}
+
+calc_pAUC <- function(df, model_names, threshold = 0.25) {
+    library(pracma)  # For numerical integration
+
+    # Input validation
+    if (!all(model_names %in% unique(df$Model))) {
+        stop("Some model names not found in data")
+    }
+    if (threshold <= 0 || threshold > 1) {
+        stop("Threshold must be between 0 and 1")
+    }
+
+    # Initialize results dataframe with proper structure
+    pAUC_normalized <- data.frame(
+        Model = character(),
+        Time = numeric(),
+        pAUC = numeric(),
+        stringsAsFactors = FALSE
+    )
+
+    # Filter for FPR ≤ threshold and ensure data is ordered
+    df_filtered <- df[df$FPR <= threshold, ] %>%
+        arrange(Model, Time, FPR)
+
+    # Calculate pAUC for each model and time point
+    for (model_name in model_names) {
+        model_df <- df_filtered[df_filtered$Model == model_name, ]
+        
+        for (time in unique(model_df$Time)) {
+            model_df_time <- model_df[model_df$Time == time, ]
+            
+            # Skip if insufficient data points
+            if (nrow(model_df_time) < 2) {
+                warning(sprintf("Insufficient data points for model %s at time %s", 
+                              model_name, time))
+                next
+            }
+
+            # Compute partial AUC using trapezoidal integration
+            pAUC <- tryCatch({
+                trapz(model_df_time$FPR, model_df_time$mean_TPR)
+            }, error = function(e) {
+                warning(sprintf("Integration failed for model %s at time %s: %s", 
+                              model_name, time, e$message))
+                return(NA)
+            })
+
+            # Add results to dataframe
+            pAUC_normalized <- rbind(pAUC_normalized, data.frame(
+                Model = model_name,
+                Time = time,
+                pAUC = pAUC / threshold
+            ))
+        }
+    }
+
+    # for each model, calculate the average and sd of pAUC across time points
+    pAUC_normalized <- pAUC_normalized %>%
+      group_by(Model) %>%
+      summarise(mean_pAUC = mean(pAUC),
+                sd_pAUC = sd(pAUC))
+
+    # sort by mean_pAUC in ascending order
+    pAUC_normalized <- pAUC_normalized %>%
+      arrange(mean_pAUC)
+
+    return(pAUC_normalized)
+}
+
+
+
+print_auc_latex_table <- function(auc_summary) {
+  agg_auc_summary <- aggregate(
+    cbind(auc, ci_lower, ci_upper) ~ model + time,
+    data = auc_summary,
+    FUN = mean
+  )
+
+  wide_auc_summary <- agg_auc_summary %>%
+    group_by(model, time) %>%
+    mutate(
+      formatted_value = sprintf("%.2f (%.2f-%.2f)", auc, ci_lower, ci_upper)
+    ) %>%
+    select(model, time, formatted_value) %>%
+    pivot_wider(
+      id_cols = model,
+      names_from = time,
+      values_from = formatted_value,
+      names_glue = "{ifelse(is.na(.name), 'model', paste0(.name, 'y'))}"
+    )
+
+  # map model names to labels
+  model_labels <- c(
+    "demographics_lancet" = "Demo+Lancet",
+    "ptau_demographics_lancet" = "pTau217+Demo+Lancet",
+    "demographics" = "Demo",
+    "demographics_no_apoe" = "Demo (-APOE)",
+    "lancet" = "Lancet",
+    "ptau" = "pTau217",
+    "ptau_demographics" = "pTau217+Demo",
+    "ptau_demographics_no_apoe" = "pTau217+Demo (-APOE)",
+    "ptau_demographics_lancet_no_apoe" = "pTau217+Demo+Lancet (-APOE)",
+    "demographics_lancet_no_apoe" = "Demo+Lancet (-APOE)",
+    "centiloids_demographics_lancet" = "PET+Demo+Lancet",
+    "ptau_centiloids_demographics_lancet" = "pTau217+PET+Demo+Lancet",
+    "centiloids" = "PET",
+    "centiloids_demographics" = "PET+Demo",
+    "centiloids_demographics_no_apoe" = "PET+Demo (-APOE)",
+    "centiloids_demographics_lancet" = "PET+Demo+Lancet",
+    "centiloids_demographics_lancet_no_apoe" = "PET+Demo+Lancet (-APOE)",
+    "ptau_centiloids" = "pTau217+PET",
+    "ptau_centiloids_demographics" = "pTau217+PET+Demo",
+    "ptau_centiloids_demographics_no_apoe" = "pTau217+PET+Demo (-APOE)",
+    "ptau_centiloids_demographics_lancet" = "pTau217+PET+Demo+Lancet",
+    "ptau_centiloids_demographics_lancet_no_apoe" = "pTau217+PET+Demo+Lancet (-APOE)"
+  )
+
+  # clean up model names
+  wide_auc_summary$model <- model_labels[wide_auc_summary$model]
+
+  # reorder rows of wide_auc_summary in ascending order of 3y auc, then 4y auc, then 5y auc, then 6y auc, then 7y auc
+  wide_auc_summary <- wide_auc_summary %>%
+    arrange(wide_auc_summary$`3y`, wide_auc_summary$`4y`, wide_auc_summary$`5y`,
+            wide_auc_summary$`6y`, wide_auc_summary$`7y`)
+  # print with 4 decimal places
+  print(wide_auc_summary)
+
+  # latex table of wide_auc_summary
+  library(xtable)
+  print(xtable(wide_auc_summary), type = "latex")
 }
