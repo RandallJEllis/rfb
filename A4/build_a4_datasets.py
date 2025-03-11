@@ -476,9 +476,9 @@ def process_fold(data, id_col, fold_assignments, fold):
     val_set['ptau_boxcox'] = stats.boxcox(val_set.ptau, lmbda=lambda_val)
     
     # scale time variables
-    train_set['visit_to_days_yr'] = train_set.visit_to_days
+    # train_set['visit_to_days_yr'] = train_set.visit_to_days
     train_set['time_to_event_yr'] = train_set.time_to_event 
-    val_set['visit_to_days_yr'] = val_set.visit_to_days
+    # val_set['visit_to_days_yr'] = val_set.visit_to_days
     val_set['time_to_event_yr'] = val_set.time_to_event
     
     return train_set, val_set

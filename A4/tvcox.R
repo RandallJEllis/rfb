@@ -11,15 +11,7 @@ library(survminer)
 library(riskRegression)
 
 
-current_script_path <- commandArgs() %>% 
-  grep("--file=", ., value = TRUE) %>% 
-  gsub("--file=", "", .)
-
-if (length(current_script_path) > 0) {
-  setwd(dirname(current_script_path))
-} else if (rstudioapi::isAvailable()) {
-  setwd(dirname(rstudioapi::getSourceEditorContext()$path))
-}
+setwd(dirname(this.path()))
 
 
 source("plot_figures.R")

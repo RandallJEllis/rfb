@@ -78,9 +78,9 @@ def find_first_or_last_visit(df_list, id_col='RID', examdate_col='EXAMDATE', fir
     df_list = [df.rename({examdate_col: f'{first_or_last}_{examdate_col}'}, axis=1) for df in df_list]
 
     # merge the dataframes on ID
-    merged = df_list[0].merge(df_list[1], on=id_col, how='outer')
-    for df in df_list[2:]:
-        merged = merged.merge(df, on=id_col, how='outer')
+    merged = df_list[0]
+    for i, df in enumerate(df_list[1:], start=1):
+        merged = merged.merge(df, on=id_col, how='outer', suffixes=('', f'_df{i}'))
     
    # Find all columns that contain the first/last date information
     date_cols = [col for col in merged.columns if col.startswith(f'{first_or_last}_{examdate_col}')]
@@ -112,7 +112,10 @@ def map_time_from_baseline(df, earliest_baseline, id_col='RID', examdate_col='EX
     Returns:
         pandas.DataFrame: Input DataFrame with added visit_to_days column
     """
-    df['visit_to_days'] = df.apply(lambda row: (row[examdate_col] - earliest_baseline[earliest_baseline[id_col] == row[id_col]][examdate_col].values[0]).days, axis=1)
+    df['visit_to_years'] = df.apply(lambda row: 
+                                    (row[examdate_col] - \
+                                    earliest_baseline[earliest_baseline[id_col] == row[id_col]][examdate_col].values[0]).days / 365.25, 
+                                    axis=1)
     return df
 
 

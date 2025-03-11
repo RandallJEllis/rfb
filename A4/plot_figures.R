@@ -921,7 +921,7 @@ plot_all_roc_curves <- function(model_names, eval_times) {
       y = "True Positive Rate",
       title = "ROC Curves at Different Time Points"
     ) +
-    coord_equal() +
+    coord_fixed() +
     theme_minimal() +
     theme(
       plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
@@ -1011,7 +1011,7 @@ plot_roc_biggest_year_difference <- function(auc_summary, agg_auc_summary, model
 
       )
     ) +
-    coord_equal() +
+    coord_fixed() +
     get_publication_theme() +
     theme(
       legend.position = "bottom",

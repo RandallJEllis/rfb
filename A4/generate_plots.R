@@ -29,6 +29,7 @@ model_names <- c("demographics_lancet",
                   "ptau_centiloids_demographics_lancet")
 width <- 8
 height <- 6
+dpi <- 300
 save_all_figures(model_names, models_list, metrics_list, val_df_l, width, height, dpi, main_path)
 
 
