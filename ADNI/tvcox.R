@@ -23,7 +23,6 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
     load_path = paste0(load_path, "amyloid_positive/")
   } 
 
-
   # # Load fonts
   # library(extrafont)
   # extrafont::loadfonts()
@@ -47,8 +46,9 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
 
   # tmerge data for all models
   format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
-                        depression,#habits, psychwell, vitals, 
-                        centiloids) {
+                        medhist, neuroexam, adni_nightingale, modhach, 
+                        vitals, depression, centiloids,
+                        mean_lancet_vars=NULL, sd_lancet_vars=NULL) {
     df$PTGENDER <- factor(df$PTGENDER)
     df$GENOTYPE <- factor(df$GENOTYPE)
     df <- within(df, GENOTYPE <- relevel(GENOTYPE, ref = "3/3"))
@@ -67,6 +67,7 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
       "apoe"
     )
 
+    # get centiloids
     centiloids <- centiloids[centiloids$RID %in% df$id, c(
       "RID", "visit_to_years", "CENTILOIDS"
     )]
@@ -77,46 +78,66 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
     tv_covar <- df[, c("id", "visit_to_years", "ptau_boxcox")]
     colnames(tv_covar) <- c("id", "time", "ptau")
 
-    # # if (lancet) {
-    # habits <- habits[habits$BID %in% df$BID, c(
-    #   "BID",
-    #   "COLLECTION_DATE_DAYS_CONSENT",
-    #   "SMOKE", "ALCOHOL", "SUBUSE",
-    #   "AEROBIC", "WALKING"
-    # )]
-    # psychwell <- psychwell[psychwell$BID %in% df$BID, c(
-    #   "BID",
-    #   "COLLECTION_DATE_DAYS_CONSENT",
-    #   "GDTOTAL", "STAITOTAL"
-    # )]
+    # get medhist
+    medhist <- medhist[medhist$RID %in% df$id, c(
+      "RID", "visit_to_years",
+      "MH3HEAD", "MH4CARD", "MH14ALCH", "MH14AALCH", 
+      "MH14BALCH", "MH14CALCH", "MH16SMOK", "MH16ASMOK",
+      "MH16BSMOK", "MH16CSMOK" 
+    )]
+    colnames(medhist) <- c(
+      "id", "time", 
+      "heent", "cardio", "alc_abuse", "alc_avg_drinks_day",
+      "alc_abuse_years", "time_since_abuse", "smoking",
+      "smoke_avg_packs_day",
+      "smoking_years", "time_since_smoking" 
+    )
+
+    # get neuroexam
+    neuroexm <- neuroexam[neuroexam$RID %in% df$id, c(
+      "RID", "visit_to_years",
+      "NXVISUAL", "NXAUDITO"
+    )]
+    colnames(neuroexm) <- c(
+      "id", "time",
+      "visual_impairment", "audit_impairment"
+    )
+
+    # adni nightingale
+    adni_nightingale <- adni_nightingale[
+      adni_nightingale$RID %in% df$id, c(
+      "RID", "visit_to_years",
+      "LDL_C"
+    )]
+    colnames(adni_nightingale) <- c(
+      "id", "time", "ldl"
+    )
+
+    # modhach
+    modhach <- modhach[modhach$RID %in% df$id, c(
+      "RID", "visit_to_years",
+      "HMHYPERT"
+    )]
+    colnames(modhach) <- c(
+      "id", "time", "hypertension"
+    )
+
+    # get vitals
+    vitals <- vitals[vitals$RID %in% df$id, c(
+      "RID", "visit_to_years", "BMI"
+    )]
+    colnames(vitals) <- c(
+      "id", "time", "bmi"
+    )
+
+    # get depression
     depression <- depression[depression$RID %in% df$id, c(
       "RID", "visit_to_years", "GDTOTAL"
     )]
     colnames(depression) <- c(
       "id", "time", "gdtotal"
     )
-    # vitals <- vitals[vitals$BID %in% df$BID, c(
-    #   "BID",
-    #   "COLLECTION_DATE_DAYS_CONSENT",
-    #   "VSBPSYS", "VSBPDIA"
-    # )]
-    # colnames(habits) <- c(
-    #   "id", "time", "smoke", "alcohol", "subuse",
-    #   "aerobic", "walking"
-    # )
-    # colnames(psychwell) <- c("id", "time", "gdtotal", "staital")
-    # colnames(vitals) <- c("id", "time", "vsbsys", "vsdia")
-
-    # habits$time <- habits$time / 365.25
-    # psychwell$time <- psychwell$time / 365.25
-    # vitals$time <- vitals$time / 365.25
-    # # }
-
-
-    # base$time <- base$time / 365.25
-    # tv_covar$time <- tv_covar$time / 365.25
-    # centiloids$time <- centiloids$time / 365.25
-    # depression$time <- depression$time / 365.25
+    
 
     # Create initial time-dependent data
     td_data <- tmerge(
@@ -155,43 +176,64 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
     )
     # }
 
+    # add medhist
+    td_data <- tmerge(
+      td_data,
+      medhist,
+      id = id,
+      heent = tdc(time, heent, 0),
+      cardio = tdc(time, cardio, 0),
+      alc_abuse = tdc(time, alc_abuse, 0),
+      alc_avg_drinks_day = tdc(time, alc_avg_drinks_day, 0),
+      alc_abuse_years = tdc(time, alc_abuse_years, 0),
+      time_since_abuse = tdc(time, time_since_abuse, -99),
+      smoking = tdc(time, smoking, 0),
+      smoke_avg_packs_day = tdc(time, smoke_avg_packs_day, 0),
+      smoking_years = tdc(time, smoking_years, 0),
+      time_since_smoking = tdc(time, time_since_smoking, -99)
+    )
+
+    # add neuroexam
+    td_data <- tmerge(
+      td_data,
+      neuroexm,
+      id = id,
+      visual_impairment = tdc(time, visual_impairment, 0),
+      audit_impairment = tdc(time, audit_impairment, 0)
+    )
+
+    # add adni nightingale
+    td_data <- tmerge(
+      td_data,
+      adni_nightingale,
+      id = id,
+      ldl = tdc(time, ldl, median(adni_nightingale$ldl, na.rm = TRUE))
+    )
+
+    # add modhach
+    td_data <- tmerge(
+      td_data,
+      modhach,
+      id = id,
+      hypertension = tdc(time, hypertension, 0)
+    )
+
+    # add depression
     td_data <- tmerge(
       td_data,
       depression,
       id = id,
-      gdtotal = tdc(time, gdtotal)
+      gdtotal = tdc(time, gdtotal, median(depression$gdtotal, na.rm = TRUE))
     )
-    # # if (lancet) {
-    # td_data <- tmerge(
-    #   td_data,
-    #   habits,
-    #   id = id,
-    #   smoke = tdc(time, smoke),
-    #   alcohol = tdc(time, alcohol),
-    #   subuse = tdc(time, subuse),
-    #   aerobic = tdc(time, aerobic),
-    #   walking = tdc(time, walking)
-    # )
 
-    # td_data <- tmerge(
-    #   td_data,
-    #   psychwell,
-    #   id = id,
-    #   gdtotal = tdc(time, gdtotal),
-    #   staital = tdc(time, staital)
-    # )
-
-    # td_data <- tmerge(
-    #   td_data,
-    #   vitals,
-    #   id = id,
-    #   vsbsys = tdc(time, vsbsys),
-    #   vsdia = tdc(time, vsdia)
-    # )
-    # # }
-
-    # td_data <- td_data[complete.cases(td_data), ]
-
+    # add vitals
+    td_data <- tmerge(
+      td_data,
+      vitals,
+      id = id,
+      bmi = tdc(time, bmi, median(vitals$bmi, na.rm = TRUE))
+    )
+    
     # First, let's store the baseline age for each person
     baseline_ages <- td_data %>%
       group_by(id) %>%
@@ -209,6 +251,47 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
 
 
     td_data <- td_data[order(td_data$id, td_data$tstart), ]
+  
+
+    # zscore continuous lancet factors 
+    continuous_lancet_vars <- c(
+      'alc_avg_drinks_day', 
+      'alc_abuse_years', 
+      'time_since_abuse',
+      'smoke_avg_packs_day',
+      'smoking_years',
+      'time_since_smoking',
+      'ldl',
+      'bmi',
+      'gdtotal'
+      )
+
+    if (!is.null(mean_lancet_vars) && !is.null(sd_lancet_vars)) {
+      print("Using provided mean and sd")
+      } else {
+      print("Calculating mean and sd")
+      mean_lancet_vars <- apply(td_data[, continuous_lancet_vars],
+                   2, mean, na.rm = TRUE)
+      sd_lancet_vars <- apply(td_data[, continuous_lancet_vars],
+                  2, sd, na.rm = TRUE)
+    }
+
+    print(mean_lancet_vars)
+    print(sd_lancet_vars)
+    td_data[, continuous_lancet_vars] <- scale(
+      td_data[, continuous_lancet_vars],
+      center = mean_lancet_vars, scale = sd_lancet_vars
+    )
+    
+    # convert categorical variables to factors
+    categorical_lancet_vars <- c( "heent", "cardio",
+    "alc_abuse",  "smoking", "visual_impairment",
+    "audit_impairment", "hypertension")
+    td_data[, categorical_lancet_vars] <- lapply(
+      td_data[, categorical_lancet_vars],
+      factor
+    )
+      
     # Perform last observation carried forward (LOCF) within each subject
     td_data <- td_data %>%
       group_by(id) %>%
@@ -230,16 +313,8 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
     #   td_data_updated <- cut_time_data(td_data_updated)
     # }
 
-    return(td_data)
+    return(list(td_data, mean_lancet_vars, sd_lancet_vars))
   }
-
-  # read in Lancet data
-  # habits <- read_parquet("../../tidy_data/A4/habits.parquet")
-  # habits$SUBUSE <- as.factor(habits$SUBUSE)
-  # psychwell <- read_parquet("../../tidy_data/A4/psychwell.parquet")
-  # vitals <- read_parquet("../../tidy_data/A4/vitals.parquet")
-  centiloids <- read_parquet(paste0(load_path, "pet.parquet"))
-  depression <- read_parquet(paste0(load_path, "depression.parquet"))
 
   # Define model formulas
   get_model_formula <- function(model_type, lancet = FALSE) {
@@ -322,6 +397,15 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
     "ptau_centiloids_demographics_lancet" = list()
   )
 
+  # read in Lancet data
+  medhist <- read_parquet(paste0(load_path, "medhist.parquet"))
+  neuroexam <- read_parquet(paste0(load_path, "neuroexm.parquet"))
+  adni_nightingale <- read_parquet(paste0(load_path, "adni_nightingale.parquet"))
+  modhach <- read_parquet(paste0(load_path, "modhach.parquet"))
+  vitals <- read_parquet(paste0(load_path, "vitals.parquet"))
+  centiloids <- read_parquet(paste0(load_path, "pet.parquet"))
+  depression <- read_parquet(paste0(load_path, "depression.parquet"))
+
   val_df_l <- list()
   train_df_l <- list()
 
@@ -334,28 +418,24 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
 
     # Read and format data
     train_df_raw <- read_parquet(paste0(
-      load_path, "train_", fold, "_new.parquet"
+      load_path, "train_", fold, ".parquet"
     ))
     val_df_raw <- read_parquet(paste0(
-      load_path, "val_", fold, "_new.parquet"
+      load_path, "val_", fold, ".parquet"
     ))
 
-    df <- format_df(train_df_raw, #ptau = is_ptau, lancet = is_lancet, pet = is_pet,
-                      depression,#habits, psychwell, vitals, 
-                      centiloids)
-    val_df <- format_df(val_df_raw, #ptau = is_ptau, lancet = is_lancet,
-                          depression,#habits, psychwell, vitals, 
-                          centiloids)
-
-    means <- apply(df[, lancet_vars], 2, mean, na.rm = TRUE)
-    sds <- apply(df[, lancet_vars], 2, sd, na.rm = TRUE)
-
-    df[, lancet_vars] <- scale(df[, lancet_vars],
-      center = means, scale = sds
-    )
-    val_df[, lancet_vars] <- scale(val_df[, lancet_vars],
-      center = means, scale = sds
-    )
+    format_train <- format_df(train_df_raw, #ptau = is_ptau, lancet = is_lancet, pet = is_pet,
+                      medhist, neuroexam, adni_nightingale, modhach, 
+                      vitals, depression, centiloids)
+    df <- format_train[[1]]
+    mean_lancet_vars <- format_train[[2]]
+    sd_lancet_vars <- format_train[[3]]
+    format_val <- format_df(val_df_raw, #ptau = is_ptau, lancet = is_lancet, pet = is_pet,
+                      medhist, neuroexam, adni_nightingale, modhach, 
+                      vitals, depression, centiloids,
+                      mean_lancet_vars, sd_lancet_vars)
+    val_df <- format_val[[1]]
+    
 
     train_df_l[[paste0("fold_", fold + 1)]] <- df
     val_df_l[[paste0("fold_", fold + 1)]] <- val_df

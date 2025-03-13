@@ -168,8 +168,8 @@ def phenotype_cdr(df, cdr, sv):
     controls['label'] = 0
 
     # For controls, get time to last visit
-    sv_controls = sv[(sv['BID'].isin(controls.BID)) & (sv.SVUSEDTC_DAYS_CONSENT.notna())]
-    control_t2e = sv_controls.groupby('BID').SVUSEDTC_DAYS_CONSENT.max().reset_index(name='time_to_event').sort_values(by='time_to_event')
+    sv_controls = sv[(sv['BID'].isin(controls.BID)) & (sv.COLLECTION_DATE_DAYS_CONSENT.notna())]
+    control_t2e = sv_controls.groupby('BID').COLLECTION_DATE_DAYS_CONSENT.max().reset_index(name='time_to_event').sort_values(by='time_to_event')
     
     # Update control time to event
     controls = controls.drop(columns=['time_to_event']).merge(control_t2e, on='BID', how='left')
@@ -179,8 +179,8 @@ def phenotype_cdr(df, cdr, sv):
     df = pd.concat([cases, controls], axis=0).reset_index(drop=True)
     
     # Add final visit information
-    final_visit = sv[(sv['BID'].isin(df.BID)) & (sv.SVUSEDTC_DAYS_CONSENT.notna())]
-    final_visit = final_visit.groupby('BID').SVUSEDTC_DAYS_CONSENT.max().reset_index(name='final_visit').sort_values(by='final_visit')
+    final_visit = sv[(sv['BID'].isin(df.BID)) & (sv.COLLECTION_DATE_DAYS_CONSENT.notna())]
+    final_visit = final_visit.groupby('BID').COLLECTION_DATE_DAYS_CONSENT.max().reset_index(name='final_visit').sort_values(by='final_visit')
     df = df.merge(final_visit[['BID', 'final_visit']], on='BID', how='left')
 
     # Print summary statistics
@@ -300,10 +300,10 @@ def get_ptau():
     cdr = cdr.sort_values(by=['BID', 'VISCODE'])
 
     sv = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SV.csv')
-    sv.rename(columns={'VISITCD': 'VISCODE'}, inplace=True)
+    sv.rename(columns={'VISITCD': 'VISCODE', 'SVUSEDTC_DAYS_CONSENT':'COLLECTION_DATE_DAYS_CONSENT'}, inplace=True)
     
     # Merge CDR and visit data
-    cdr = cdr.merge(sv[['BID', 'VISCODE', 'SVUSEDTC_DAYS_CONSENT']], on=['BID', 'VISCODE'])
+    cdr = cdr.merge(sv[['BID', 'VISCODE', 'COLLECTION_DATE_DAYS_CONSENT']], on=['BID', 'VISCODE'])
 
     # Process and merge all data
     data, cases_bid = phenotype_cdr(ptau217, cdr, sv)
@@ -483,7 +483,7 @@ def process_fold(data, id_col, fold_assignments, fold):
     
     return train_set, val_set
 
-def get_centiloids(data):
+def get_centiloids(data, sv):
     """
     Process centiloid data and merge with clinical data.
     
@@ -504,19 +504,19 @@ def get_centiloids(data):
 
     imaging_pet_va = pd.read_csv('../../raw_data/A4_oct302024/clinical/External Data/imaging_PET_VA.csv')
     imaging_pet_va = imaging_pet_va[imaging_pet_va.BID.isin(data.id)]
-    
-    sv = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SV.csv')
-    sv.rename(columns={'VISITCD': 'VISCODE'}, inplace=True)
         
     # Merge CDR and visit data
-    imaging_pet_va = imaging_pet_va.merge(sv[['BID', 'VISCODE', 'SVUSEDTC_DAYS_CONSENT', 'SVUSEDTC_DAYS_T0']], on=['BID', 'VISCODE'])
+    imaging_pet_va = imaging_pet_va.merge(sv[['BID', 'VISCODE', 'COLLECTION_DATE_DAYS_CONSENT', 'SVUSEDTC_DAYS_T0']], on=['BID', 'VISCODE'])
     subjinfo = subjinfo.merge(imaging_pet_va, on='BID', how='left')
     
-    subjinfo['SVUSEDTC_YEARS_CONSENT'] = subjinfo['SVUSEDTC_DAYS_CONSENT'] / 365.25
+    subjinfo['COLLECTION_YEARS_CONSENT'] = subjinfo['COLLECTION_DATE_DAYS_CONSENT'] / 365.25
     subjinfo['SVUSEDTC_YEARS_T0'] = subjinfo['SVUSEDTC_DAYS_T0'] / 365.25
 
     return subjinfo
 
+def add_collection_date(newdata, sv):
+    newdata = newdata.merge(sv[['BID', 'VISCODE', 'COLLECTION_DATE_DAYS_CONSENT']], on=['BID', 'VISCODE'], how='left')
+    return newdata
 
 def save_cv_folds(data, output_dir, n_splits=N_SPLITS):
     """
@@ -557,13 +557,17 @@ def main():
     - train_{fold}_new.parquet: Training data for each fold
     - val_{fold}_new.parquet: Validation data for each fold
     """
+    
+    sv = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Derived Data/SV.csv')
+    sv.rename(columns={'VISITCD': 'VISCODE', 'SVUSEDTC_DAYS_CONSENT':'COLLECTION_DATE_DAYS_CONSENT'}, inplace=True)
+    
     data, _ = get_ptau()
     data.rename(columns={'BID': 'id', 'COLLECTION_DATE_DAYS_CONSENT': 'visit_to_days',
                          'AGEYR': 'age', 'EDCCNTU': 'educ', 'ORRES': 'ptau'}, inplace=True)
     data.to_parquet('../../tidy_data/A4/ptau_base.parquet')
 
-    centiloids = get_centiloids(data)
-    centiloids.to_parquet('../../tidy_data/A4/centiloids_subjinfo.parquet')
+    centiloids = get_centiloids(data, sv)
+    centiloids.to_parquet('../../tidy_data/A4/centiloids.parquet')
 
     save_cv_folds(data, '../../tidy_data/A4', N_SPLITS)
 
@@ -574,11 +578,32 @@ def main():
     data_positive = data_positive.merge(centiloids_positive[['BID', 'AMYLCENT', 'overall_score']],
                                                 left_on='id', right_on='BID', how='left')
 
-    # save ptau_pet_positive and subjinfo_positive
-    data_positive.to_parquet('../../tidy_data/A4/amyloid_positive/ptau_pet_positive.parquet')
-    centiloids_positive.to_parquet('../../tidy_data/A4/amyloid_positive/centiloids_pet_positive.parquet')
+    # save centiloids
+    centiloids_positive.to_parquet('../../tidy_data/A4/amyloid_positive/centiloids.parquet')
 
     save_cv_folds(data_positive, '../../tidy_data/A4/amyloid_positive', N_SPLITS)
+
+    # save all other datasets
+    habits = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Raw Data/habits.csv')
+    habits = add_collection_date(habits, sv)
+    habits.to_parquet('../../tidy_data/A4/habits.parquet')
+
+    psychwell = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Raw Data/psychwell.csv')
+    psychwell = add_collection_date(psychwell, sv)
+    psychwell.to_parquet('../../tidy_data/A4/psychwell.parquet')
+
+    vitals = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Raw Data/vitals.csv')
+    vitals = add_collection_date(vitals, sv)
+    # Convert height from cm to meters
+    height_m = vitals['STDHT'] / 100
+    # Calculate BMI
+    vitals['BMI'] = vitals['STDWT'] / (height_m ** 2)
+    vitals.to_parquet('../../tidy_data/A4/vitals.parquet')
+
+    phyneuro = pd.read_csv(f'../../raw_data/A4_oct302024/clinical/Raw Data/phyneuro.csv')
+    phyneuro = add_collection_date(phyneuro, sv)
+    phyneuro.to_parquet('../../tidy_data/A4/phyneuro.parquet')
+
     
 if __name__ == "__main__":
     main()
