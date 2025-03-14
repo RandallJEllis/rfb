@@ -47,7 +47,7 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
   # tmerge data for all models
   format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
                         medhist, neuroexam, adni_nightingale, modhach, 
-                        vitals, depression, centiloids,
+                        vitals, depression, lancet_cols_to_keep, centiloids,
                         mean_lancet_vars=NULL, sd_lancet_vars=NULL) {
     df$PTGENDER <- factor(df$PTGENDER)
     df$GENOTYPE <- factor(df$GENOTYPE)
@@ -78,64 +78,91 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
     tv_covar <- df[, c("id", "visit_to_years", "ptau_boxcox")]
     colnames(tv_covar) <- c("id", "time", "ptau")
 
+
+    lancet_col_mapping <- c(
+      "MH3HEAD" = "heent",
+      "MH4CARD" = "cardio",
+      "MH14ALCH" = "alc_abuse",
+      "MH14AALCH" = "alc_avg_drinks_day",
+      "MH14BALCH" = "alc_abuse_years",
+      "MH14CALCH" = "time_since_abuse",
+      "MH16SMOK" = "smoking",
+      "MH16ASMOK" = "smoke_avg_packs_day",
+      "MH16BSMOK" = "smoking_years",
+      "MH16CSMOK" = "time_since_smoking",
+      "NXVISUAL" = "visual_impairment",
+      "NXAUDITO" = "audit_impairment",
+      "LDL_C" = "ldl",
+      "HMHYPERT" = "hypertension",
+      "BMI" = "bmi",
+      "GDTOTAL" = "gdtotal"
+    )
+
     # get medhist
-    medhist <- medhist[medhist$RID %in% df$id, c(
-      "RID", "visit_to_years",
-      "MH3HEAD", "MH4CARD", "MH14ALCH", "MH14AALCH", 
-      "MH14BALCH", "MH14CALCH", "MH16SMOK", "MH16ASMOK",
-      "MH16BSMOK", "MH16CSMOK" 
-    )]
+    medhist_cols <- intersect(lancet_cols_to_keep,
+                      colnames(medhist))
+    medhist <- medhist[medhist$RID %in% df$id,
+                       c("RID", "visit_to_years", medhist_cols)
+                      ]
     colnames(medhist) <- c(
       "id", "time", 
-      "heent", "cardio", "alc_abuse", "alc_avg_drinks_day",
-      "alc_abuse_years", "time_since_abuse", "smoking",
-      "smoke_avg_packs_day",
-      "smoking_years", "time_since_smoking" 
+      lancet_col_mapping[medhist_cols]
     )
 
     # get neuroexam
-    neuroexm <- neuroexam[neuroexam$RID %in% df$id, c(
-      "RID", "visit_to_years",
-      "NXVISUAL", "NXAUDITO"
-    )]
+    neuroexm_cols <- intersect(lancet_cols_to_keep,
+                      colnames(neuroexam))
+    neuroexm <- neuroexam[neuroexam$RID %in% df$id,
+                         c("RID", "visit_to_years", neuroexm_cols)
+                        ]
     colnames(neuroexm) <- c(
       "id", "time",
-      "visual_impairment", "audit_impairment"
+      lancet_col_mapping[neuroexm_cols]
     )
 
     # adni nightingale
+    adni_nightingale_cols <- intersect(lancet_cols_to_keep,
+                      colnames(adni_nightingale))
     adni_nightingale <- adni_nightingale[
-      adni_nightingale$RID %in% df$id, c(
-      "RID", "visit_to_years",
-      "LDL_C"
-    )]
+      adni_nightingale$RID %in% df$id, 
+      c("RID", "visit_to_years", adni_nightingale_cols)
+    ]
     colnames(adni_nightingale) <- c(
-      "id", "time", "ldl"
+      "id", "time", 
+      lancet_col_mapping[adni_nightingale_cols]
     )
 
     # modhach
-    modhach <- modhach[modhach$RID %in% df$id, c(
-      "RID", "visit_to_years",
-      "HMHYPERT"
-    )]
+    modhach_cols <- intersect(lancet_cols_to_keep,
+                      colnames(modhach))
+    modhach <- modhach[modhach$RID %in% df$id,
+                       c("RID", "visit_to_years", modhach_cols)
+                      ]
     colnames(modhach) <- c(
-      "id", "time", "hypertension"
+      "id", "time", 
+      lancet_col_mapping[modhach_cols]
     )
 
     # get vitals
-    vitals <- vitals[vitals$RID %in% df$id, c(
-      "RID", "visit_to_years", "BMI"
-    )]
+    vitals_cols <- intersect(lancet_cols_to_keep,
+                      colnames(vitals))
+    vitals <- vitals[vitals$RID %in% df$id,
+                     c("RID", "visit_to_years", vitals_cols)
+                    ]
     colnames(vitals) <- c(
-      "id", "time", "bmi"
+      "id", "time", 
+      lancet_col_mapping[vitals_cols]
     )
 
     # get depression
-    depression <- depression[depression$RID %in% df$id, c(
-      "RID", "visit_to_years", "GDTOTAL"
-    )]
+    depression_cols <- intersect(lancet_cols_to_keep,
+                      colnames(depression))
+    depression <- depression[depression$RID %in% df$id,
+                             c("RID", "visit_to_years", depression_cols)
+                            ]
     colnames(depression) <- c(
-      "id", "time", "gdtotal"
+      "id", "time", 
+      lancet_col_mapping[depression_cols]
     )
     
 
@@ -176,63 +203,163 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
     )
     # }
 
-    # add medhist
-    td_data <- tmerge(
+    if ('heent' %in% colnames(td_data)) {
+      td_data <- tmerge(
       td_data,
       medhist,
       id = id,
       heent = tdc(time, heent, 0),
-      cardio = tdc(time, cardio, 0),
-      alc_abuse = tdc(time, alc_abuse, 0),
-      alc_avg_drinks_day = tdc(time, alc_avg_drinks_day, 0),
-      alc_abuse_years = tdc(time, alc_abuse_years, 0),
-      time_since_abuse = tdc(time, time_since_abuse, -99),
-      smoking = tdc(time, smoking, 0),
-      smoke_avg_packs_day = tdc(time, smoke_avg_packs_day, 0),
-      smoking_years = tdc(time, smoking_years, 0),
-      time_since_smoking = tdc(time, time_since_smoking, -99)
     )
 
-    # add neuroexam
-    td_data <- tmerge(
-      td_data,
-      neuroexm,
-      id = id,
-      visual_impairment = tdc(time, visual_impairment, 0),
-      audit_impairment = tdc(time, audit_impairment, 0)
-    )
+    if ('cardio' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        medhist,
+        id = id,
+        cardio = tdc(time, cardio, 0),
+      )
+    }
 
-    # add adni nightingale
-    td_data <- tmerge(
-      td_data,
-      adni_nightingale,
-      id = id,
-      ldl = tdc(time, ldl, median(adni_nightingale$ldl, na.rm = TRUE))
-    )
+    if ('alc_abuse' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        medhist,
+        id = id,
+        alc_abuse = tdc(time, alc_abuse, 0),
+      )
+    }
 
-    # add modhach
-    td_data <- tmerge(
-      td_data,
-      modhach,
-      id = id,
-      hypertension = tdc(time, hypertension, 0)
-    )
+    if ('alc_avg_drinks_day' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        medhist,
+        id = id,
+        alc_avg_drinks_day = tdc(time, alc_avg_drinks_day, 0),
+      )
+    }
 
-    # add depression
-    td_data <- tmerge(
-      td_data,
-      depression,
-      id = id,
-      gdtotal = tdc(time, gdtotal, median(depression$gdtotal, na.rm = TRUE))
-    )
+    if ('alc_abuse_years' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        medhist,
+        id = id,
+        alc_abuse_years = tdc(time, alc_abuse_years, 0),
+      )
+    }
 
-    # add vitals
-    td_data <- tmerge(
-      td_data,
-      vitals,
-      id = id,
-      bmi = tdc(time, bmi, median(vitals$bmi, na.rm = TRUE))
-    )
+    if ('time_since_abuse' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        medhist,
+        id = id,
+        time_since_abuse = tdc(time, time_since_abuse, -99),
+      )
+    }
+
+    if ('smoking' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        medhist,
+        id = id,
+        smoking = tdc(time, smoking, 0),
+      )
+    }
+
+    if ('smoke_avg_packs_day' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        medhist,
+        id = id,
+        smoke_avg_packs_day = tdc(time, smoke_avg_packs_day, 0),
+      )
+    }
+
+    if ('smoking_years' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        medhist,
+        id = id,
+        smoking_years = tdc(time, smoking_years, 0),
+      )
+    }
+
+    if ('time_since_smoking' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        medhist,
+        id = id,
+        time_since_smoking = tdc(time, time_since_smoking, -99),
+      )
+    }
+
+    if ('visual_impairment' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        neuroexam,
+        id = id,
+        visual_impairment = tdc(time, visual_impairment, 0),
+      )
+    }
+
+    if ('audit_impairment' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        neuroexam,
+        id = id,
+        audit_impairment = tdc(time, audit_impairment, 0),
+      )    
+    }
+
+    if ('ldl' %in% colnames(td_data)) {
+       if (!is.null(mean_lancet_vars)) {
+        ldl_mean <- mean_lancet_vars["ldl"]
+       } else {
+        ldl_mean <- mean(adni_nightingale$ldl, na.rm = TRUE)
+       }
+      td_data <- tmerge(
+        td_data,
+        adni_nightingale,
+        id = id,
+        ldl = tdc(time, ldl, ldl_mean),
+      )
+    }
+
+    if ('hypertension' %in% colnames(td_data)) {
+      td_data <- tmerge(
+        td_data,
+        modhach,
+        id = id,
+        hypertension = tdc(time, hypertension, 0),
+      )
+    }
+
+    if ('bmi' %in% colnames(td_data)) {
+      if (!is.null(mean_lancet_vars)) {
+        bmi_mean <- mean_lancet_vars["bmi"]
+      } else {
+        bmi_mean <- mean(vitals$bmi, na.rm = TRUE)
+      }
+      td_data <- tmerge(
+        td_data,
+        vitals,
+        id = id,
+        bmi = tdc(time, bmi, bmi_mean),
+      )
+    }
+
+    if ('gdtotal' %in% colnames(td_data)) {
+      if (!is.null(mean_lancet_vars)) {
+        gdtotal_mean <- mean_lancet_vars["gdtotal"]
+      } else {
+        gdtotal_mean <- mean(depression$gdtotal, na.rm = TRUE)
+      }
+      td_data <- tmerge(
+        td_data,
+        depression,
+        id = id,
+        gdtotal = tdc(time, gdtotal, gdtotal_mean),
+      )
+    }
     
     # First, let's store the baseline age for each person
     baseline_ages <- td_data %>%
@@ -265,6 +392,9 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
       'bmi',
       'gdtotal'
       )
+    
+    # intersect with lancet_keep_cols
+    continuous_lancet_vars <- intersect(continuous_lancet_vars, lancet_cols_to_keep)
 
     if (!is.null(mean_lancet_vars) && !is.null(sd_lancet_vars)) {
       print("Using provided mean and sd")
@@ -317,7 +447,7 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
   }
 
   # Define model formulas
-  get_model_formula <- function(model_type, lancet = FALSE) {
+  get_model_formula <- function(model_type, lancet = FALSE, lancet_cols_to_keep = NULL) {
     base_formulas <- list(
       "demographics_no_apoe" = Surv(tstart, tstop, event) ~ age + age2 +
         sex + educ,
@@ -353,14 +483,18 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
 
     formula <- base_formulas[[model_type]]
 
-    if (lancet) {
-      formula <- update(formula, . ~ . +
-                          #smoke + alcohol + subuse +
-                          #aerobic + walking +
-                          gdtotal #+ staital +
-                          #vsbsys + vsdia
-                          )
+    if (lancet && !is.null(lancet_cols_to_keep) && length(lancet_cols_to_keep) > 0) {
+      # Create a string of the lancet columns separated by +
+      lancet_terms <- paste(lancet_cols_to_keep, collapse = " + ")
+      # Update the formula to include these terms
+      formula <- as.formula(paste(deparse(formula), "+", lancet_terms))
     }
+
+    # if (lancet) {
+    #   formula <- update(formula, . ~ . +
+    #                       lancet_cols_to_keep 
+    #                       )
+    # }
 
     return(formula)
   }
@@ -412,6 +546,29 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
   # Initialize lists to store results for all models
   metrics_list <- list()
 
+  raw_lancet_cols <- c("MH3HEAD", "MH4CARD", "MH14ALCH", "MH14AALCH", 
+      "MH14BALCH", "MH14CALCH", "MH16SMOK", "MH16ASMOK",
+      "MH16BSMOK", "MH16CSMOK", "NXVISUAL", "NXAUDITO", "LDL_C",
+        "HMHYPERT", "BMI", "GDTOTAL")
+  tidy_lancet_cols <- c(
+      "heent",
+      "cardio",
+      "alc_abuse",
+      "alc_avg_drinks_day",
+      "alc_abuse_years",
+      "time_since_abuse",
+      "smoking",
+      "smoke_avg_packs_day",
+      "smoking_years",
+      "time_since_smoking",
+      "visual_impairment",
+      "audit_impairment",
+      "ldl",
+      "hypertension",
+      "bmi",
+      "gdtotal"
+    )
+
   # iterate over folds and run experiments
   for (fold in seq(0, 4)) {
     print(paste0("Fold ", fold + 1))
@@ -424,15 +581,28 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
       load_path, "val_", fold, ".parquet"
     ))
 
+    lancet_cols_to_keep <- c()
+    for (col in raw_lancet_cols) {
+      keep <- TRUE
+      if (length(unique(train_df_raw[[col]])) == 1) {
+        keep <- FALSE
+      } else if (length(unique(val_df_raw[[col]])) == 1) {
+        keep <- FALSE
+      }
+      if (keep) {
+        lancet_cols_to_keep <- c(lancet_cols_to_keep, col)
+      }
+    }
+
     format_train <- format_df(train_df_raw, #ptau = is_ptau, lancet = is_lancet, pet = is_pet,
                       medhist, neuroexam, adni_nightingale, modhach, 
-                      vitals, depression, centiloids)
+                      vitals, depression, lancet_cols_to_keep, centiloids)
     df <- format_train[[1]]
     mean_lancet_vars <- format_train[[2]]
     sd_lancet_vars <- format_train[[3]]
     format_val <- format_df(val_df_raw, #ptau = is_ptau, lancet = is_lancet, pet = is_pet,
                       medhist, neuroexam, adni_nightingale, modhach, 
-                      vitals, depression, centiloids,
+                      vitals, depression, lancet_cols_to_keep, centiloids,
                       mean_lancet_vars, sd_lancet_vars)
     val_df <- format_val[[1]]
     
@@ -453,7 +623,8 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
       base_type <- gsub("_lancet", "", model_name)
 
       # Get formula
-      formula <- get_model_formula(base_type, is_lancet)
+      lancet_formula_cols <- intersect(colnames(df), tidy_lancet_cols)
+      formula <- get_model_formula(base_type, is_lancet, lancet_formula_cols)
 
       # Fit model
       # if model gives overflow error, remove age2*apoe
