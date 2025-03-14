@@ -209,7 +209,8 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
       medhist,
       id = id,
       heent = tdc(time, heent, 0),
-    )
+      )
+    }
 
     if ('cardio' %in% colnames(td_data)) {
       td_data <- tmerge(
