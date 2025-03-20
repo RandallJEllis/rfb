@@ -304,3 +304,50 @@ def probas_to_results(filepath, youden=True, beta=1, threshold=None):
 #    else:
 #        print("No function name provided.")
         
+
+
+from sklearn.metrics import RocCurveDisplay, roc_curve, auc, roc_auc_score, d2_absolute_error_score,\
+    d2_pinball_score, d2_tweedie_score, explained_variance_score, max_error,\
+        mean_absolute_error, mean_squared_error, mean_squared_log_error, median_absolute_error, r2_score,\
+            mean_absolute_percentage_error, mean_poisson_deviance, mean_gamma_deviance, mean_tweedie_deviance,\
+                mean_pinball_loss, root_mean_squared_error, root_mean_squared_log_error        
+def calculate_regression_metrics(y_true, y_pred, tweedie_power=0):
+    """
+    Calculates various regression metrics for predictions and true values.
+
+    Parameters:
+    - y_true: array-like of shape (n_samples,) True target values.
+    - y_pred: array-like of shape (n_samples,) Predicted target values.
+    - tweedie_power: Power parameter for Tweedie distribution deviance and D2 Tweedie score.
+        Default is 0 (Gaussian).
+
+    Returns:
+    - metrics_dict: Dictionary containing all calculated metrics.
+    """
+    metrics_dict = {
+        "r2_score": r2_score(y_true, y_pred),
+        "median_absolute_error": median_absolute_error(y_true, y_pred),
+        "mean_absolute_error": mean_absolute_error(y_true, y_pred),
+        "mean_squared_error": mean_squared_error(y_true, y_pred),
+        "d2_absolute_error_score": d2_absolute_error_score(y_true, y_pred),
+        "d2_pinball_score": d2_pinball_score(y_true, y_pred, alpha=0.5),
+        "d2_tweedie_score": d2_tweedie_score(y_true, y_pred, power=tweedie_power),
+        "explained_variance_score": explained_variance_score(y_true, y_pred),
+        "max_error": max_error(y_true, y_pred),
+        "mean_absolute_percentage_error": mean_absolute_percentage_error(y_true, y_pred),
+        "mean_pinball_loss": mean_pinball_loss(y_true, y_pred, alpha=0.5),
+        "root_mean_squared_error": np.sqrt(mean_squared_error(y_true, y_pred)),
+    }
+
+    # check if all y_true and y_pred values are positive for mean_gamma_deviance
+    # if all(y_true >= 0):
+        # metrics_dict["root_mean_squared_log_error"] = np.sqrt(mean_squared_log_error(y_true, y_pred))
+        
+    # check if all y_true and y_pred values are positive for mean_gamma_deviance
+    if all(y_true > 0) and all(y_pred > 0):
+        metrics_dict["root_mean_squared_log_error"] = np.sqrt(mean_squared_log_error(y_true, y_pred))
+        metrics_dict["mean_squared_log_error"] = mean_squared_log_error(y_true, y_pred)
+        metrics_dict["mean_gamma_deviance"] = mean_gamma_deviance(y_true, y_pred)
+        metrics_dict["mean_tweedie_deviance"] = mean_tweedie_deviance(y_true, y_pred, power=tweedie_power)
+        metrics_dict["mean_poisson_deviance"] = mean_poisson_deviance(y_true, y_pred)
+    return metrics_dict

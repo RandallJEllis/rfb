@@ -104,8 +104,8 @@ def binary_encode_column_membership_datacoding2171(df, field_id_columns, new_col
     return df
 
 
-def get_protein(protein_id, annotation_protein):
-    protein_code = pd.read_csv('../../../proj_idp/tidy_data/proteomics/coding143.tsv', sep='\t')
+def get_protein_lookup(protein_lookup_path):
+    protein_code = pd.read_csv(protein_lookup_path, sep='\t')
     
     # Split the column by semicolon and expand into separate columns
     split_columns = protein_code['meaning'].str.split(';', expand=True)
@@ -119,20 +119,20 @@ def get_protein(protein_id, annotation_protein):
     # Drop the original column if no longer needed
     protein_code = protein_code.drop('meaning', axis=1)
 
-    ticks = []
+    # ticks = []
 
-    for f in top_feature_names[:20]:
-        if f[-2:] == '-0':
-            hyphen_idx = f.index('-')
-            prot_id = f[:hyphen_idx]
-            sym = protein_code.loc[protein_code.coding == int(prot_id), 'part_1'].values[0]
+    # for f in top_feature_names[:20]:
+    #     if f[-2:] == '-0':
+    #         hyphen_idx = f.index('-')
+    #         prot_id = f[:hyphen_idx]
+    #         sym = protein_code.loc[protein_code.coding == int(prot_id), 'part_1'].values[0]
             
-            ticks.append(sym)
-        elif '21003' in f:
-            ticks.append('Age')
-        elif 'apoe_' in f:
-            allele_num = f[-3]
-            ticks.append(f'APOE$\epsilon$4, {allele_num} alleles')
-        else:
-            ticks.append(f)
-        
+    #         ticks.append(sym)
+    #     elif '21003' in f:
+    #         ticks.append('Age')
+    #     elif 'apoe_' in f:
+    #         allele_num = f[-3]
+    #         ticks.append(f'APOE$\epsilon$4, {allele_num} alleles')
+    #     else:
+    #         ticks.append(f)
+    return protein_code    

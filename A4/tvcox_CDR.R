@@ -31,15 +31,15 @@ source("metrics.R")
 #     ungroup()
 # }
 
-for (amyloid_positive_only in c(TRUE, 
+for (amyloid_positive_only in c(#TRUE, 
                                 FALSE)) {
   load_path = "../../tidy_data/A4/"
   lancet_load_path = "../../tidy_data/A4/"
   if (amyloid_positive_only) {
     load_path = paste0(load_path, "amyloid_positive/")
   } 
-
-# tmerge data for all models
+  print(paste('Amyloid positive only: ', amyloid_positive_only))
+  # tmerge data for all models
   format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
                         habits, psychwell, vitals, centiloids) {
     df$SEX <- factor(df$SEX)
