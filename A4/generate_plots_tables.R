@@ -54,9 +54,27 @@ val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
 options(pillar.width = Inf)
 ########################################################
 # Sensitivity, Specificity, PPV, NPV
+df_spspppvnpv <- read_parquet(paste0(main_path, "spspppvnpv_summary.parquet"))
+
+# calculate differences between ptau+demo+lancet and demographics+lancet at each time point for each metric
 model1 <- "ptau_demographics_lancet"
 model2 <- "demographics_lancet"
-range_sespppvnnv(model1, model2)
+difference_dfs <- data.frame()
+for (t in seq(3, 8)) {
+  difference_dfs <- rbind(difference_dfs,
+                          df_spspppvnpv %>%
+                            filter(time == t) %>%
+                            filter(model %in% c(model1, model2)) %>%
+                            select(model, mean_sensitivity, mean_specificity, mean_ppv, mean_npv) %>%
+    mutate(difference_sensitivity = mean_sensitivity - mean_sensitivity[model == "demographics_lancet"],
+           difference_specificity = mean_specificity - mean_specificity[model == "demographics_lancet"],
+           difference_ppv = mean_ppv - mean_ppv[model == "demographics_lancet"],
+           difference_npv = mean_npv - mean_npv[model == "demographics_lancet"]) %>%
+    # print only columns with difference_
+    select(starts_with("difference_")) %>%
+    print()
+  )
+}
 
 ########################################################
 # Bayes Information Criterion
@@ -163,6 +181,20 @@ results_table <- pvals_compare_trocs$all_results
 write.csv(results_table, paste0(main_path, "auc_comparison_results_demo_lancet_vs_centiloids_demo_lancet.csv"),
           row.names = FALSE)
 
+
+
+########################################################
+# Generate and save results for each metric
+metrics_to_collect <- c("auc", "brier", "concordance")
+
+for (metric in metrics_to_collect) {
+  results <- collate_metric(metrics_list, metric)
+  write_csv(
+    results,
+    paste0(main_path, "results_", metric, "_all_models.csv")
+  )
+}
+
 ########################################################
 # Table S3 - reshape auc_summary to wide format
 auc_summary <- read_parquet(paste0(main_path, "auc_summary.parquet"))
@@ -178,18 +210,6 @@ xtable_obj <- xtable(pauc_res)
 digits(xtable_obj) <- c(0, rep(4, ncol(pauc_res)))  # Set digits for each column
 print(xtable_obj, type = "latex", sanitize.text.function = function(x) x)  # Don't escape LaTeX commands
 
-
-########################################################
-# Generate and save results for each metric
-metrics_to_collect <- c("auc", "brier", "concordance")
-
-for (metric in metrics_to_collect) {
-  results <- collate_metric(metrics_list, metric)
-  write_csv(
-    results,
-    paste0(main_path, "results_", metric, "_all_models.csv")
-  )
-}
 
 ########################################################
 # Calculate calibration data

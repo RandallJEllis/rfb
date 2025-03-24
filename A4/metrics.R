@@ -614,3 +614,31 @@ print_auc_latex_table <- function(auc_summary) {
   library(xtable)
   print(xtable(wide_auc_summary), type = "latex")
 }
+
+
+range_sespppvnnv <- function(model1, model2) {
+  df_sespppvnpv <- read_parquet(paste0(main_path, "spspppvnpv_summary.parquet"))
+
+  # calculate differences between ptau+demo+lancet and demographics+lancet at each time point for each metric
+  difference_dfs <- data.frame()
+  for (t in seq(3, 8)) {
+    difference_dfs <- rbind(difference_dfs,
+                            df_sespppvnpv %>%
+                              filter(time == t) %>%
+                              filter(model %in% c(model1, model2)) %>%
+                              select(model, mean_sensitivity, mean_specificity, mean_ppv, mean_npv) %>%
+                              mutate(difference_sensitivity = mean_sensitivity - mean_sensitivity[model == model2],
+                                    difference_specificity = mean_specificity - mean_specificity[model == model2],
+                                    difference_ppv = mean_ppv - mean_ppv[model == model2],
+                                    difference_npv = mean_npv - mean_npv[model == model2]) %>%
+                              select(model, difference_sensitivity, difference_specificity, difference_ppv, difference_npv) %>%
+                              filter(model == model1)
+    )
+  }
+
+  # print ranges of difference_dfs
+  print(paste0("Range of difference_sensitivity: ", range(difference_dfs$difference_sensitivity)[1], " to ", range(difference_dfs$difference_sensitivity)[2]))
+  print(paste0("Range of difference_specificity: ", range(difference_dfs$difference_specificity)[1], " to ", range(difference_dfs$difference_specificity)[2]))
+  print(paste0("Range of difference_ppv: ", range(difference_dfs$difference_ppv)[1], " to ", range(difference_dfs$difference_ppv)[2]))
+  print(paste0("Range of difference_npv: ", range(difference_dfs$difference_npv)[1], " to ", range(difference_dfs$difference_npv)[2]))
+}
