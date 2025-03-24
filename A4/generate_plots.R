@@ -22,22 +22,59 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
     main_path <- "../../tidy_data/A4/"
   }
 
+  models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
+  metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
+  val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
+
+  model_names <- c("demographics_lancet",
+                    "ptau",
+                    "ptau_demographics_lancet",
+                    "centiloids",
+                    "centiloids_demographics_lancet",
+                    "ptau_centiloids_demographics_lancet")
+  width <- 8
+  height <- 6
+  dpi <- 300
+  save_all_figures(model_names, models_list, metrics_list, val_df_l,
+                   width, height, dpi, main_path)
+}
+
+# Other stats and tables
+amyloid_positive_only <- FALSE
+if (amyloid_positive_only) {
+  main_path <- "../../tidy_data/A4/amyloid_positive/"
+  } else {
+    main_path <- "../../tidy_data/A4/"
+  }
 models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
 metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
 val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
 
-model_names <- c("demographics_lancet",
-                  "ptau",
-                  "ptau_demographics_lancet",
-                  "centiloids",
-                  "centiloids_demographics_lancet",
-                  "ptau_centiloids_demographics_lancet")
-  width <- 8
-  height <- 6
-  dpi <- 300
-  save_all_figures(model_names, models_list, metrics_list, val_df_l, width, height, dpi, main_path)
-}
 
+options(pillar.width = Inf)
+########################################################
+# Sensitivity, Specificity, PPV, NPV
+df_spspppvnpv <- read_parquet(paste0(main_path, "spspppvnpv_summary.parquet"))
+
+# calculate differences between ptau+demo+lancet and demographics+lancet at each time point for each metric
+model1 <- "ptau_demographics_lancet"
+model2 <- "demographics_lancet"
+difference_dfs <- data.frame()
+for (t in seq(3, 8)) {
+  difference_dfs <- rbind(difference_dfs,
+                          df_spspppvnpv %>%
+                            filter(time == t) %>%
+                            filter(model %in% c(model1, model2)) %>%
+                            select(model, mean_sensitivity, mean_specificity, mean_ppv, mean_npv) %>%
+    mutate(difference_sensitivity = mean_sensitivity - mean_sensitivity[model == "demographics_lancet"],
+           difference_specificity = mean_specificity - mean_specificity[model == "demographics_lancet"],
+           difference_ppv = mean_ppv - mean_ppv[model == "demographics_lancet"],
+           difference_npv = mean_npv - mean_npv[model == "demographics_lancet"]) %>%
+    # print only columns with difference_
+    select(starts_with("difference_")) %>%
+    print()
+  )
+}
 
 ########################################################
 # Bayes Information Criterion
@@ -52,19 +89,14 @@ for (model_name in names(models_list)) {
 # Fig S1 and Table S1
 # Calculate p-values comparing AUCs between two models at each time point
 # First combine timeROC objects from each fold for each model
-demo_lancet_trocs <- pull_trocs("demographics_lancet")
-ptau_demo_lancet_trocs <- pull_trocs("ptau_demographics_lancet")
-centiloids_demo_lancet_trocs <- pull_trocs("centiloids_demographics_lancet")
-ptau_centiloids_demo_lancet_trocs <- pull_trocs("ptau_centiloids_demographics_lancet")
+demo_lancet_trocs <- pull_trocs(metrics_list, "demographics_lancet")
+ptau_demo_lancet_trocs <- pull_trocs(metrics_list, "ptau_demographics_lancet")
+centiloids_demo_lancet_trocs <- pull_trocs(metrics_list, "centiloids_demographics_lancet")
+ptau_centiloids_demo_lancet_trocs <- pull_trocs(metrics_list, "ptau_centiloids_demographics_lancet")
 
 # demo+lancet vs ptau+demo+lancet
 pvals_compare_trocs <- compare_tvaurocs(demo_lancet_trocs,
                                         ptau_demo_lancet_trocs)
-# Create detailed results table
-results_table <- pvals_compare_trocs$all_results
-write.csv(results_table, paste0(main_path, "auc_comparison_results_demo_lancet_vs_ptau_demo_lancet.csv"),
-          row.names = FALSE)
-
 # Table S1 - pivot table of p-values where each row is a fold and each column is a time point
 print_pvalue_latex_table(pvals_compare_trocs$all_results)
 
@@ -74,6 +106,23 @@ ggsave(paste0(main_path, "pvalue_histogram_pTau217_Demo_Lancet_vs_Demo_Lancet.pd
        width = 8,
        height = 6,
        dpi = 300)
+# how many p-values are less than 0.05? out of how many total p-values?
+sum(pvals_compare_trocs$all_results$p_value < 0.05) /
+  length(pvals_compare_trocs$all_results$p_value)
+
+print_model_stats(models_list, "ptau")
+
+# print out all p-values
+print("Summary of AUC differences and p-values by time point:")
+print(range(pvals_compare_trocs$all_results$p_value))
+print(mean(pvals_compare_trocs$all_results$p_value))
+print(sd(pvals_compare_trocs$all_results$p_value))
+print(median(pvals_compare_trocs$all_results$p_value))
+
+# Create detailed results table
+results_table <- pvals_compare_trocs$all_results
+write.csv(results_table, paste0(main_path, "auc_comparison_results_demo_lancet_vs_ptau_demo_lancet.csv"),
+          row.names = FALSE)
 
 # # Boxplots at each time point of AUC differences for pTau217+Demographics+Lancet vs Demographics+Lancet
 # library(ggplot2)
@@ -105,13 +154,20 @@ ggsave(paste0(main_path, "pvalue_histogram_pTau217_Demo_Lancet_vs_Demo_Lancet.pd
 # demo+lancet vs centiloids+demo+lancet
 pvals_compare_trocs <- compare_tvaurocs(demo_lancet_trocs,
                                         centiloids_demo_lancet_trocs)
-# Create detailed results table
-results_table <- pvals_compare_trocs$all_results
-write.csv(results_table, paste0(main_path, "auc_comparison_results_demo_lancet_vs_centiloids_demo_lancet.csv"),
-          row.names = FALSE)
-
 # Table S2 - pivot table of p-values where each row is a fold and each column is a time point
 print_pvalue_latex_table(pvals_compare_trocs$all_results)
+
+# how many p-values are less than 0.05? out of how many total p-values?
+sum(pvals_compare_trocs$all_results$p_value < 0.05) /
+  length(pvals_compare_trocs$all_results$p_value)
+
+print_model_stats(models_list, "centiloids")
+# print out all p-values
+print("Summary of AUC differences and p-values by time point:")
+print(range(pvals_compare_trocs$all_results$p_value))
+print(mean(pvals_compare_trocs$all_results$p_value))
+print(sd(pvals_compare_trocs$all_results$p_value))
+print(median(pvals_compare_trocs$all_results$p_value))
 
 # Fig S2 - Histogram of p-values, bin size 0.05
 ggsave(paste0(main_path, "pvalue_histogram_centiloids_Demo_Lancet_vs_Demo_Lancet.pdf"),
@@ -119,6 +175,13 @@ ggsave(paste0(main_path, "pvalue_histogram_centiloids_Demo_Lancet_vs_Demo_Lancet
        width = 8,
        height = 6,
        dpi = 300)
+
+# Create detailed results table
+results_table <- pvals_compare_trocs$all_results
+write.csv(results_table, paste0(main_path, "auc_comparison_results_demo_lancet_vs_centiloids_demo_lancet.csv"),
+          row.names = FALSE)
+
+
 
 ########################################################
 # Generate and save results for each metric
@@ -134,6 +197,7 @@ for (metric in metrics_to_collect) {
 
 ########################################################
 # Table S3 - reshape auc_summary to wide format
+auc_summary <- read_parquet(paste0(main_path, "auc_summary.parquet"))
 print_auc_latex_table(auc_summary)
 
 rr <- pull_roc_summary(model_names, seq(3, 7))

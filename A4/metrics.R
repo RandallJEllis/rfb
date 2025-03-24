@@ -247,16 +247,7 @@ compare_tvaurocs <- function(trocs_x, trocs_y) {
   # Merge with existing summary stats
   final_summary <- merge(summary_stats, ci_summary, by = "time")
 
-  # print out all p-values
-  print("Summary of AUC differences and p-values by time point:")
-  print(range(pvals_compare_trocs$all_results$p_value))
-  print(mean(pvals_compare_trocs$all_results$p_value))
-  print(sd(pvals_compare_trocs$all_results$p_value))
-  print(median(pvals_compare_trocs$all_results$p_value))
-
-  # how many p-values are less than 0.05? out of how many total p-values?
-  sum(pvals_compare_trocs$all_results$p_value < 0.05) /
-    length(pvals_compare_trocs$all_results$p_value)
+  
   
   return(list(
     all_results = all_results_df,
@@ -415,7 +406,7 @@ print_model_stats <- function(models_list, var_string) {
 
 
 
-pull_trocs <- function(model_name) {
+pull_trocs <- function(metrics_list, model_name) {
   list(
     metrics_list[[model_name]]$fold_1$troc,
     metrics_list[[model_name]]$fold_2$troc,

@@ -4,8 +4,9 @@ library(arrow)
 library(this.path)
 library(tidyverse)
 library(splines)
-
+library(this.path)
 setwd(dirname(this.path()))
+source('plot_figures.R')
 
 rsq <- function (x, y) cor(x, y) ^ 2
 calculate_adj_r2 <- function(r_squared, n, p) {
@@ -62,6 +63,10 @@ preprocess_df <- function(df, pacc_col, pacc, habits, psychwell, vitals, centilo
                         vsdia = VSBPDIA,
                         bmi = BMI,
                         centiloids = AMYLCENT)
+
+    # set E3/E3 as the reference level for apoe
+    df$apoe <- as.factor(df$apoe)
+    df$apoe <- relevel(df$apoe, ref = "E3/E3")
 
     return(df)
 }
@@ -208,13 +213,13 @@ for (pacc_col in c('PACC.raw', 'PACC')) {
         val_pacc_df <- preprocess_df(val_df, pacc_col, pacc, habits, psychwell, vitals, centiloids)
 
         # scale lancet variables
-        means <- apply(train_pacc_df[, lancet_vars], 2, mean, na.rm = TRUE)
-        sds <- apply(train_pacc_df[, lancet_vars], 2, sd, na.rm = TRUE)
+        means <- apply(train_pacc_df[, c(lancet_vars)], 2, mean, na.rm = TRUE)
+        sds <- apply(train_pacc_df[, c(lancet_vars)], 2, sd, na.rm = TRUE)
 
-        train_pacc_df[, lancet_vars] <- scale(train_pacc_df[, lancet_vars],
+        train_pacc_df[, c(lancet_vars)] <- scale(train_pacc_df[, c(lancet_vars)],
         center = means, scale = sds
         )
-        val_pacc_df[, lancet_vars] <- scale(val_pacc_df[, lancet_vars],
+        val_pacc_df[, c(lancet_vars)] <- scale(val_pacc_df[, c(lancet_vars)],
         center = means, scale = sds
         )
 
@@ -283,45 +288,69 @@ for (pacc_col in c('PACC.raw', 'PACC')) {
     # combine results into a dataframe
     results <- data.frame()
     for (model_name in names(models_list)) {
+        # model_results <- data.frame()
         for (fold in seq(0,4)) {
             results <- rbind(results, data.frame(
                 model_name = model_name,
                 pacc_col = pacc_col,
                 fold = fold,
-                train_mean_rsquared = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rsquared),
-                train_sd_rsquared = sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rsquared),
-                train_ci_lower_rsquared = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rsquared) - qt(0.975, 4) * sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rsquared) / sqrt(5),
-                train_ci_upper_rsquared = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rsquared) + qt(0.975, 4) * sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rsquared) / sqrt(5),
-                val_mean_rsquared = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rsquared),
-                val_sd_rsquared = sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rsquared),
-                val_ci_lower_rsquared = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rsquared) - qt(0.975, 4) * sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rsquared) / sqrt(5),
-                val_ci_upper_rsquared = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rsquared) + qt(0.975, 4) * sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rsquared) / sqrt(5),
-                train_mean_rmse = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rmse),
-                train_sd_rmse = sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rmse),
-                train_ci_lower_rmse = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rmse) - qt(0.975, 4) * sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rmse) / sqrt(5),
-                train_ci_upper_rmse = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rmse) + qt(0.975, 4) * sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rmse) / sqrt(5),
-                val_mean_rmse = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rmse),
-                val_sd_rmse = sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rmse),
-                val_ci_lower_rmse = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rmse) - qt(0.975, 4) * sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rmse) / sqrt(5),
-                val_ci_upper_rmse = mean(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rmse) + qt(0.975, 4) * sd(metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rmse) / sqrt(5)
+                train_rsquared = metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rsquared,
+                val_rsquared = metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rsquared,
+                train_rmse = metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$train_rmse,
+                val_rmse = metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$val_rmse
             ))
         }
-    }
+    
+    
+        agg_results <- results %>%
+            group_by(model_name) %>%
+            summarise(train_mean_rsquared = mean(train_rsquared),
+                    train_sd_rsquared = sd(train_rsquared),
+                    train_ci_lower_rsquared = mean(train_rsquared) - qt(0.975, 4) * sd(train_rsquared) / sqrt(5),
+                    train_ci_upper_rsquared = mean(train_rsquared) + qt(0.975, 4) * sd(train_rsquared) / sqrt(5),
+                    val_mean_rsquared = mean(val_rsquared),
+                    val_sd_rsquared = sd(val_rsquared),
+                    val_ci_lower_rsquared = mean(val_rsquared) - qt(0.975, 4) * sd(val_rsquared) / sqrt(5),
+                    val_ci_upper_rsquared = mean(val_rsquared) + qt(0.975, 4) * sd(val_rsquared) / sqrt(5),
+                    train_mean_rmse = mean(train_rmse),
+                    train_sd_rmse = sd(train_rmse),
+                    train_ci_lower_rmse = mean(train_rmse) - qt(0.975, 4) * sd(train_rmse) / sqrt(5),
+                    train_ci_upper_rmse = mean(train_rmse) + qt(0.975, 4) * sd(train_rmse) / sqrt(5),
+                    val_mean_rmse = mean(val_rmse),
+                    val_sd_rmse = sd(val_rmse),
+                    val_ci_lower_rmse = mean(val_rmse) - qt(0.975, 4) * sd(val_rmse) / sqrt(5),
+                    val_ci_upper_rmse = mean(val_rmse) + qt(0.975, 4) * sd(val_rmse) / sqrt(5)
+                )
+            
+        }
+    
+    
 
     # save results
-    write_parquet(results, paste0('../../results/A4/cubic_spline_', pacc_col, '.parquet'))
+    write_parquet(results, paste0('../../results/A4/PACC/spline_model/cubic_spline_results_', pacc_col, '.parquet'))
     print(paste0('Saved results for ', pacc_col))
 
+    write_parquet(agg_results, paste0('../../results/A4/PACC/spline_model/cubic_spline_agg_results_', pacc_col, '.parquet'))
+    print(paste0('Saved aggregated results for ', pacc_col))
+
     # save metrics
-    qs::qsave(metrics_list, paste0('../../results/A4/cubic_spline_metrics_', pacc_col, '.qs'))
+    qs::qsave(metrics_list, paste0('../../results/A4/PACC/spline_model/cubic_spline_metrics_', pacc_col, '.qs'))
     print(paste0('Saved metrics for ', pacc_col))
 
     # save models
-    qs::qsave(models_list, paste0('../../results/A4/cubic_spline_models_', pacc_col, '.qs'))
+    qs::qsave(models_list, paste0('../../results/A4/PACC/spline_model/cubic_spline_models_', pacc_col, '.qs'))
     print(paste0('Saved models for ', pacc_col))
 }
 
-results <- read_parquet('../../results/A4/cubic_spline_PACC.raw.parquet')
+
+models_list <- qs::qread('../../results/A4/PACC/spline_model/cubic_spline_models_PACC.raw.qs')
+
+summary(models_list$demographics_lancet$`fold_3`)
+
+
+# make boxplots
+pacc_col <- 'PACC.raw'
+results <- read_parquet(paste0('../../results/A4/PACC/spline_model/cubic_spline_results_', pacc_col, '.parquet'))
 
 # plot results
 results <- results[results$model_name %in% c("demographics_lancet",
@@ -332,23 +361,55 @@ results <- results[results$model_name %in% c("demographics_lancet",
                                             "ptau_centiloids_demographics_lancet"), ]
 
 # rename models
-results <- results %>%
-    mutate(model_name = case_when(
-        model_name == "demographics_lancet" ~ "Demo+Lancet",
-        model_name == "ptau" ~ "pTau217",
-        model_name == "ptau_demographics_lancet" ~ "Demo+Lancet+pTau217",
-        model_name == "centiloids" ~ "Centiloids",
-        model_name == "centiloids_demographics_lancet" ~ "Demo+Lancet+Centiloids",
-        model_name == "ptau_centiloids_demographics_lancet" ~ "Demo+Lancet+pTau217+Centiloids"
-    ))
+# results <- results %>%
+#     mutate(model_name = case_when(
+#         model_name == "demographics_lancet" ~ "Demo+Lancet",
+#         model_name == "ptau" ~ "pTau217",
+#         model_name == "ptau_demographics_lancet" ~ "Demo+Lancet+pTau217",
+#         model_name == "centiloids" ~ "Centiloids",
+#         model_name == "centiloids_demographics_lancet" ~ "Demo+Lancet+Centiloids",
+#         model_name == "ptau_centiloids_demographics_lancet" ~ "Demo+Lancet+pTau217+Centiloids"
+#     ))
+
+# pull colors from plot_figures.R
+labels_colors <- get_colors_labels()
+colors <- labels_colors$colors[results$model_name]
+labels <- labels_colors$labels[results$model_name]
 
 # use ggplot to plot results
-ggplot(results, aes(x = model_name, y = val_mean_rsquared)) +
-  geom_boxplot(fill = "grey92") +
+ggplot(results, aes(x = factor(model_name, levels = c("demographics_lancet", "ptau", "ptau_demographics_lancet", 
+                                                     "centiloids", "centiloids_demographics_lancet", 
+                                                     "ptau_centiloids_demographics_lancet")), 
+                    y = val_rsquared, color = model_name)) +
+  geom_boxplot(fill = "white") +
   geom_point(
     size = 2,
     alpha = .3,
     position = position_jitter(
       seed = 1, width = .2
     )
+  ) +
+  scale_color_manual(values = unique(colors), labels = unique(labels), name = "Model",
+                    breaks = c("demographics_lancet", "ptau", "ptau_demographics_lancet", 
+                              "centiloids", "centiloids_demographics_lancet", 
+                              "ptau_centiloids_demographics_lancet")) +
+  scale_fill_manual(values = unique(colors), labels = unique(labels), name = "Model",
+                    breaks = c("demographics_lancet", "ptau", "ptau_demographics_lancet", 
+                              "centiloids", "centiloids_demographics_lancet", 
+                              "ptau_centiloids_demographics_lancet")) +
+  scale_shape_manual(values = c(16, 17, 15, 18, 14, 3)) +
+  scale_x_discrete(labels = labels) +
+  labs(y = "R²") +
+  labs(x = "Model") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1, size = 14, face = "bold"),
+    axis.text.y = element_text(size = 14, face = "bold"),
+    axis.title.x = element_text(size = 16, face = "bold"),
+    axis.title.y = element_text(size = 16, face = "bold"),
+    legend.text = element_text(size = 14, face = "bold"),
+    legend.title = element_text(size = 16, face = "bold"),
+    plot.title = element_text(size = 18, face = "bold")
   )
+
+ggsave(paste0('../../results/A4/PACC/spline_model/cubic_spline_boxplot_', pacc_col, '.pdf'), width = 10, height = 8)
