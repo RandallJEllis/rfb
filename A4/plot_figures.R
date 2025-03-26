@@ -170,6 +170,13 @@ td_plot <- function(summary_df, all_results_df=NULL, model_names, metric = "auc"
   scale_fill_manual(values = model_colors,
                     labels = model_labels,
                     name = "Model") +
+  {if (metric == "auc") {
+    list(
+      scale_y_continuous(breaks = seq(0.3, 1, by = 0.1)),
+      scale_x_continuous(breaks = seq(1, 10, 1)),
+      geom_hline(yintercept = 0.5, linetype = "dotted", color = "gray50")
+    )
+  }} +
   theme_bw(base_size = 14) +
   theme(
       plot.title = element_text(face = "bold", size = 16, hjust = 0.5),
@@ -960,7 +967,7 @@ plot_roc_biggest_year_difference <- function(auc_summary, agg_auc_summary, model
     select(time, auc_difference)
 
   # Find the year with the largest difference in AUC between the two models
-  year <- mean_diffs$time[which.max(mean_diffs$auc_difference)]
+  year <- mean_diffs$time[which.max(abs(mean_diffs$auc_difference))]
 
   ##### Figure 1B - Create individual panel for time = 7
   roc_summary <- pull_roc_summary(model_names, eval_times)
@@ -1148,7 +1155,7 @@ plot_SeSpPPVNPV <- function(data, metric) {
     )
 }
 
-save_all_figures <- function(model_names, models_list, metrics_list, val_df_l, width, height, dpi, main_path) {
+save_all_figures <- function(model_names, models_list, metrics_list, train_df_l, val_df_l, width, height, dpi, main_path) {
   ##### FIGURE 1A: AUC over time
   # # AUROC and CIs 
   # print("Plotting AUC over time")
@@ -1223,19 +1230,15 @@ save_all_figures <- function(model_names, models_list, metrics_list, val_df_l, w
 
   ##### Figure 1E: Sensitivity, Specificity, PPV, NPV
   print("Plotting sensitivity, specificity, PPV, NPV")
-  # check if file exists
-  if (!file.exists(paste0(main_path, "spspppvnpv_summary.parquet"))) {
-    df_spspppvnpv <- SpSpPPVNPV_summary(models_list, model_names, val_df_l)
-    write_parquet(df_spspppvnpv, paste0(main_path, "spspppvnpv_summary.parquet"))
-  } else {
-    df_spspppvnpv <- read_parquet(paste0(main_path, "spspppvnpv_summary.parquet"))
-  }
+  # Set up parallel processing
+  df_sespppvnpv <- SeSpPPVNPV_summary(models_list, model_names, train_df_l, val_df_l)
+  write_parquet(df_sespppvnpv, paste0(main_path, "sespppvnpv_summary.parquet"))
 
   # Create individual plots
-  sensitivity_plot <- plot_SeSpPPVNPV(df_spspppvnpv, "sensitivity")
-  specificity_plot <- plot_SeSpPPVNPV(df_spspppvnpv, "specificity")
-  ppv_plot <- plot_SeSpPPVNPV(df_spspppvnpv, "ppv")
-  npv_plot <- plot_SeSpPPVNPV(df_spspppvnpv, "npv")
+  sensitivity_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "sensitivity")
+  specificity_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "specificity")
+  ppv_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "ppv")
+  npv_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "npv")
 
   ggsave(
     paste0(main_path, "sensitivity_plot.pdf"),

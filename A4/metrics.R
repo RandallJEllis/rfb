@@ -298,16 +298,16 @@ collate_metric <- function(metrics_list, metric = "auc") {
   return(all_results)
 }
 
-calculate_SeSpPPVNPV <- function(model, val_data, times) {
-  risk_scores <- predict(model, val_data)
+calculate_SeSpPPVNPV <- function(model, train_data, val_data, times) {
+  risk_scores <- predict(model, train_data)
   
   # Find optimal cutpoint using Youden's index
   se_sp_ppv_npv <- list()
-  for (cutpoint in seq(min(risk_scores), max(risk_scores), length.out = 100)) {
+  for (cutpoint in seq(min(risk_scores), max(risk_scores), length.out = 50)) {
     se_sp_ppv_npv_results <- SeSpPPVNPV(
       cutpoint = cutpoint,
-      T = val_data$time,
-      delta = val_data$event,
+      T = train_data$time,
+      delta = train_data$event,
       marker = risk_scores,
       cause = 1,
       weighting = "marginal",
@@ -315,19 +315,34 @@ calculate_SeSpPPVNPV <- function(model, val_data, times) {
     )
     se_sp_ppv_npv[[paste0("cutpoint_", cutpoint)]] <- se_sp_ppv_npv_results
   }
-  
+
   youden_index_list <- list()
   for (cutpoint in names(se_sp_ppv_npv)) {
     youden_index <- se_sp_ppv_npv[[cutpoint]]$TP + (1 - se_sp_ppv_npv[[cutpoint]]$FP) - 1
     youden_index_list[[cutpoint]] <- mean(youden_index)
   }
-  
+
   best_cutpoint <- names(youden_index_list)[which.max(youden_index_list)]
-  return(se_sp_ppv_npv[[best_cutpoint]])
+  print(paste0("Best cutpoint: ", best_cutpoint))
+  best_cutpoint <- as.numeric(str_extract(best_cutpoint, "\\d+\\.\\d+"))
+
+  # Calculate metrics for validation set
+  risk_scores_val <- predict(model, val_data)
+  se_sp_ppv_npv_results_val <- SeSpPPVNPV(
+    cutpoint = best_cutpoint,
+    T = val_data$time,
+    delta = val_data$event,
+    marker = risk_scores_val,
+    cause = 1,
+    weighting = "marginal",
+    times = times
+  )
+
+  return(se_sp_ppv_npv_results_val)
 }
 
 
-SpSpPPVNPV_summary <- function(models_list, model_names, val_df_l) {
+SeSpPPVNPV_summary <- function(models_list, model_names, train_df_l, val_df_l) {
   metrics_over_time <- list()
 
   # Calculate metrics for each model and fold
@@ -335,9 +350,10 @@ SpSpPPVNPV_summary <- function(models_list, model_names, val_df_l) {
     metrics_over_time[[model_name]] <- list()
     for (fold in 1:5) {
       model <- models_list[[model_name]][[paste0("fold_", fold)]]
+      train_data <- train_df_l[[paste0("fold_", fold)]]
       val_data <- val_df_l[[paste0("fold_", fold)]]
       
-      metrics <- calculate_SeSpPPVNPV(model, val_data, times = seq(3, 7))
+      metrics <- calculate_SeSpPPVNPV(model, train_data, val_data, times = seq(3, 7))
       
       # Store results in a data frame
       metrics_df <- data.frame(

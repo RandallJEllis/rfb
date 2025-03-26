@@ -24,6 +24,7 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
 
   models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
   metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
+  train_df_l <- qs::qread(paste0(main_path, "train_df_l.qs"))
   val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
 
   model_names <- c("demographics_lancet",
@@ -35,7 +36,7 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
   width <- 8
   height <- 6
   dpi <- 300
-  save_all_figures(model_names, models_list, metrics_list, val_df_l,
+  save_all_figures(model_names, models_list, metrics_list, train_df_l, val_df_l,
                    width, height, dpi, main_path)
 }
 
