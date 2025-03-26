@@ -1157,71 +1157,71 @@ plot_SeSpPPVNPV <- function(data, metric) {
 
 save_all_figures <- function(model_names, models_list, metrics_list, train_df_l, val_df_l, width, height, dpi, main_path) {
   ##### FIGURE 1A: AUC over time
-  # # AUROC and CIs 
-  # print("Plotting AUC over time")
-  # auc_summary <- read_parquet(paste0(main_path, "auc_summary.parquet"))
-  # agg_auc_summary <- aggregate(
-  #   cbind(auc, ci_lower, ci_upper) ~ model + time,
-  #   data = auc_summary,
-  #   FUN = mean
-  # )
-  # auc_plot <- plot_auc_over_time(auc_summary, model_names)
+  # AUROC and CIs 
+  print("Plotting AUC over time")
+  auc_summary <- read_parquet(paste0(main_path, "auc_summary.parquet"))
+  agg_auc_summary <- aggregate(
+    cbind(auc, ci_lower, ci_upper) ~ model + time,
+    data = auc_summary,
+    FUN = mean
+  )
+  auc_plot <- plot_auc_over_time(auc_summary, model_names)
 
-  # # Save plots
-  # ggsave(paste0(main_path, "final_auc_Over_Time.pdf"),
-  #       plot = auc_plot,
-  #       width = width,
-  #       height = height,
-  #       dpi = 300)
+  # Save plots
+  ggsave(paste0(main_path, "final_auc_Over_Time.pdf"),
+        plot = auc_plot,
+        width = width,
+        height = height,
+        dpi = 300)
 
-  # print("Plotting individual year ROC curves")
-  # roc_plot <- plot_all_roc_curves(model_names, eval_times=seq(3, 7))
-  # # Save the plot
-  # ggsave(paste0(main_path, "ROC_curves_by_timepoint.pdf"),
-  #       plot = roc_plot,
-  #       width = width * 1.5,
-  #       height = height,
-  #       dpi = 300)
-
-
-  # # Find the year with the largest difference in AUC between demographics_lancet and ptau_demographics_lancet
-  # print("Plotting ROC curve for the year with the largest difference in AUC")
-  # p_year <- plot_roc_biggest_year_difference(auc_summary,
-  #                                           agg_auc_summary, 
-  #                                           model_names,
-  #                                           eval_times=seq(3, 7))
-  # # Save plots
-  # ggsave(paste0(main_path, "final_ROCcurve_", p_year$year, "years.pdf"),
-  #   plot = p_year$plot,
-  #   width = width,
-  #   height = height,
-  #   dpi = 300
-  # )
+  print("Plotting individual year ROC curves")
+  roc_plot <- plot_all_roc_curves(model_names, eval_times=seq(3, 7))
+  # Save the plot
+  ggsave(paste0(main_path, "ROC_curves_by_timepoint.pdf"),
+        plot = roc_plot,
+        width = width * 1.5,
+        height = height,
+        dpi = 300)
 
 
-  # ###### Figure 1D: BRIER SCORE - plot brier score over time
-  # print("Plotting Brier score over time")
-  # brier_plot <- plot_brier_over_time(metrics_list, model_names)
+  # Find the year with the largest difference in AUC between demographics_lancet and ptau_demographics_lancet
+  print("Plotting ROC curve for the year with the largest difference in AUC")
+  p_year <- plot_roc_biggest_year_difference(auc_summary,
+                                            agg_auc_summary, 
+                                            model_names,
+                                            eval_times=seq(3, 7))
+  # Save plots
+  ggsave(paste0(main_path, "final_ROCcurve_", p_year$year, "years.pdf"),
+    plot = p_year$plot,
+    width = width,
+    height = height,
+    dpi = 300
+  )
 
-  # # Save plots
-  # ggsave(paste0(main_path, "final_brier_Over_Time.pdf"),
-  #   plot = brier_plot,
-  #   width = width,
-  #   height = height,
-  #   dpi = 300
-  # )
 
-  # ##### Figure 1C: plot concordance over time
-  # print("Plotting concordance over time")
-  # concordance_plot <- plot_concordance_over_time(metrics_list, model_names)
+  ###### Figure 1D: BRIER SCORE - plot brier score over time
+  print("Plotting Brier score over time")
+  brier_plot <- plot_brier_over_time(metrics_list, model_names)
 
-  # # Save plots
-  # ggsave(paste0(main_path, "final_concordance_Over_Time.pdf"),
-  #   plot = concordance_plot,
-  #   width = width,
-  #   height = height,
-  #   dpi = 300
-  # )
+  # Save plots
+  ggsave(paste0(main_path, "final_brier_Over_Time.pdf"),
+    plot = brier_plot,
+    width = width,
+    height = height,
+    dpi = 300
+  )
+
+  ##### Figure 1C: plot concordance over time
+  print("Plotting concordance over time")
+  concordance_plot <- plot_concordance_over_time(metrics_list, model_names)
+
+  # Save plots
+  ggsave(paste0(main_path, "final_concordance_Over_Time.pdf"),
+    plot = concordance_plot,
+    width = width,
+    height = height,
+    dpi = 300
+  )
 
   ########################################################
   # Sensitivity, Specificity, PPV, NPV
