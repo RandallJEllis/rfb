@@ -27,9 +27,11 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
   train_df_l <- qs::qread(paste0(main_path, "train_df_l.qs"))
   val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
 
+
+  # MAKE SURE that the first two model names are the ones being compared when plotting the indivdual ROC curve with the biggest year difference
   model_names <- c("demographics_lancet",
-                    "ptau",
                     "ptau_demographics_lancet",
+                    "ptau",
                     "centiloids",
                     "centiloids_demographics_lancet",
                     "ptau_centiloids_demographics_lancet")
