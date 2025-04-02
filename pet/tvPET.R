@@ -9,17 +9,12 @@ library(ggplot2)
 library(survival)
 library(survminer)
 library(riskRegression)
-library(survminer)
+library(this.path)
 
-setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-source("../time2event/pub_figures.R")
+setwd(dirname(this.path()))
+
+source("../time2event/plot_figures.R")
 source("../time2event/metrics.R")
-
-# Load fonts
-library(extrafont)
-extrafont::loadfonts()
-font_import()
-loadfonts(device = "postscript")
 
 # cut_time_data <- function(td_data, interval_years = 1.7) {
 #   # Create sequence of timepoints for each ID
@@ -45,12 +40,12 @@ format_df <- function(df, lancet = FALSE) {
   base <- df[!duplicated(df$id), c(
     "id", "time_to_event", "event",
     "age_centered", "age_centered_squared",
-    "sex", "apoe"
+    "sex", "apoe", "education_z"
   )]
   tv_covar <- df[, c("id", "time", "centiloids")]
   colnames(base) <- c(
     "id", "time", "event", "age", "age2",
-    "sex", "apoe"
+    "sex", "apoe", "education"
   )
   colnames(tv_covar) <- c("id", "time", "centiloids")
 
@@ -136,9 +131,6 @@ format_df <- function(df, lancet = FALSE) {
     )
   }
 
-  td_data <- td_data[order(td_data$id), ]
-  td_data <- td_data[complete.cases(td_data), ]
-
   # First, let's store the baseline age for each person
   baseline_ages <- td_data %>%
     group_by(id) %>%
@@ -146,7 +138,7 @@ format_df <- function(df, lancet = FALSE) {
     select(id, baseline_age = age)
 
   # Now update the age column to reflect actual age at each timepoint
-  td_data_updated <- td_data %>%
+  td_data <- td_data %>%
     left_join(baseline_ages, by = "id") %>%
     mutate(
       # Convert tstart from days to years and add to baseline age
@@ -154,30 +146,46 @@ format_df <- function(df, lancet = FALSE) {
     ) %>%
     select(-baseline_age) # Remove the temporary baseline_age column
 
+  td_data <- td_data[order(td_data$id), ]
+  # Perform last observation carried forward (LOCF) within each subject
+  td_data <- td_data %>%
+    group_by(id) %>%
+    fill(everything(), .direction = "down") %>%
+    # Also carry first value backward for any remaining NAs
+    fill(everything(), .direction = "up") %>%
+    ungroup()
+
+  # print(dim(td_data))
+  td_data <- td_data[complete.cases(td_data), ]
+  # print(dim(td_data))
   # update age2
-  td_data_updated$age2 <- td_data_updated$age^2
+  td_data$age2 <- td_data$age^2
+
+  # update age3
+  td_data$age3 <- td_data$age^3
+
   # if (lancet) {
   #   td_data_updated <- cut_time_data(td_data_updated)
   # }
 
-  return(td_data_updated)
+  return(td_data)
 }
 
 # Define model formulas
 get_model_formula <- function(model_type, lancet = FALSE) {
   base_formulas <- list(
     "centiloids_demographics" = Surv(tstart, tstop, event) ~ centiloids +
-      age + age2 +
+      age + age2 + education + 
       sex + apoe + age * apoe + age2 * apoe,
-    "demographics" = Surv(tstart, tstop, event) ~ age + age2 +
+    "demographics" = Surv(tstart, tstop, event) ~ age + age2 + education + 
       sex + apoe + age * apoe + age2 * apoe,
     "centiloids" = Surv(tstart, tstop, event) ~ centiloids,
     "demographics_no_apoe" = Surv(tstart, tstop, event) ~ age + age2 +
-      sex,
+      sex + education,
     "centiloids_demographics_no_apoe" = Surv(tstart,
                                              tstop,
                                              event) ~ centiloids +
-      age + age2 +
+      age + age2 + education +
       sex
   )
 
@@ -194,109 +202,173 @@ get_model_formula <- function(model_type, lancet = FALSE) {
   return(formula)
 }
 
-# Initialize lists to store results for all models
-models_list <- list(
-  "centiloids_demographics" = list(),
-  # "centiloids_demographics_lancet" = list(),
-  "demographics" = list(),
-  # "demographics_lancet" = list(),
-  "centiloids" = list(),
-  "demographics_no_apoe" = list(),
-  # "demographics_lancet_no_apoe" = list(),
-  "centiloids_demographics_no_apoe" = list()
-  # "centiloids_demographics_lancet_no_apoe" = list()
-)
-
-# Initialize lists to store results for all models
-metrics_list <- list()
-val_df_l <- list()
-train_df_l <- list()
-
-# set eval times for each fold
-# eval_times_l <- list()
-# eval_times_l[[1]] <- seq(3, 15)
-# eval_times_l[[2]] <- seq(3, 7)
-# eval_times_l[[3]] <- seq(3, 8)
-# eval_times_l[[4]] <- seq(3, 25)
-
-# hist(val_df$tstop, breaks=seq(0,8,1))
-
-# iterate over folds and run experiments
-for (fold in seq(0, 4)) {
-  print(paste0("Fold ", fold + 1))
-
-  # Read and format data
-  train_df_raw <- read_parquet(paste0(
-    "../../pet_all_cohorts/tidy_data/train_", fold, "_test_by_cohort.parquet"
-  ))
-  val_df_raw <- read_parquet(paste0(
-    "../../pet_all_cohorts/tidy_data/val_", fold, "_test_by_cohort.parquet"
-  ))
-
-  # Fit all models
-  for (model_name in names(models_list)) {
-    print(paste("Fitting model:", model_name))
-
-    # Determine if this is a Lancet model
-    is_lancet <- grepl("lancet", model_name)
-    df <- format_df(train_df_raw, lancet = is_lancet)
-    val_df <- format_df(val_df_raw, lancet = is_lancet)
-    val_df <- val_df[val_df$tstop < 100, ]
-    val_df_l[[paste0("fold_", fold + 1, "_", model_name)]] <- val_df
-    train_df_l[[paste0("fold_", fold + 1, "_", model_name)]] <- df
-    # Z-score variables if using Lancet variables
-    if (is_lancet) {
-      lancet_vars <- c(
-        "smoke", "alcohol", "aerobic", "walking",
-        "gdtotal", "staital", "vsbsys", "vsdia"
-      )
-      means <- apply(df[, lancet_vars], 2, mean, na.rm = TRUE)
-      sds <- apply(df[, lancet_vars], 2, sd, na.rm = TRUE)
-
-      df[, lancet_vars] <- scale(df[, lancet_vars],
-        center = means, scale = sds
-      )
-      val_df[, lancet_vars] <- scale(val_df[, lancet_vars],
-        center = means, scale = sds
-      )
-    }
-
-    # Get base model type
-    base_type <- gsub("_lancet", "", model_name)
-
-    # Get formula
-    formula <- get_model_formula(base_type, is_lancet)
-
-    # Fit model
-    model <- coxph(formula, data = df, x = TRUE)
-    models_list[[model_name]][[paste0("fold_", fold + 1)]] <- model
-
-    # Calculate metrics
-    eval_times <- seq(2, 6)
-    metrics_results <- calculate_survival_metrics(
-      model = model,
-      model_name = model_name,
-      data = val_df,
-      times = eval_times
-    )
-    if (!model_name %in% names(metrics_list)) {
-      metrics_list[[model_name]] <- list()
-    }
-    metrics_list[[model_name]][[paste0("fold_", fold + 1)]] <- metrics_results
+for (ad_outcome in c(FALSE, TRUE)) {
+  if (ad_outcome) {
+    ad_outcome_path <- "ad_outcome/"
+  } else {
+    ad_outcome_path <- ""
   }
+
+  # Initialize lists to store results for all models
+  models_list <- list(
+    "centiloids_demographics" = list(),
+    # "centiloids_demographics_lancet" = list(),
+    "demographics" = list(),
+    # "demographics_lancet" = list(),
+    "centiloids" = list(),
+    "demographics_no_apoe" = list(),
+    # "demographics_lancet_no_apoe" = list(),
+    "centiloids_demographics_no_apoe" = list()
+    # "centiloids_demographics_lancet_no_apoe" = list()
+  )
+
+  # Initialize lists to store results for all models
+  metrics_list <- list()
+  val_df_l <- list()
+  train_df_l <- list()
+
+  # set eval times for each fold
+  # eval_times_l <- list()
+  # eval_times_l[[1]] <- seq(3, 15)
+  # eval_times_l[[2]] <- seq(3, 7)
+  # eval_times_l[[3]] <- seq(3, 8)
+  # eval_times_l[[4]] <- seq(3, 25)
+
+  # hist(val_df$tstop, breaks=seq(0,8,1))
+  eval_times <- seq(2, 10)
+  # iterate over folds and run experiments
+  for (fold in seq(0, 4)) {
+    print(paste0("Fold ", fold + 1))
+
+    # Read and format data
+    train_df_raw <- read_parquet(paste0(
+      "../../pet_all_cohorts/tidy_data/", ad_outcome_path, "train_", fold, ".parquet"
+    ))
+    val_df_raw <- read_parquet(paste0(
+      "../../pet_all_cohorts/tidy_data/", ad_outcome_path, "val_", fold, ".parquet"
+    ))
+
+    df <- format_df(train_df_raw, lancet = FALSE)
+    val_df <- format_df(val_df_raw, lancet = FALSE)
+    df <- df[df$time < 100, ]
+    val_df <- val_df[val_df$time < 100, ]
+    val_df_l[[paste0("fold_", fold + 1)]] <- val_df
+    train_df_l[[paste0("fold_", fold + 1)]] <- df
+
+    # Fit all models
+    for (model_name in names(models_list)) {
+      print(paste("Fitting model:", model_name))
+
+      # Determine if this is a Lancet model
+      is_lancet <- grepl("lancet", model_name)
+
+      # Z-score variables if using Lancet variables
+      if (is_lancet) {
+        lancet_vars <- c(
+          "smoke", "alcohol", "aerobic", "walking",
+          "gdtotal", "staital", "vsbsys", "vsdia"
+        )
+        means <- apply(df[, lancet_vars], 2, mean, na.rm = TRUE)
+        sds <- apply(df[, lancet_vars], 2, sd, na.rm = TRUE)
+
+        df[, lancet_vars] <- scale(df[, lancet_vars],
+          center = means, scale = sds
+        )
+        val_df[, lancet_vars] <- scale(val_df[, lancet_vars],
+          center = means, scale = sds
+        )
+      }
+
+      # Get base model type
+      base_type <- gsub("_lancet", "", model_name)
+
+      # Get formula
+      formula <- get_model_formula(base_type, is_lancet)
+
+      # Fit model
+      model <- coxph(formula, data = df, x = TRUE)
+      models_list[[model_name]][[paste0("fold_", fold + 1)]] <- model
+
+      # Calculate metrics
+      
+      metrics_results <- calculate_survival_metrics(
+        model = model,
+        model_name = model_name,
+        data = val_df,
+        times = eval_times
+      )
+      if (!model_name %in% names(metrics_list)) {
+        metrics_list[[model_name]] <- list()
+      }
+      metrics_list[[model_name]][[paste0("fold_", fold + 1)]] <- metrics_results
+    }
+  }
+
+  main_path <- paste0("../../pet_all_cohorts/tidy_data/", ad_outcome_path)
+  # Save results
+  qs::qsave(models_list, paste0(main_path, "fitted_models_all.qs"))
+  qs::qsave(metrics_list, paste0(main_path, "metrics_all.qs"))
+  qs::qsave(val_df_l, paste0(main_path, "val_df_all.qs"))
+  qs::qsave(train_df_l, paste0(main_path, "train_df_all.qs"))
+
+  ########################################################
+  # Function to extract AUROC and CIs for all folds
+  get_auc_ci_all_folds <- function(metrics_list, summarize = FALSE) {
+      # Initialize empty dataframe for results
+      all_results <- data.frame()
+
+      # Loop through each model
+      for (model_name in names(metrics_list)) {
+        # Loop through each fold
+        fold_results <- lapply(1:5, function(fold) {
+          troc <- metrics_list[[model_name]][[paste0("fold_", fold)]]$troc
+          ci <- timeROC:::confint.ipcwsurvivalROC(troc)
+
+          data.frame(
+            model = model_name,
+            time = troc$times,
+            auc = troc$AUC,
+            ci_lower = ci$CI_AUC[, 1] / 100,
+            ci_upper = ci$CI_AUC[, 2] / 100,
+            fold = fold
+          )
+        })
+
+        # Combine results from all folds
+        model_results <- do.call(rbind, fold_results)
+
+        if (summarize) {
+          # Calculate mean values across folds for each time point
+          summary_stats <- aggregate(
+            cbind(auc, ci_lower, ci_upper) ~ model + time,
+            data = model_results,
+            FUN = mean
+          )
+        } else {
+          summary_stats <- model_results
+        }
+
+        all_results <- rbind(all_results, summary_stats)
+      }
+
+      # Sort results by model and time
+      all_results <- all_results[order(all_results$model, all_results$time), ]
+
+      return(all_results)
+    }
+
+  auc_summary <- get_auc_ci_all_folds(metrics_list)
+  write_parquet(auc_summary, paste0(main_path, "auc_summary.parquet"))
+
 }
 
-# Save results
-saveRDS(models_list, "../tidy_data/fitted_models_all.rds")
-saveRDS(metrics_list, "../tidy_data/metrics_all.rds")
-saveRDS(val_df_l, "../tidy_data/val_df_all.rds")
-saveRDS(train_df_l, "../tidy_data/train_df_all.rds")
+
 
 # load results
-metrics_list <- readRDS("../tidy_data/metrics_all.rds")
-val_df_l <- readRDS("../tidy_data/val_df_all.rds")
-models_list <- readRDS("../tidy_data/fitted_models_all.rds")
-train_df_l <- readRDS("../tidy_data/train_df_all.rds")
+metrics_list <- qs::qread(paste0(main_path, "metrics_all.qs"))
+val_df_l <- qs::qread(paste0(main_path, "val_df_all.qs"))
+models_list <- qs::qread(paste0(main_path, "fitted_models_all.qs"))
+train_df_l <- qs::qread(paste0(main_path, "train_df_all.qs"))
 
 ########################################################
 # Bayes Information Criterion
@@ -931,7 +1003,7 @@ collate_metric <- function(metrics_list, metric = "auc") {
   all_results <- data.frame()
 
   for (model_name in names(metrics_list)) {
-    if (model_name %in% c("demographics_lancet", "ptau_demographics_lancet")) {
+    if (model_name %in% c("demographics", "centiloids_demographics")) {
       for (fold in 1:5) {
         # Print diagnostic information about the validation data
         print(paste("Model:", model_name, "Fold:", fold))
@@ -987,7 +1059,7 @@ for (metric in metrics_to_collect) {
   results <- collate_metric(metrics_list, metric)
   write_csv(
     results,
-    paste0("../tidy_data/results_", metric, "_all_models.csv")
+    paste0(main_path, "results_", metric, "_all_models.csv")
   )
 }
 
@@ -1007,49 +1079,7 @@ concordance_results <- collate_metric(metrics_list, metric = "concordance")
 #     .groups = "drop"
 #   )
 
-########################################################
-# Function to extract AUROC and CIs for all folds
-get_auc_ci_all_folds <- function(metrics_list) {
-  # Initialize empty dataframe for results
-  all_results <- data.frame()
 
-  # Loop through each model
-  for (model_name in names(metrics_list)) {
-    # Loop through each fold
-    fold_results <- lapply(1:5, function(fold) {
-      troc <- metrics_list[[model_name]][[paste0("fold_", fold)]]$troc
-      ci <- timeROC:::confint.ipcwsurvivalROC(troc)
-
-      data.frame(
-        model = model_name,
-        time = troc$times,
-        auc = troc$AUC,
-        ci_lower = ci$CI_AUC[, 1] / 100,
-        ci_upper = ci$CI_AUC[, 2] / 100,
-        fold = fold
-      )
-    })
-
-    # Combine results from all folds
-    model_results <- do.call(rbind, fold_results)
-
-    # Calculate mean values across folds for each time point
-    summary_stats <- aggregate(
-      cbind(auc, ci_lower, ci_upper) ~ model + time,
-      data = model_results,
-      FUN = mean
-    )
-
-    all_results <- rbind(all_results, summary_stats)
-  }
-
-  # Sort results by model and time
-  all_results <- all_results[order(all_results$model, all_results$time), ]
-
-  return(all_results)
-}
-
-auc_summary <- get_auc_ci_all_folds(metrics_list)
 
 # Table S2 - reshape auc_summary to wide format
 wide_auc_summary <- auc_summary %>%
@@ -1097,134 +1127,24 @@ print(xtable(wide_auc_summary), type = "latex")
 width <- 8
 height <- 6
 
+model_names <- c("demographics", "centiloids",
+                "centiloids_demographics")
 # plot auc over time
-auc_plot <- td_plot(auc_summary %>% filter(model %in%
-                                             c("demographics", "centiloids",
-                                               "centiloids_demographics")),
-                    metric = "auc")
+auc_plot <- plot_auc_over_time(auc_summary, model_names = model_names)
 
 # Display the plot
 print(auc_plot)
 
 # Save plots
-ggsave("../../tidy_data/A4/final_auc_Over_Time.pdf",
+ggsave(paste0(main_path, "final_auc_Over_Time.pdf"),
        plot = auc_plot,
        width = width,
        height = height,
        dpi = 300)
 
-# Initialize lists to store ROC data
-roc_data_all <- list()
-
-# Create consistent time points
-eval_times <- eval_times
-
-# Define models to analyze
-models_to_analyze <- c(
-  # "demographics",
-  # "demographics_no_apoe",
-  "demographics",
-  "centiloids",
-  "centiloids_demographics"
-)
-
-# Initialize dataframe to store ROC curves
-all_roc_curves <- data.frame()
-
-for (fold in 0:4) {
-  for (model_name in models_to_analyze) {
-    # Get timeROC object from metrics list
-    troc <- metrics_list[[model_name]][[paste0("fold_", fold + 1)]]$troc
-
-    # Extract ROC curves for each time point
-    for (t in eval_times) {
-      # Get ROC curve data for this time
-      idx <- which(troc$times == t)
-      if (length(idx) > 0) {
-        roc_data <- unique(data.frame(
-          FPR = troc$FP[, idx],
-          TPR = troc$TP[, idx],
-          Time = t,
-          Model = model_name,
-          fold = fold
-        ))
-        all_roc_curves <- rbind(all_roc_curves, roc_data)
-      }
-    }
-  }
-}
-
-# Calculate summary statistics
-roc_summary <- all_roc_curves %>%
-  # First, bin FPR values to create discrete groups
-  mutate(FPR_bin = round(FPR, digits = 2)) %>%
-  group_by(Model, Time, FPR_bin) %>%
-  summarise(
-    mean_TPR = mean(TPR, na.rm = TRUE),
-    # Calculate standard error for each bin
-    pooled_se = sqrt(var(TPR, na.rm = TRUE) / n()),
-    # Calculate confidence intervals
-    ci_lower = mean_TPR - 1.96 * pooled_se,
-    ci_upper = mean_TPR + 1.96 * pooled_se,
-    FPR = mean(FPR_bin),
-    .groups = "drop"
-  ) %>%
-  # Remove any remaining NAs and ensure we have enough data points
-  filter(!is.na(pooled_se)) %>%
-  group_by(Model, Time) %>%
-  filter(n() >= 10) %>%  # Only keep time points with at least 10 data points
-  ungroup()
-
-model_colors <- c(
-  "demographics_lancet" = "#E69F00",    # orange
-  "ptau" = "#CC79A7",                   # pink
-  "ptau_demographics_lancet" = "#009292" # turquoise
-)
-
-# Create faceted plot of ROC curves
-roc_plot <- ggplot(roc_summary, aes(x = FPR, y = mean_TPR, color = Model)) +
-  geom_ribbon(aes(
-    ymin = ci_lower,
-    ymax = ci_upper,
-    fill = Model
-  ), alpha = 0.3, color = NA) +
-  geom_line(linewidth = 1) +
-  geom_abline(
-    slope = 1, intercept = 0,
-    linetype = "dashed", color = "gray50"
-  ) +
-  scale_color_manual(values = model_colors, labels = c(
-    "Demo + Lancet",
-    "pTau217",
-    "Demo + pTau217\n+ Lancet"
-  )) +
-  scale_fill_manual(values = model_colors, labels = c(
-    "Demo + Lancet",
-    "pTau217",
-    "Demo + pTau217\n+ Lancet"
-  ), guide = "none") +
-  facet_wrap(~Time,
-    labeller = labeller(Time = function(x) sprintf("%s years", x))
-  ) +
-  labs(
-    x = "False Positive Rate",
-    y = "True Positive Rate",
-    title = "ROC Curves at Different Time Points"
-  ) +
-  coord_equal() +
-  theme_minimal() +
-  theme(
-    panel.spacing = unit(1, "cm"),
-    axis.text = element_text(size = 8),
-    plot.margin = margin(0.5, 0.5, 0.5, 0.5, "cm"),
-    plot.title = element_text(hjust = 0.5)  # Center the title
-  )
-
-# Display the plot
-print(roc_plot)
-
+roc_plot <- plot_all_roc_curves(model_names, eval_times=seq(2, 7))
 # Save the plot
-ggsave("../../tidy_data/A4/ROC_curves_by_timepoint.pdf",
+ggsave(paste0(main_path, "ROC_curves_by_timepoint.pdf"),
        plot = roc_plot,
        width = width * 1.5,
        height = height,
@@ -1264,6 +1184,88 @@ names(model_labels) <- c(
   "ptau",
   "ptau_demographics_lancet"
 )
+
+
+rr <- pull_roc_summary(model_names, seq(3, 7))
+calc_pAUC <- function(df, model_names, threshold = 0.25) {
+    library(pracma)  # For numerical integration
+
+    # Input validation
+    if (!all(model_names %in% unique(df$Model))) {
+        stop("Some model names not found in data")
+    }
+    if (threshold <= 0 || threshold > 1) {
+        stop("Threshold must be between 0 and 1")
+    }
+
+    # Initialize results dataframe with proper structure
+    pAUC_normalized <- data.frame(
+        Model = character(),
+        Time = numeric(),
+        pAUC = numeric(),
+        stringsAsFactors = FALSE
+    )
+
+    # Filter for FPR ≤ threshold and ensure data is ordered
+    df_filtered <- df[df$FPR <= threshold, ] %>%
+        arrange(Model, Time, FPR)
+
+    # Calculate pAUC for each model and time point
+    for (model_name in model_names) {
+        model_df <- df_filtered[df_filtered$Model == model_name, ]
+        
+        for (time in unique(model_df$Time)) {
+            model_df_time <- model_df[model_df$Time == time, ]
+            
+            # Skip if insufficient data points
+            if (nrow(model_df_time) < 2) {
+                warning(sprintf("Insufficient data points for model %s at time %s", 
+                              model_name, time))
+                next
+            }
+
+            # Compute partial AUC using trapezoidal integration
+            pAUC <- tryCatch({
+                trapz(model_df_time$FPR, model_df_time$mean_TPR)
+            }, error = function(e) {
+                warning(sprintf("Integration failed for model %s at time %s: %s", 
+                              model_name, time, e$message))
+                return(NA)
+            })
+
+            # Add results to dataframe
+            pAUC_normalized <- rbind(pAUC_normalized, data.frame(
+                Model = model_name,
+                Time = time,
+                pAUC = pAUC / threshold
+            ))
+        }
+    }
+
+    # for each model, calculate the average and sd of pAUC across time points
+    pAUC_normalized <- pAUC_normalized %>%
+      group_by(Model) %>%
+      summarise(mean_pAUC = mean(pAUC),
+                sd_pAUC = sd(pAUC))
+
+    # sort by mean_pAUC in ascending order
+    pAUC_normalized <- pAUC_normalized %>%
+      arrange(mean_pAUC)
+
+    return(pAUC_normalized)
+}
+
+
+pauc_res <- calc_pAUC(rr, model_names, threshold = 0.25)
+pauc_res$Model <- model_labels[pauc_res$Model]
+pauc_res
+
+# latex table of results_table_wide with 4 decimal places
+xtable_obj <- xtable(pauc_res)
+digits(xtable_obj) <- c(0, rep(4, ncol(pauc_res)))  # Set digits for each column
+print(xtable_obj, type = "latex", sanitize.text.function = function(x) x)  # Don't escape LaTeX commands
+
+
 
 p_year <- ggplot(roc_year, aes(x = FPR, y = mean_TPR, color = Model)) +
   geom_ribbon(
@@ -1334,6 +1336,42 @@ ggsave(paste0("../../tidy_data/A4/final_ROCcurve_", year, "years.pdf"),
   dpi = 300
 )
 
+###### Figure 2D: BRIER SCORE - plot brier score over time
+plot_brier_over_time <- function() {
+  brier_results <- collate_metric(metrics_list, metric = "brier")
+  brier_summary <- brier_results %>%
+    group_by(model, time) %>%
+  summarise(
+    mean_metric = mean(metric, na.rm = TRUE),
+    sd_metric = sd(metric, na.rm = TRUE),
+    ymin = pmax(mean_metric - sd_metric, 0),
+    ymax = pmin(mean_metric + sd_metric, 1),
+    .groups = "drop"
+  )
+  brier_summary$model <- factor(brier_summary$model, levels=model_names)
+
+  # Figure 1D - plot brier score over time
+  brier_plot <- td_plot(brier_summary,
+                        model_names=model_names,
+                        metric = "brier",
+                        all_models = F)
+
+  return(brier_plot)
+}
+
+brier_plot <- plot_brier_over_time()
+
+# Display the plot
+print(brier_plot)
+
+# Save plots
+ggsave(paste0(main_path, "final_brier_Over_Time.pdf"),
+  plot = brier_plot,
+  width = width,
+  height = height,
+  dpi = 300
+)
+
 
 # plot brier score over time
 brier_summary <- brier_results %>%
@@ -1376,6 +1414,44 @@ mean_diffs <- brier_summary %>%
 print(mean_diffs)
 
 # plot concordance over time
+concordance_results <- collate_metric(metrics_list, metric = "concordance")
+cc_sub <- concordance_results %>%
+  filter(model %in% model_names) %>%
+  mutate(fold = as.factor(fold),
+         metric = metric)
+cc_sub$model <- factor(cc_sub$model, levels=model_names)
+
+concordance_summary <- concordance_results %>%
+  group_by(model, time) %>%
+  summarise(
+    mean_metric = mean(metric, na.rm = TRUE),
+    sd_metric = sd(metric, na.rm = TRUE),
+    ymin = pmax(mean_metric - sd_metric, 0),
+    ymax = pmin(mean_metric + sd_metric, 1),
+    .groups = "drop"
+  )
+concordance_summary$model <- factor(concordance_summary$model, levels=model_names)
+
+
+# Figure 1C - plot concordance over time
+concordance_plot <- td_plot(concordance_summary,
+                            concordance_results,
+                            model_names=model_names,
+                            metric = "concordance")
+
+# Display the plot
+print(concordance_plot)
+
+# Save plots
+ggsave(paste0(main_path, "final_concordance_Over_Time.pdf"),
+  plot = concordance_plot,
+  width = width,
+  height = height,
+  dpi = 300
+)
+
+
+
 concordance_summary <- concordance_results %>%
   group_by(model, time) %>%
   summarise(
@@ -1659,3 +1735,177 @@ ggsave("../../tidy_data/A4/final_DCA_Over_Time.pdf",
 # )
 
 # ########################################################
+# Function to calculate SeSpPPVNPV for a model and fold
+calculate_SeSpPPVNPV <- function(model, val_data, times) {
+  risk_scores <- predict(model, val_data)
+  
+  # Find optimal cutpoint using Youden's index
+  se_sp_ppv_npv <- list()
+  for (cutpoint in seq(min(risk_scores), max(risk_scores), length.out = 100)) {
+    se_sp_ppv_npv_results <- SeSpPPVNPV(
+      cutpoint = cutpoint,
+      T = val_data$time,
+      delta = val_data$event,
+      marker = risk_scores,
+      cause = 1,
+      weighting = "marginal",
+      times = times
+    )
+    se_sp_ppv_npv[[paste0("cutpoint_", cutpoint)]] <- se_sp_ppv_npv_results
+  }
+  
+  youden_index_list <- list()
+  for (cutpoint in names(se_sp_ppv_npv)) {
+    youden_index <- se_sp_ppv_npv[[cutpoint]]$TP + (1 - se_sp_ppv_npv[[cutpoint]]$FP) - 1
+    youden_index_list[[cutpoint]] <- mean(youden_index)
+  }
+  
+  best_cutpoint <- names(youden_index_list)[which.max(youden_index_list)]
+  return(se_sp_ppv_npv[[best_cutpoint]])
+}
+
+# Initialize list to store results
+metrics_over_time <- list()
+
+# Calculate metrics for each model and fold
+for (model_name in c("demographics","centiloids",
+                     "centiloids_demographics"
+                     )) {#names(models_list)) {
+  metrics_over_time[[model_name]] <- list()
+  for (fold in 1:5) {
+    model <- models_list[[model_name]][[paste0("fold_", fold)]]
+    val_data <- val_df_l[[paste0("fold_", fold, "_", model_name)]]
+    
+    metrics <- calculate_SeSpPPVNPV(model, val_data, times = seq(2, 6))
+    
+    # Store results in a data frame
+    metrics_df <- data.frame(
+      time = metrics$times,
+      sensitivity = metrics$TP,
+      specificity = 1 - metrics$FP,
+      ppv = metrics$PPV,
+      npv = metrics$NPV,
+      model = model_name,
+      fold = fold
+    )
+    
+    metrics_over_time[[model_name]][[fold]] <- metrics_df
+  }
+}
+
+# Combine all results into a single data frame
+all_metrics <- do.call(rbind, lapply(metrics_over_time, function(x) do.call(rbind, x)))
+
+# Calculate mean and standard error for each metric
+metrics_summary <- all_metrics %>%
+  group_by(model, time) %>%
+  summarise(
+    mean_sensitivity = mean(sensitivity, na.rm = TRUE),
+    sd_sensitivity = sd(sensitivity, na.rm = TRUE) / sqrt(n()),
+    mean_specificity = mean(specificity, na.rm = TRUE),
+    sd_specificity = sd(specificity, na.rm = TRUE) / sqrt(n()),
+    mean_ppv = mean(ppv, na.rm = TRUE),
+    sd_ppv = sd(ppv, na.rm = TRUE) / sqrt(n()),
+    mean_npv = mean(npv, na.rm = TRUE),
+    sd_npv = sd(npv, na.rm = TRUE) / sqrt(n()),
+    .groups = "drop"
+  )
+
+# Create plots for each metric
+plot_metric <- function(data, metric) {
+
+  color_label_info <- get_colors_labels()
+  colors <- color_label_info$colors
+  labels <- color_label_info$labels
+
+  # set y-axis label to capitalize first letter unless it's PPV or NPV
+  if (!metric %in% c("ppv", "npv")) {
+    y_label <- tools::toTitleCase(metric)
+  } else {
+    y_label <- toupper(tools::toTitleCase(metric))
+  }
+
+  ggplot(data, aes(x = time, y = get(paste0("mean_", metric)), color = model)) +
+    geom_line(linewidth = 1) +
+    geom_ribbon(
+      aes(
+        ymin = get(paste0("mean_", metric)) - get(paste0("sd_", metric)),
+        ymax = get(paste0("mean_", metric)) + get(paste0("sd_", metric)),
+        fill = model
+      ),
+      alpha = 0.2,
+      color = NA
+    ) +
+    # Add white circles at each time point
+    geom_point(aes(fill = model), color = "white", size = 3, shape = 21) +
+    scale_color_manual(values = colors, labels = labels) +
+    scale_fill_manual(values = colors, labels = labels) +
+
+    
+    labs(
+      x = "Time (years)",
+      y = y_label,
+      color = "Model",
+      fill = "Model"  # Add fill legend
+    ) +
+    theme_minimal() +
+    theme(
+      plot.title = element_text(hjust = 0.5),
+      legend.position = "right",
+      axis.text = element_text(size = 12, face = "bold"),  # Make axis text larger and bold
+      axis.title = element_text(size = 14, face = "bold")  # Make axis titles larger and bold
+    )
+}
+
+# Create individual plots
+sensitivity_plot <- plot_metric(metrics_summary, "sensitivity")
+specificity_plot <- plot_metric(metrics_summary, "specificity")
+ppv_plot <- plot_metric(metrics_summary, "ppv")
+npv_plot <- plot_metric(metrics_summary, "npv")
+
+width <- 8
+height <- 6
+dpi <- 300
+ggsave(
+  paste0(main_path, "sensitivity_plot.pdf"),
+  plot = sensitivity_plot,
+  width = width,
+  height = height,
+  dpi = dpi
+)
+
+ggsave(
+  paste0(main_path, "specificity_plot.pdf"),
+  plot = specificity_plot,
+  width = width,
+  height = height,
+  dpi = dpi
+)
+
+ggsave(
+  paste0(main_path, "ppv_plot.pdf"),
+  plot = ppv_plot,
+  width = width,
+  height = height,
+  dpi = dpi
+)
+
+ggsave(
+  paste0(main_path, "npv_plot.pdf"),
+  plot = npv_plot,
+  width = width,
+  height = height,
+  dpi = dpi
+)
+
+
+
+# Save the combined plot
+ggsave(
+  paste0(main_path, "diagnostic_metrics_over_time.pdf"),
+  plot = combined_plot,
+  width = 12,
+  height = 10,
+  dpi = 300
+)
+
