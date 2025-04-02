@@ -44,23 +44,25 @@ for (ad_outcome in c(FALSE, TRUE)) {
 }
 
 # Other stats and tables
-amyloid_positive_only <- FALSE
-if (amyloid_positive_only) {
-  main_path <- "../../tidy_data/A4/amyloid_positive/"
+main_path <- paste0("../../pet_all_cohorts/tidy_data/", ad_outcome_path)
+
+ad_outcome <- TRUE
+if (ad_outcome) {
+    ad_outcome_path <- "ad_outcome/"
   } else {
-    main_path <- "../../tidy_data/A4/"
+    ad_outcome_path <- ""
   }
-models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
-metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
-val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
+models_list <- qs::qread(paste0(main_path, "fitted_models_all.qs"))
+metrics_list <- qs::qread(paste0(main_path, "metrics_all.qs"))
+val_df_l <- qs::qread(paste0(main_path, "val_df_all.qs"))
 
 
 options(pillar.width = Inf)
 ########################################################
 # Sensitivity, Specificity, PPV, NPV
-model1 <- "ptau_demographics_lancet"
-model2 <- "demographics_lancet"
-range_sespppvnnv(model1, model2)
+model1 <- "demographics"
+model2 <- "centiloids_demographics"
+range_sespppvnnv(model1, model2, main_path)
 
 ########################################################
 # Bayes Information Criterion

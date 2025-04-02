@@ -1,4 +1,6 @@
 library(riskRegression)
+library(tidyverse)
+library(arrow)
 
 overwrite_na_coef_to_zero <- function(model) {
   if (length(names(which(is.na(coef(model))))) > 0) {
@@ -632,8 +634,8 @@ print_auc_latex_table <- function(auc_summary) {
 }
 
 
-range_sespppvnnv <- function(model1, model2) {
-  df_sespppvnpv <- read_parquet(paste0(main_path, "spspppvnpv_summary.parquet"))
+range_sespppvnnv <- function(model1, model2, main_path) {
+  df_sespppvnpv <- read_parquet(paste0(main_path, "sespppvnpv_summary.parquet"))
 
   # calculate differences between ptau+demo+lancet and demographics+lancet at each time point for each metric
   difference_dfs <- data.frame()
