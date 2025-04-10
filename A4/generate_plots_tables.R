@@ -51,6 +51,7 @@ if (amyloid_positive_only) {
   }
 models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
 metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
+# train_df_l <- qs::qread(paste0(main_path, "train_df_l.qs"))
 val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
 
 
@@ -185,7 +186,8 @@ write.csv(results_table, paste0(main_path, "auc_comparison_results_demo_lancet_v
           row.names = FALSE)
 
 
-
+pvals_compare_trocs <- compare_tvaurocs(ptau_demo_lancet_trocs,
+                                        centiloids_demo_lancet_trocs)
 ########################################################
 # Generate and save results for each metric
 metrics_to_collect <- c("auc", "brier", "concordance")
