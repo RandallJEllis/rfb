@@ -26,7 +26,7 @@ sys.path.append("./ukb_func")
 from ml_utils import concat_labels_and_probas, probas_to_results
 import seaborn as sns
 
-# import ptitprince as pt
+import ptitprince as pt
 
 # Set font properties
 plt.rcParams.update(
@@ -304,11 +304,11 @@ def multi_mean_roc_curve(filepath, model, metric, image_format, age65_cutoff=Fal
             "all_demographics",
             "modality_only",
             "demographics_and_lancet2024",
-            #    'modality_only/feature_selection',
+            "modality_only/feature_selection",
             "demographics_and_modality",
-            #    'demographics_and_modality/feature_selection',
+            "demographics_and_modality/feature_selection",
             "demographics_modality_lancet2024",
-            #    'demographics_modality_lancet2024/feature_selection'
+            "demographics_modality_lancet2024/feature_selection",
         ]
 
         # if 'nacc' in filepath, remove experiments with 'feature_selection'
@@ -465,11 +465,11 @@ def multi_mean_pr_curve(
             "all_demographics",
             "modality_only",
             "demographics_and_lancet2024",
-            #    'modality_only/feature_selection',
+            "modality_only/feature_selection",
             "demographics_and_modality",
-            #    'demographics_and_modality/feature_selection',
+            "demographics_and_modality/feature_selection",
             "demographics_modality_lancet2024",
-            #    'demographics_modality_lancet2024/feature_selection'
+            "demographics_modality_lancet2024/feature_selection",
         ]
 
         # if 'nacc' in filepath, remove experiments with 'feature_selection'
@@ -594,11 +594,11 @@ def multi_calibration_curve(filepath, model, metric, image_format, n_bins=10):
             "all_demographics",
             "modality_only",
             "demographics_and_lancet2024",
-            # 'modality_only/feature_selection',
+            "modality_only/feature_selection",
             "demographics_and_modality",
-            # 'demographics_and_modality/feature_selection',
+            "demographics_and_modality/feature_selection",
             "demographics_modality_lancet2024",
-            # 'demographics_modality_lancet2024/feature_selection'
+            "demographics_modality_lancet2024/feature_selection",
         ]
         # if 'nacc' in filepath, remove experiments with 'feature_selection'
         if "nacc" in filepath:
@@ -850,7 +850,7 @@ def export_confusion_matrices(filepath, model):
     # List of experiments to process
     expts = [
         "demographics_and_lancet2024",
-        # 'demographics_modality_lancet2024/feature_selection'
+        "demographics_modality_lancet2024/feature_selection",
     ]
 
     ages = _get_ages(filepath)
