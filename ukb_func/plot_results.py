@@ -707,6 +707,7 @@ def feature_importance_vals(filepath):
     # Read feature importance data from 10 regions
     for i in range(10):
         df = pd.read_parquet(f"{filepath}/feature_importance_region_{i}.parquet")
+        df.importance = df.importance / df.importance.sum()
         df_l.append(df)
 
     # Concatenate all DataFrames
@@ -1028,21 +1029,52 @@ def mcc_raincloud(filepath, model, orient="v"):
 
 
 if __name__ == "__main__":
+    """
+    Plot ROC and PR curves, calibration curve, confusion matrices, and MCC raincloud plot.
+    Args:
+        filepath (str): The base filepath to the experiment results.
+        model (str): The model to plot the results for.
+        metric (str): The metric to plot the results for.
+        image_format (str): The format of the image to save the results in.
+
+    Example usage: python plot_results.py ../../results/UKBiobank lgbm log_loss pdf
+    """
     parser = argparse.ArgumentParser(description="Plot ROC and PR curves")
-    parser.add_argument("filepath", type=str, help="filepath")
+    parser.add_argument(
+        "filepath", type=str, help="base filepath (should end in UKBiobank)"
+    )
     parser.add_argument("model", type=str, help="lgbm, lrl1")
-    # parser.add_argument('orient', type=str, help="orientation of the plot (h or v)")
     parser.add_argument("metric", type=str, help="metric")
     parser.add_argument("image_format", type=str, help="image format")
-    # parser.add_argument('age65_cutoff', type=bool, help="use age cutoff of 65 (True/False)")
 
     args = parser.parse_args()
-    multi_mean_roc_curve(
-        args.filepath, args.model, args.metric, args.image_format
-    )  # , args.age65_cutoff)
-    multi_mean_pr_curve(
-        args.filepath, args.model, args.metric, args.image_format
-    )  # , args.age65_cutoff)
-    multi_calibration_curve(args.filepath, args.model, args.metric, args.image_format)
-    export_confusion_matrices(args.filepath, args.model)
-    mcc_raincloud(args.filepath, args.model)
+
+    # Verify the base filepath ends with UKBiobank
+    if not args.filepath.endswith("UKBiobank"):
+        print("Error: filepath should end with 'UKBiobank'")
+        sys.exit(1)
+
+    diseases = ["alzheimers", "dementia"]
+    modalities = ["proteomics", "neuroimaging", "cognitive_tests"]
+
+    for disease in diseases:
+        for modality in modalities:
+            full_path = f"{args.filepath}/{disease}/{modality}"
+            print(f"\nProcessing {disease} - {modality}...")
+
+            try:
+                multi_mean_roc_curve(
+                    full_path, args.model, args.metric, args.image_format
+                )
+                multi_mean_pr_curve(
+                    full_path, args.model, args.metric, args.image_format
+                )
+                multi_calibration_curve(
+                    full_path, args.model, args.metric, args.image_format
+                )
+                export_confusion_matrices(full_path, args.model)
+                mcc_raincloud(full_path, args.model)
+                print(f"Successfully processed {disease} - {modality}")
+            except Exception as e:
+                print(f"Error processing {disease} - {modality}: {str(e)}")
+                continue

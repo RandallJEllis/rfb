@@ -1,7 +1,6 @@
 #!/bin/bash
 #SBATCH --partition=short
 #SBATCH --nodes=1
-#SBATCH --exclude=compute-f-17-[09-16]
 #SBATCH --time=12:00:00
 #SBATCH --mem=16G
 #SBATCH --cpus-per-task=1
