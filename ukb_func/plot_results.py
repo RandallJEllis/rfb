@@ -117,12 +117,12 @@ def _save_plot(fig, curve_type, filepath, metric, age_cutoff, image_format):
     age_cutoff (int or None): Age cutoff used, if any.
     image_format (str): Format to save the image (e.g., 'pdf', 'png').
     """
-    fname = f"{filepath}/{curve_type}_curve_{metric}_all_expts_mean"
+    fname = f"{filepath}/{curve_type}_curve_{metric}_{MODEL}_all_expts_mean"
     if age_cutoff is not None:
         fname += f"_age{age_cutoff}cutoff"
     fname += f".{image_format}"
 
-    fig.savefig(fname, dpi=300)
+    fig.savefig(fname, facecolor="white", transparent=False, dpi=300)
     plt.close()
 
 
@@ -750,22 +750,29 @@ def _plot_conf_mtx(dff, title, remove_x_ticks=False):
     with True Positive Rate (TPR), False Positive Rate (FPR),
     True Negative Rate (TNR), and False Negative Rate (FNR) annotations.
     """
-
-    # Calculate FPR and FNR
+    # Calculate rates per fold
+    dff["TPR"] = dff.TP / (dff.TP + dff.FN)
     dff["FPR"] = dff.FP / (dff.FP + dff.TN)
+    dff["TNR"] = dff.TN / (dff.TN + dff.FP)
     dff["FNR"] = dff.FN / (dff.FN + dff.TP)
 
-    # Calculate confusion matrix values
+    # Calculate mean rates across folds (as percentages)
+    TPR = 100 * np.mean(dff.TPR)
+    FPR = 100 * np.mean(dff.FPR)
+    TNR = 100 * np.mean(dff.TNR)
+    FNR = 100 * np.mean(dff.FNR)
+
+    # Calculate standard deviations of rates across folds (as percentages)
+    TPR_sd = 100 * np.std(dff.TPR)
+    FPR_sd = 100 * np.std(dff.FPR)
+    TNR_sd = 100 * np.std(dff.TNR)
+    FNR_sd = 100 * np.std(dff.FNR)
+
+    # Sum confusion matrix values for display
     TP = np.sum(dff.TP)
     FP = np.sum(dff.FP)
     TN = np.sum(dff.TN)
     FN = np.sum(dff.FN)
-
-    # Calculate rates
-    TPR = 100 * (TP / (TP + FN))
-    FPR = 100 * (FP / (FP + TN))
-    TNR = 100 * (TN / (TN + FP))
-    FNR = 100 * (FN / (FN + TP))
 
     # Create confusion matrix
     confusion_matrix = np.array([[TP, FN], [FP, TN]])
@@ -774,6 +781,9 @@ def _plot_conf_mtx(dff, title, remove_x_ticks=False):
     sub_labels = np.array([["TPR", "FNR"], ["FPR", "TNR"]])
     sub_label_vals = np.array(
         [[f"{TPR:.2f}", f"{FNR:.2f}"], [f"{FPR:.2f}", f"{TNR:.2f}"]]
+    )
+    sub_label_vals_sd = np.array(
+        [[f"{TPR_sd:.2f}", f"{FNR_sd:.2f}"], [f"{FPR_sd:.2f}", f"{TNR_sd:.2f}"]]
     )
 
     # Create figure and axis
@@ -801,14 +811,21 @@ def _plot_conf_mtx(dff, title, remove_x_ticks=False):
     for i in range(2):
         for j in range(2):
             value = confusion_matrix[i, j]
+
+            if i == j:
+                text_val = f"{int(value)}\n\n{sub_labels[i, j]}\n{sub_label_vals[i,j]}%\n(SD: {sub_label_vals_sd[i,j]}%)"
+            else:
+                text_val = (
+                    f"{int(value)}\n\n{sub_labels[i, j]}\n{sub_label_vals[i,j]}%\n"
+                )
             ax.text(
                 j + 0.5,
                 i + 0.5,
-                f"{int(value)}\n\n{sub_labels[i, j]}\n{sub_label_vals[i,j]}%",
+                text_val,
                 ha="center",
                 va="center",
                 color="black",
-                fontsize=30,
+                fontsize=26,
                 weight="bold",
             )
 
@@ -875,10 +892,10 @@ def export_confusion_matrices(filepath, model):
 
             # Save the confusion matrix plot as a PDF file
             if age_cutoff is not None:
-                fname = f"{filepath}/confusion_matrix_{expt}_agecutoff_{age_cutoff}.pdf"
+                fname = f"{filepath}/confusion_matrix_{expt}_agecutoff_{age_cutoff}_{MODEL}.{IMAGE_FORMAT}"
             else:
-                fname = f"{filepath}/confusion_matrix_{expt}.pdf"
-            cm.savefig(fname)
+                fname = f"{filepath}/confusion_matrix_{expt}_{MODEL}.{IMAGE_FORMAT}"
+            cm.savefig(fname, facecolor="white", transparent=False, dpi=300)
 
 
 def mcc_raincloud(filepath, model, orient="v"):
@@ -1016,16 +1033,16 @@ def mcc_raincloud(filepath, model, orient="v"):
             # Save the plot as a PDF file
             # Note: data_modality and age_cutoff are not defined within this function
             if age_cutoff is not None:
-                fname = f"{filepath}/mcc_raincloud_plot_agecutoff_{age_cutoff}.pdf"
+                fname = f"{filepath}/mcc_raincloud_plot_agecutoff_{age_cutoff}_{MODEL}.{IMAGE_FORMAT}"
             else:
-                fname = f"{filepath}/mcc_raincloud_plot.pdf"
+                fname = f"{filepath}/mcc_raincloud_plot_{MODEL}.{IMAGE_FORMAT}"
 
             if orient == "v":
-                fname = fname.replace(".pdf", "_vertical.pdf")
+                fname = fname.replace(".pdf", f"_vertical.{IMAGE_FORMAT}")
             elif orient == "h":
-                fname = fname.replace(".pdf", "_horizontal.pdf")
+                fname = fname.replace(".pdf", f"_horizontal.{IMAGE_FORMAT}")
 
-            fig.savefig(fname, dpi=300)
+            fig.savefig(fname, facecolor="white", transparent=False, dpi=300)
 
 
 if __name__ == "__main__":
@@ -1049,6 +1066,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    IMAGE_FORMAT = args.image_format
+    MODEL = args.model
+
     # Verify the base filepath ends with UKBiobank
     if not args.filepath.endswith("UKBiobank"):
         print("Error: filepath should end with 'UKBiobank'")
@@ -1060,17 +1080,16 @@ if __name__ == "__main__":
     for disease in diseases:
         for modality in modalities:
             full_path = f"{args.filepath}/{disease}/{modality}"
+            print(full_path)
+            os.makedirs(full_path, exist_ok=True)
+
             print(f"\nProcessing {disease} - {modality}...")
 
             try:
-                multi_mean_roc_curve(
-                    full_path, args.model, args.metric, args.image_format
-                )
-                multi_mean_pr_curve(
-                    full_path, args.model, args.metric, args.image_format
-                )
+                multi_mean_roc_curve(full_path, args.model, args.metric, IMAGE_FORMAT)
+                multi_mean_pr_curve(full_path, args.model, args.metric, IMAGE_FORMAT)
                 multi_calibration_curve(
-                    full_path, args.model, args.metric, args.image_format
+                    full_path, args.model, args.metric, IMAGE_FORMAT
                 )
                 export_confusion_matrices(full_path, args.model)
                 mcc_raincloud(full_path, args.model)

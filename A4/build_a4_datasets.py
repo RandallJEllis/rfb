@@ -727,6 +727,10 @@ def main():
     phyneuro = add_collection_date(phyneuro, sv)
     phyneuro.to_parquet("../../tidy_data/A4/phyneuro.parquet")
 
+    pacc = pd.read_csv("../../raw_data/A4_oct302024/clinical/Derived Data/PACC.csv")
+    pacc = add_collection_date(pacc, sv)
+    pacc.to_parquet("../../tidy_data/A4/pacc.parquet")
+
 
 if __name__ == "__main__":
     main()
