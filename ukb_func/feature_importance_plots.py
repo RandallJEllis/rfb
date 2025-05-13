@@ -106,122 +106,173 @@ lookup_dict = {
     26602: "Vol. Accessory-Basal-nucleus (L)",
     25450: "Mean ISOVF, inf. cerebellar peduncle, FA skeleton (R)",
     20131: "Number of correct matches in round",
+    2020: "Loneliness/isolation",
+    25921: "Increased search space, eddy current estimation, dMRI",
+    25924: "Echo Time for tfMRI",
+    25925: "Intensity scaling for T1",
+    25926: "Intensity scaling for T2_FLAIR",
+    25927: "Intensity scaling for SWI",
+    25929: "Intensity scaling for rfMRI",
+    25930: "Intensity scaling for tfMRI",
+    20147: "Errors before correct, numeric path #1",
+    20148: "Errors before correct, alphanumeric path #2",
+    25190: "Mean MO, fornix cres+stria terminalis, FA skeleton (R)",
+    23046: "Down in dumps over last week",
+    21000: "Ethnic background",
 }
 
 for outcome in ["alzheimers", "dementia"]:
     for modality in ["proteomics", "neuroimaging", "cognitive_tests"]:
-        # proteomics
-        modality_path = f"../../results/UKBiobank/{outcome}/{modality}"
-        main_path = f"{modality_path}/demographics_modality_lancet2024/log_loss/lgbm/"
-        for age_cutoff in [0, 65]:
-            if age_cutoff == 0:
-                filepath = main_path
-            elif age_cutoff == 65:
-                filepath = main_path + "agecutoff_65"
-            df = plot_results.feature_importance_vals(filepath)
-
-            # if modality == "proteomics":
-            df = df[-20:]
-            print(df.feature.values)
-            # elif modality == "neuroimaging":
-            #     df = df[-10:]
-            # elif modality == "cognitive_tests":
-            #     df = df[-10:]
-
-            ticks = []
-
-            for f in df.feature.values:
-                print(f)
-                if f[-4:] == "-0.0" or f[-4:] == "-0.1":
-                    hyphen_idx = f.index("-")
-                    field_id = f[:hyphen_idx]
-                    ticks.append(lookup_dict[int(field_id)])
-                elif f[-2:] == "-0" and modality == "proteomics":
-                    hyphen_idx = f.index("-")
-                    prot_id = f[:hyphen_idx]
-                    sym = protein_code.loc[
-                        protein_code.coding == int(prot_id), "part_1"
-                    ].values[0]
-                    ticks.append(sym)
-                elif "21003" in f:
-                    ticks.append("Age")
-                elif "max_educ" in f:
-                    ticks.append("Max education")
-                elif "apoe_" in f:
-                    allele_num = f[-3]
-                    ticks.append(f"APOE$\epsilon$4, {allele_num} alleles")
-                elif "freq_friends_family_visit" in f:
-                    ticks.append("Frequency of friends/family visits")
-                elif "845" in f:
-                    ticks.append("Age completed full time education")
-
-                elif ".0" in f:
-                    # print(f)
-                    hyphen_idx = f.index("-")
-                    if modality == "neuroimaging":
-                        ticks.append(lookup_dict[int(f[:hyphen_idx])])
-                    elif modality == "cognitive_tests":
-                        ticks.append(lookup_dict[int(f[:hyphen_idx])])
-                elif "_0_" in f:
-                    underscore_idx = f.index("_")
-                    if modality == "neuroimaging":
-                        ticks.append(lookup_dict[int(f[:underscore_idx])])
-                    elif modality == "cognitive_tests":
-                        ticks.append(lookup_dict[int(f[:underscore_idx])])
-
-                elif f == "head_injury":
-                    ticks.append("Head injury")
-                elif f == "depression":
-                    ticks.append("Depression")
-                elif f == "alcohol_consumption":
-                    ticks.append("Alcohol consumption")
-                elif f == "hypertension":
-                    ticks.append("Hypertension")
-                elif f == "diabetes":
-                    ticks.append("Diabetes")
-                elif f == "hearing_loss":
-                    ticks.append("Hearing loss")
-                else:
-                    ticks.append(f)
-
-            plt.figure(figsize=(8, 8))
-
-            # Create a horizontal bar plot
-            plt.barh(
-                df.feature, df.mean_importance, xerr=df.std_importance, color="skyblue"
+        for model in ["lgbm", "lrl1"]:
+            # proteomics
+            modality_path = f"../../results/UKBiobank/{outcome}/{modality}"
+            main_path = (
+                f"{modality_path}/demographics_modality_lancet2024/log_loss/{model}/"
             )
+            for age_cutoff in [0, 65]:
+                if age_cutoff == 0:
+                    filepath = main_path
+                elif age_cutoff == 65:
+                    filepath = main_path + "agecutoff_65"
+                df = plot_results.feature_importance_vals(filepath)
 
-            print(len(df.feature), len(ticks))
-            plt.yticks(ticks=df.feature, labels=ticks)
+                # if modality == "proteomics":
+                df = df[-20:]
+                print(df.feature.values)
+                # elif modality == "neuroimaging":
+                #     df = df[-10:]
+                # elif modality == "cognitive_tests":
+                #     df = df[-10:]
 
-            # if modality == "proteomics":
-            #     x_ticks = np.arange(
-            #         0, max(df.mean_importance) + 9, 4
-            #     )  # Adjust the range and step as needed
-            # elif modality == "neuroimaging":
-            #     x_ticks = np.arange(
-            #         0, max(df.mean_importance) + 9, 4
-            #     )  # Adjust the range and step as needed
-            # elif modality == "cognitive_tests":
-            #     x_ticks = np.arange(
-            #         0, max(df.mean_importance) + 9, 4
-            #     )  # Adjust the range and step as needed
-            # plt.xticks(ticks=x_ticks)
-            plt.xlabel("Feature Importance")
-            plt.tight_layout()
-            if age_cutoff == 0:
-                plt.savefig(f"{modality_path}/feature_importance_figure_2025.pdf")
-                plt.savefig(
-                    f"{modality_path}/feature_importance_figure_2025.png", dpi=300
+                ticks = []
+
+                for f in df.feature.values:
+                    print(f)
+                    if "-0." in f:
+                        hyphen_idx = f.index("-")
+                        if modality == "cognitive_tests":
+                            last_period_idx = f.rindex(".")
+                            q_num = f[last_period_idx + 1 :]
+
+                            if f[:hyphen_idx] != "21003" and f[:hyphen_idx] != "31":
+                                ticks.append(
+                                    f"{lookup_dict[int(f[:hyphen_idx])]}, Q{q_num}"
+                                )
+                            else:
+                                ticks.append(lookup_dict[int(f[:hyphen_idx])])
+                        else:
+                            ticks.append(lookup_dict[int(f[:hyphen_idx])])
+
+                    elif f[-4:] == "-0.0" or f[-4:] == "-0.1":
+                        hyphen_idx = f.index("-")
+                        field_id = f[:hyphen_idx]
+                        ticks.append(lookup_dict[int(field_id)])
+                    elif f[-2:] == "-0" and modality == "proteomics":
+                        hyphen_idx = f.index("-")
+                        prot_id = f[:hyphen_idx]
+                        sym = protein_code.loc[
+                            protein_code.coding == int(prot_id), "part_1"
+                        ].values[0]
+                        ticks.append(sym)
+                    elif "21003" in f:
+                        ticks.append("Age")
+                    elif "max_educ" in f:
+                        ticks.append("Max education")
+                    elif "apoe_" in f:
+                        allele_num = f[-3]
+                        ticks.append(f"APOE$\epsilon$4, {allele_num} alleles")
+                    elif "freq_friends_family_visit" in f:
+                        ticks.append("Frequency of friends/family visits")
+                    elif "845" in f:
+                        ticks.append("Age completed full time education")
+
+                    elif f[:3] == "31-":
+                        ticks.append("Sex")
+                    elif f == "2020-0.0_1.0":
+                        ticks.append("Loneliness/isolation - YES")
+                    elif f == "2020-0.0_0.0":
+                        ticks.append("Loneliness/isolation - NO")
+
+                    elif f == "21000-0.0_1001.0":
+                        ticks.append("Ethnic background")
+                    elif "21000" in f:
+                        ticks.append("Ethnic background")
+
+                    elif ".0" in f:
+                        # print(f)
+                        hyphen_idx = f.index("-")
+                        if modality == "neuroimaging":
+                            ticks.append(lookup_dict[int(f[:hyphen_idx])])
+                        elif modality == "cognitive_tests":
+                            ticks.append(lookup_dict[int(f[:hyphen_idx])])
+                    elif "_0_" in f:
+                        underscore_idx = f.index("_")
+                        if modality == "neuroimaging":
+                            ticks.append(lookup_dict[int(f[:underscore_idx])])
+                        elif modality == "cognitive_tests":
+                            ticks.append(lookup_dict[int(f[:underscore_idx])])
+
+                    elif f == "head_injury":
+                        ticks.append("Head injury")
+                    elif f == "depression":
+                        ticks.append("Depression")
+                    elif f == "alcohol_consumption":
+                        ticks.append("Alcohol consumption")
+                    elif f == "hypertension":
+                        ticks.append("Hypertension")
+                    elif f == "diabetes":
+                        ticks.append("Diabetes")
+                    elif f == "hearing_loss":
+                        ticks.append("Hearing loss")
+                    else:
+                        ticks.append(f)
+
+                    print(ticks)
+
+                plt.figure(figsize=(8, 8))
+
+                # Create a horizontal bar plot
+                plt.barh(
+                    df.feature,
+                    df.mean_importance,
+                    xerr=df.std_importance,
+                    color="skyblue",
                 )
-            elif age_cutoff == 65:
-                plt.savefig(
-                    f"{modality_path}/feature_importance_figure_2025_agecutoff_65.pdf"
-                )
-                plt.savefig(
-                    f"{modality_path}/feature_importance_figure_2025_agecutoff_65.png",
-                    dpi=300,
-                )
+
+                print(len(df.feature), len(ticks))
+                plt.yticks(ticks=df.feature, labels=ticks)
+
+                # if modality == "proteomics":
+                #     x_ticks = np.arange(
+                #         0, max(df.mean_importance) + 9, 4
+                #     )  # Adjust the range and step as needed
+                # elif modality == "neuroimaging":
+                #     x_ticks = np.arange(
+                #         0, max(df.mean_importance) + 9, 4
+                #     )  # Adjust the range and step as needed
+                # elif modality == "cognitive_tests":
+                #     x_ticks = np.arange(
+                #         0, max(df.mean_importance) + 9, 4
+                #     )  # Adjust the range and step as needed
+                # plt.xticks(ticks=x_ticks)
+                plt.xlabel("Feature Importance")
+                plt.tight_layout()
+                if age_cutoff == 0:
+                    plt.savefig(
+                        f"{modality_path}/feature_importance_figure_{model}_2025.pdf"
+                    )
+                    plt.savefig(
+                        f"{modality_path}/feature_importance_figure_{model}_2025.png",
+                        dpi=300,
+                    )
+                elif age_cutoff == 65:
+                    plt.savefig(
+                        f"{modality_path}/feature_importance_figure_{model}_2025_agecutoff_65.pdf"
+                    )
+                    plt.savefig(
+                        f"{modality_path}/feature_importance_figure_{model}_2025_agecutoff_65.png",
+                        dpi=300,
+                    )
 
 
 # # neuroimaging

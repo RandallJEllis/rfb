@@ -23,7 +23,8 @@ modality=$1
 predict_alzheimers_only=$2
 
 # Define the strings for experiment and metric
-experiments=("fs_modality_only" "fs_demographics_and_modality" "fs_demographics_modality_lancet2024")
+experiments=("age_sex_lancet2024")
+# "fs_modality_only" "fs_demographics_and_modality" "fs_demographics_modality_lancet2024" )
 
 # "age_only" "age_sex_lancet2024" "all_demographics" "demographics_and_lancet2024"
 # "modality_only" "demographics_and_modality" "demographics_modality_lancet2024"
@@ -32,8 +33,9 @@ experiments=("fs_modality_only" "fs_demographics_and_modality" "fs_demographics_
 # metrics=("roc_auc" "f3" "ap")
 metrics=("log_loss")
 # ("lrl1" "lgbm")
-models=("lrl1" "lgbm")
-age_cutoffs=(0 65)
+models=("lrl1")
+# "lgbm")
+age_cutoffs=(65)
 # age_cutoffs=(0 65)
 
 # Nested loops to iterate over the strings
@@ -41,7 +43,7 @@ for experiment in "${experiments[@]}"; do
     for metric in "${metrics[@]}"; do
         for model in "${models[@]}"; do
             for age_cutoff in "${age_cutoffs[@]}"; do
-                for region_index in {0..9}; do
+                for region_index in {6..6}; do
                     if [[ $experiment == *"modality"* ]]; then  
                         # if [[ $experiment == "modality_only" || $experiment == "demographics_and_modality" || $experiment == "demographics_modality_lancet2024" ]]; then
 
@@ -113,7 +115,7 @@ for experiment in "${experiments[@]}"; do
 
                         else
                             partition="short"
-                            time="0:30:00"
+                            time="1:00:00"
                             mem="16G"
                         fi 
                     

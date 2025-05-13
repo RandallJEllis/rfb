@@ -54,7 +54,7 @@ def _choose_plot_title(dirpath):
 
     print(dirpath)
 
-    plot_title = {"age_only": "Age", "all_demographics": "Demo"}
+    plot_title = {"age_only": "Age", "all_demographics": "Demo + APOE"}
 
     if "age_only" in dirpath:
         title = plot_title["age_only"]
@@ -75,13 +75,13 @@ def _choose_plot_title(dirpath):
 
     elif "demographics_and_modality" in dirpath:
         if "proteomics" in dirpath:
-            title = "Demo + Proteins"
+            title = "Demo + APOE + Proteins"
         elif "cognitive_test" in dirpath:
-            title = "Demo + Cog. Tests"
+            title = "Demo + APOE + Cog. Tests"
         elif "neuroimaging" in dirpath:
-            title = "Demo + IDPs"
+            title = "Demo + APOE + IDPs"
         elif "csf" in dirpath:
-            title = "Demo + CSF"
+            title = "Demo + APOE + CSF"
 
         if "feature_selection" in dirpath:
             title = f"FS Demo + {title[7:]}"
@@ -89,16 +89,16 @@ def _choose_plot_title(dirpath):
     elif "age_sex_lancet2024" in dirpath:
         title = "Age + Sex + Lancet"
     elif "demographics_and_lancet2024" in dirpath:
-        title = "Demo + Lancet"
+        title = "Demo + APOE + Lancet"
     elif "demographics_modality_lancet2024" in dirpath:
         if "proteomics" in dirpath:
-            title = "Demo + Proteins + Lancet"
+            title = "Demo + APOE + Proteins + Lancet"
         elif "cognitive_test" in dirpath:
-            title = "Demo + Cog. Tests + Lancet"
+            title = "Demo + APOE + Cog. Tests + Lancet"
         elif "neuroimaging" in dirpath:
-            title = "Demo + IDPs + Lancet"
+            title = "Demo + APOE + IDPs + Lancet"
         elif "csf" in dirpath:
-            title = "Demo + CSF + Lancet"
+            title = "Demo + APOE + CSF + Lancet"
 
         if "feature_selection" in dirpath:
             title = f"FS Demo + {title[7:]}"
@@ -1055,6 +1055,8 @@ if __name__ == "__main__":
         image_format (str): The format of the image to save the results in.
 
     Example usage: python plot_results.py ../../results/UKBiobank lgbm log_loss pdf
+    
+    Insead of 'lgbm', use 'lrl1' for Logistic Regression with L1 regularization (LASSO).
     """
     parser = argparse.ArgumentParser(description="Plot ROC and PR curves")
     parser.add_argument(

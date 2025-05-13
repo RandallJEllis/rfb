@@ -51,7 +51,7 @@ if (amyloid_positive_only) {
   }
 models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
 metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
-# train_df_l <- qs::qread(paste0(main_path, "train_df_l.qs"))
+train_df_l <- qs::qread(paste0(main_path, "train_df_l.qs"))
 val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
 
 

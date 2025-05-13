@@ -1,5 +1,6 @@
 import sys
-
+import os
+os.chdir("..")
 sys.path.append("./ukb_func")
 import ml_utils
 import df_utils
@@ -684,9 +685,9 @@ def continuous_vars_for_scaling(
         + continuous_lancet_vars,
         "modality_only": {  # SET THIS UP FOR ALL MODALITIES
             "proteomics": df_utils.pull_columns_by_suffix(X, ["-0"]).columns.tolist(),
-            "neuroimaging": pickle.load(open(f"{data_path}/idp_variables.pkl", "rb")),
+            "neuroimaging": pickle.load(open(f"{data_path}/../neuroimaging/idp_variables.pkl", "rb")),
             "cognitive_tests": pickle.load(
-                open(f"{data_path}/cognitive_columns.pkl", "rb")
+                open(f"{data_path}/../cognitive_tests/cognitive_columns.pkl", "rb")
             ),
         },
     }
@@ -1154,6 +1155,14 @@ def main():
         region_index,
         alzheimers_only,
     ) = parse_args()
+    # data_modality = 'cognitive_tests'
+    # data_instance = 0
+    # experiment = 'fs_modality_only'
+    # metric = 'log_loss'
+    # model = 'lrl1'
+    # age_cutoff = None
+    # region_index = 0
+    # alzheimers_only = False
     print(
         f"Running {experiment} experiment, modality {data_modality}, instance {data_instance}, region {region_index}, model {model}, {metric} as the metric, and an age cutoff of {age_cutoff} years. Predicting Alzheimer's only: {alzheimers_only}"
     )

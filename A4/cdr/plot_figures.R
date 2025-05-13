@@ -68,28 +68,28 @@ get_colors_labels <- function() {
 
   # map model names to labels
   lookup_model_labels <- c(
-    "demographics_lancet" = "Demo+Lancet",
-    "ptau_demographics_lancet" = "pTau217+Demo+Lancet",
-    "demographics" = "Demo",
-    "demographics_no_apoe" = "Demo (-APOE)",
+    "demographics_lancet" = "Demo+APOE+Lancet",
+    "ptau_demographics_lancet" = "pTau217+Demo+APOE+Lancet",
+    "demographics" = "Demo+APOE",
+    "demographics_no_apoe" = "Demo",
     "lancet" = "Lancet",
     "ptau" = "pTau217",
-    "ptau_demographics" = "pTau217+Demo",
-    "ptau_demographics_no_apoe" = "pTau217+Demo (-APOE)",
-    "ptau_demographics_lancet_no_apoe" = "pTau217+Demo+Lancet (-APOE)",
-    "demographics_lancet_no_apoe" = "Demo+Lancet (-APOE)",
-    "centiloids_demographics_lancet" = "PET+Demo+Lancet",
-    "ptau_centiloids_demographics_lancet" = "pTau217+PET+Demo+Lancet",
+    "ptau_demographics" = "pTau217+Demo+APOE",
+    "ptau_demographics_no_apoe" = "pTau217+Demo",
+    "ptau_demographics_lancet_no_apoe" = "pTau217+Demo+Lancet",
+    "demographics_lancet_no_apoe" = "Demo+Lancet",
+    "centiloids_demographics_lancet" = "PET+Demo+APOE+Lancet",
+    "ptau_centiloids_demographics_lancet" = "pTau217+PET+Demo+APOE+Lancet",
     "centiloids" = "PET",
-    "centiloids_demographics" = "PET+Demo",
-    "centiloids_demographics_no_apoe" = "PET+Demo (-APOE)",
-    "centiloids_demographics_lancet" = "PET+Demo+Lancet",
-    "centiloids_demographics_lancet_no_apoe" = "PET+Demo+Lancet (-APOE)",
+    "centiloids_demographics" = "PET+Demo+APOE",
+    "centiloids_demographics_no_apoe" = "PET+Demo",
+    "centiloids_demographics_lancet" = "PET+Demo+APOE+Lancet",
+    "centiloids_demographics_lancet_no_apoe" = "PET+Demo+Lancet",
     "ptau_centiloids" = "pTau217+PET",
-    "ptau_centiloids_demographics" = "pTau217+PET+Demo",
-    "ptau_centiloids_demographics_no_apoe" = "pTau217+PET+Demo (-APOE)",
-    "ptau_centiloids_demographics_lancet" = "pTau217+PET+Demo+Lancet",
-    "ptau_centiloids_demographics_lancet_no_apoe" = "pTau217+PET+Demo+Lancet (-APOE)"
+    "ptau_centiloids_demographics" = "pTau217+PET+Demo+APOE",
+    "ptau_centiloids_demographics_no_apoe" = "pTau217+PET+Demo",
+    "ptau_centiloids_demographics_lancet" = "pTau217+PET+Demo+APOE+Lancet",
+    "ptau_centiloids_demographics_lancet_no_apoe" = "pTau217+PET+Demo+Lancet"
   )
 
   return(list(
