@@ -13,8 +13,8 @@ library(this.path)
 
 setwd(dirname(this.path()))
 
-source("../A4/plot_figures.R")
-source("../A4/metrics.R")
+source("../A4/cdr/plot_figures.R")
+source("../A4/cdr/metrics.R")
 
 # tmerge data for all models
 format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
@@ -73,10 +73,10 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   # get medhist
   medhist_cols <- intersect(lancet_cols_to_keep,
                     colnames(medhist))
-  medhist <- medhist[medhist$RID %in% df$id,
+  medhist_df <- medhist[medhist$RID %in% df$id,
                       c("RID", "visit_to_years", medhist_cols)
                     ]
-  colnames(medhist) <- c(
+  colnames(medhist_df) <- c(
     "id", "time", 
     lancet_col_mapping[medhist_cols]
   )
@@ -84,10 +84,10 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   # get neuroexm
   neuroexm_cols <- intersect(lancet_cols_to_keep,
                     colnames(neuroexm))
-  neuroexm <- neuroexm[neuroexm$RID %in% df$id,
+  neuroexm_df <- neuroexm[neuroexm$RID %in% df$id,
                         c("RID", "visit_to_years", neuroexm_cols)
                       ]
-  colnames(neuroexm) <- c(
+  colnames(neuroexm_df) <- c(
     "id", "time",
     lancet_col_mapping[neuroexm_cols]
   )
@@ -95,11 +95,11 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   # adni nightingale
   adni_nightingale_cols <- intersect(lancet_cols_to_keep,
                     colnames(adni_nightingale))
-  adni_nightingale <- adni_nightingale[
+  adni_nightingale_df <- adni_nightingale[
     adni_nightingale$RID %in% df$id, 
     c("RID", "visit_to_years", adni_nightingale_cols)
   ]
-  colnames(adni_nightingale) <- c(
+  colnames(adni_nightingale_df) <- c(
     "id", "time", 
     lancet_col_mapping[adni_nightingale_cols]
   )
@@ -107,10 +107,10 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   # modhach
   modhach_cols <- intersect(lancet_cols_to_keep,
                     colnames(modhach))
-  modhach <- modhach[modhach$RID %in% df$id,
+  modhach_df <- modhach[modhach$RID %in% df$id,
                       c("RID", "visit_to_years", modhach_cols)
                     ]
-  colnames(modhach) <- c(
+  colnames(modhach_df) <- c(
     "id", "time", 
     lancet_col_mapping[modhach_cols]
   )
@@ -118,10 +118,10 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   # get vitals
   vitals_cols <- intersect(lancet_cols_to_keep,
                     colnames(vitals))
-  vitals <- vitals[vitals$RID %in% df$id,
+  vitals_df <- vitals[vitals$RID %in% df$id,
                     c("RID", "visit_to_years", vitals_cols)
                   ]
-  colnames(vitals) <- c(
+  colnames(vitals_df) <- c(
     "id", "time", 
     lancet_col_mapping[vitals_cols]
   )
@@ -129,10 +129,10 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   # get depression
   depression_cols <- intersect(lancet_cols_to_keep,
                     colnames(depression))
-  depression <- depression[depression$RID %in% df$id,
+  depression_df <- depression[depression$RID %in% df$id,
                             c("RID", "visit_to_years", depression_cols)
                           ]
-  colnames(depression) <- c(
+  colnames(depression_df) <- c(
     "id", "time", 
     lancet_col_mapping[depression_cols]
   )
@@ -175,60 +175,85 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   # )
   # }
 
+
+  empty_lancet_cols <- c()
+
   # check if any lancet cols are fully missing
   # if so, and mean_lancet_vars is provided, replace with mean_lancet_vars
   for (col in lancet_col_mapping[medhist_cols]) {
-    if (all(is.na(medhist[[col]]))) {
+    if (all(is.na(medhist_df[[col]]))) {
       if (!is.null(mean_lancet_vars)) {
-        medhist[[col]] <- mean_lancet_vars[col]
+        medhist_df[[col]] <- mean_lancet_vars[col]
       } else {
         print(paste0("Column ", col, " is fully missing"))
+        # drop column
+        medhist_df <- medhist_df[, !colnames(medhist_df) %in% col]
+        empty_lancet_cols <- c(empty_lancet_cols, col)
       }
     }
   }
 
   for (col in lancet_col_mapping[neuroexm_cols]) {
-    if (all(is.na(neuroexm[[col]]))) {
+    if (all(is.na(neuroexm_df[[col]]))) {
       if (!is.null(mean_lancet_vars)) {
-        neuroexm[[col]] <- mean_lancet_vars[col]
+        neuroexm_df[[col]] <- mean_lancet_vars[col]
       } else {
         print(paste0("Column ", col, " is fully missing"))
+        # drop column
+        neuroexm_df <- neuroexm_df[, !colnames(neuroexm_df) %in% col]
+        empty_lancet_cols <- c(empty_lancet_cols, col)
       }
     }
   }
 
   for (col in lancet_col_mapping[adni_nightingale_cols]) {
-    if (all(is.na(adni_nightingale[[col]]))) {
+    if (all(is.na(adni_nightingale_df[[col]]))) {
       if (!is.null(mean_lancet_vars)) {
-        adni_nightingale[[col]] <- mean_lancet_vars[col]
+        adni_nightingale_df[[col]] <- mean_lancet_vars[col]
       } else {
         print(paste0("Column ", col, " is fully missing"))
+        # drop column
+        adni_nightingale_df <- adni_nightingale_df[, !colnames(adni_nightingale_df) %in% col]
+        empty_lancet_cols <- c(empty_lancet_cols, col)
       }
     }
   }
 
   for (col in lancet_col_mapping[modhach_cols]) {
-    if (all(is.na(modhach[[col]]))) {
+    if (all(is.na(modhach_df[[col]]))) {
       if (!is.null(mean_lancet_vars)) {
-        modhach[[col]] <- mean_lancet_vars[col]
+        modhach_df[[col]] <- mean_lancet_vars[col]
       } else {
         print(paste0("Column ", col, " is fully missing"))
+        # drop column
+        modhach_df <- modhach_df[, !colnames(modhach_df) %in% col]
+        empty_lancet_cols <- c(empty_lancet_cols, col)
       }
     }
   }
 
   for (col in lancet_col_mapping[vitals_cols]) {
-    if (all(is.na(vitals[[col]]))) {
+    if (all(is.na(vitals_df[[col]]))) {
       if (!is.null(mean_lancet_vars)) {
-        vitals[[col]] <- mean_lancet_vars[col]
+        vitals_df[[col]] <- mean_lancet_vars[col]
+      } else {
+        print(paste0("Column ", col, " is fully missing"))
+        # drop column
+        vitals_df <- vitals_df[, !colnames(vitals_df) %in% col]
+        empty_lancet_cols <- c(empty_lancet_cols, col)
       }
     }
   }
 
   for (col in lancet_col_mapping[depression_cols]) {
-    if (all(is.na(depression[[col]]))) {
+    if (all(is.na(depression_df[[col]]))) {
       if (!is.null(mean_lancet_vars)) {
-        depression[[col]] <- mean_lancet_vars[col]
+        depression_df[[col]] <- mean_lancet_vars[col]
+      } else {
+        print(paste0("Column ", col, " is fully missing"))
+        # drop column
+        depression_df <- depression_df[, !colnames(depression_df) %in% col]
+        empty_lancet_cols <- c(empty_lancet_cols, col)
       }
     }
   }
@@ -236,160 +261,160 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
 
 
   # add lancet cols
-  if ('heent' %in% colnames(medhist)) {
+  if ('heent' %in% colnames(medhist_df)) {
     td_data <- tmerge(
     td_data,
-    medhist,
+    medhist_df,
     id = id,
     heent = tdc(time, heent, 0)
     )
   }
 
-  if ('cardio' %in% colnames(medhist)) {
+  if ('cardio' %in% colnames(medhist_df)) {
     td_data <- tmerge(
       td_data,
-      medhist,
+      medhist_df,
       id = id,
       cardio = tdc(time, cardio, 0)
     )
   }
 
-  if ('alc_abuse' %in% colnames(medhist)) {
+  if ('alc_abuse' %in% colnames(medhist_df)) {
     td_data <- tmerge(
       td_data,
-      medhist,
+      medhist_df,
       id = id,
       alc_abuse = tdc(time, alc_abuse, 0)
     )
   }
 
-  if ('alc_avg_drinks_day' %in% colnames(medhist)) {
+  if ('alc_avg_drinks_day' %in% colnames(medhist_df)) {
     td_data <- tmerge(
       td_data,
-      medhist,
+      medhist_df,
       id = id,
       alc_avg_drinks_day = tdc(time, alc_avg_drinks_day, 0)
     )
   }
 
-  if ('alc_abuse_years' %in% colnames(medhist)) {
+  if ('alc_abuse_years' %in% colnames(medhist_df)) {
     td_data <- tmerge(
       td_data,
-      medhist,
+      medhist_df,
       id = id,
       alc_abuse_years = tdc(time, alc_abuse_years, -4)
     )
   }
 
-  if ('time_since_abuse' %in% colnames(medhist)) {
+  if ('time_since_abuse' %in% colnames(medhist_df)) {
     td_data <- tmerge(
       td_data,
-      medhist,
+      medhist_df,
       id = id,
       time_since_abuse = tdc(time, time_since_abuse, -4)
     )
   }
 
-  if ('smoking' %in% colnames(medhist)) {
+  if ('smoking' %in% colnames(medhist_df)) {
     td_data <- tmerge(
       td_data,
-      medhist,
+      medhist_df,
       id = id,
       smoking = tdc(time, smoking, 0)
     )
   }
 
-  if ('smoke_avg_packs_day' %in% colnames(medhist)) {
+  if ('smoke_avg_packs_day' %in% colnames(medhist_df)) {
     td_data <- tmerge(
       td_data,
-      medhist,
+      medhist_df,
       id = id,
       smoke_avg_packs_day = tdc(time, smoke_avg_packs_day, -4)
     )
   }
 
-  if ('smoking_years' %in% colnames(medhist)) {
+  if ('smoking_years' %in% colnames(medhist_df)) {
     td_data <- tmerge(
       td_data,
-      medhist,
+      medhist_df,
       id = id,
       smoking_years = tdc(time, smoking_years, -4)
     )
   }
 
-  if ('time_since_smoking' %in% colnames(medhist)) {
+  if ('time_since_smoking' %in% colnames(medhist_df)) {
     td_data <- tmerge(
       td_data,
-      medhist,
+      medhist_df,
       id = id,
       time_since_smoking = tdc(time, time_since_smoking, -4)
     )
   }
 
-  if ('visual_impairment' %in% colnames(neuroexm)) {
+  if ('visual_impairment' %in% colnames(neuroexm_df)) {
     td_data <- tmerge(
       td_data,
-      neuroexm,
+      neuroexm_df,
       id = id,
       visual_impairment = tdc(time, visual_impairment, 0)
     )
   }
 
-  if ('audit_impairment' %in% colnames(neuroexm)) {
+  if ('audit_impairment' %in% colnames(neuroexm_df)) {
     td_data <- tmerge(
       td_data,
-      neuroexm,
+      neuroexm_df,
       id = id,
       audit_impairment = tdc(time, audit_impairment, 0)
     )    
   }
 
-  if ('ldl' %in% colnames(adni_nightingale)) {
+  if ('ldl' %in% colnames(adni_nightingale_df)) {
       if (!is.null(mean_lancet_vars)) {
       ldl_mean <- mean_lancet_vars["ldl"]
       } else {
-      ldl_mean <- mean(adni_nightingale$ldl, na.rm = TRUE)
+      ldl_mean <- mean(adni_nightingale_df$ldl, na.rm = TRUE)
       }
     td_data <- tmerge(
       td_data,
-      adni_nightingale,
+      adni_nightingale_df,
       id = id,
       ldl = tdc(time, ldl, ldl_mean)
     )
   }
 
-  if ('hypertension' %in% colnames(modhach)) {
+  if ('hypertension' %in% colnames(modhach_df)) {
     td_data <- tmerge(
       td_data,
-      modhach,
+      modhach_df,
       id = id,
       hypertension = tdc(time, hypertension, 0)
     )
   }
 
-  if ('bmi' %in% colnames(vitals)) {
+  if ('bmi' %in% colnames(vitals_df)) {
     if (!is.null(mean_lancet_vars)) {
       bmi_mean <- mean_lancet_vars["bmi"]
     } else {
-      bmi_mean <- mean(vitals$bmi, na.rm = TRUE)
+      bmi_mean <- mean(vitals_df$bmi, na.rm = TRUE)
     }
     td_data <- tmerge(
       td_data,
-      vitals,
+      vitals_df,
       id = id,
       bmi = tdc(time, bmi, bmi_mean)
     )
   }
 
-  if ('gdtotal' %in% colnames(depression)) {
+  if ('gdtotal' %in% colnames(depression_df)) {
     if (!is.null(mean_lancet_vars)) {
       gdtotal_mean <- mean_lancet_vars["gdtotal"]
     } else {
-      gdtotal_mean <- mean(depression$gdtotal, na.rm = TRUE)
+      gdtotal_mean <- mean(depression_df$gdtotal, na.rm = TRUE)
     }
     td_data <- tmerge(
       td_data,
-      depression,
+      depression_df,
       id = id,
       gdtotal = tdc(time, gdtotal, gdtotal_mean)
     )
@@ -414,7 +439,7 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   td_data <- td_data[order(td_data$id, td_data$tstart), ]
 
 
-  # zscore continuous lancet factors 
+  # zscore continuous lancet factors
   continuous_lancet_vars <- c(
     'alc_avg_drinks_day', 
     'alc_abuse_years', 
@@ -430,6 +455,14 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
   # intersect with lancet_keep_cols
   continuous_lancet_vars <- intersect(continuous_lancet_vars, lancet_col_mapping)
 
+  # drop columns that are fully missing
+  continuous_lancet_vars <- setdiff(continuous_lancet_vars, empty_lancet_cols)
+
+  # if mean_lancet_vars is provided, set continuous_lancet_vars to the intersection of continuous_lancet_vars and names(mean_lancet_vars)
+  if (!is.null(mean_lancet_vars)) {
+    continuous_lancet_vars <- intersect(continuous_lancet_vars, names(mean_lancet_vars))
+  }
+
   if (!is.null(mean_lancet_vars) && !is.null(sd_lancet_vars)) {
     print("Using provided mean and sd")
     } else {
@@ -442,6 +475,9 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
 
   print(mean_lancet_vars)
   print(sd_lancet_vars)
+
+  #### TODO: BUG HERE: Error in scale.default(td_data[, continuous_lancet_vars], center = mean_lancet_vars,  : 
+  # length of 'center' must equal the number of columns of 'x'
   td_data[, continuous_lancet_vars] <- scale(
     td_data[, continuous_lancet_vars],
     center = mean_lancet_vars, scale = sd_lancet_vars
@@ -465,9 +501,25 @@ format_df <- function(df, #ptau = FALSE, lancet = FALSE, pet = FALSE,
     fill(everything(), .direction = "up") %>%
     ungroup()
 
-  # print(dim(td_data))
+
+  # drop columns that are fully missing
+  fully_missing_cols <- colnames(td_data)[colSums(is.na(td_data)) == nrow(td_data)]
+  td_data <- td_data[, !colnames(td_data) %in% fully_missing_cols]
+
+  # remove fully_missing_cols from mean_lancet_vars and sd_lancet_vars
+  mean_lancet_vars <- mean_lancet_vars[!names(mean_lancet_vars) %in% fully_missing_cols]
+  sd_lancet_vars <- sd_lancet_vars[!names(sd_lancet_vars) %in% fully_missing_cols]
+
+  # drop columns that have only one unique value
+  one_unique_val_cols <- colnames(td_data)[sapply(td_data, function(x) length(unique(x)) == 1)]
+  td_data <- td_data[, !colnames(td_data) %in% one_unique_val_cols]
+  mean_lancet_vars <- mean_lancet_vars[!names(mean_lancet_vars) %in% one_unique_val_cols]
+  sd_lancet_vars <- sd_lancet_vars[!names(sd_lancet_vars) %in% one_unique_val_cols]
+
+  print(dim(td_data))
   td_data <- td_data[complete.cases(td_data), ]
-  # print(dim(td_data))
+  print(dim(td_data))
+  
   # update age2
   td_data$age2 <- td_data$age^2
 
@@ -488,8 +540,7 @@ get_model_formula <- function(model_type, lancet = FALSE, lancet_cols_to_keep = 
       sex + educ,
     "demographics" = Surv(tstart, tstop, event) ~ age + age2 +
       sex + educ +
-      apoe #+ age * apoe + age2 * apoe
-      ,
+      apoe + age * apoe + age2 * apoe,
     "lancet" = Surv(tstart, tstop, event) ~ 1,
     "ptau" = Surv(tstart, tstop, event) ~ ptau,
     "ptau_demographics_no_apoe" = Surv(tstart, tstop, event) ~ ptau +
@@ -497,23 +548,21 @@ get_model_formula <- function(model_type, lancet = FALSE, lancet_cols_to_keep = 
       sex + educ,
     "ptau_demographics" = Surv(tstart, tstop, event) ~ ptau + age + age2 +
       sex + educ + 
-      apoe #+ age * apoe + age2 * apoe
-      #,
+      apoe + age * apoe + age2 * apoe#,
     # "centiloids" = Surv(tstart, tstop, event) ~ centiloids,
     # "centiloids_demographics_no_apoe" = Surv(tstart, tstop, event) ~ centiloids +
     #   age + age2 +
     #   sex + educ,
     # "centiloids_demographics" = Surv(tstart, tstop, event) ~ centiloids +
     #   age + age2 +
-    #   sex + educ + apoe #+ age * apoe + age2 * apoe
-    #   ,
+    #   sex + educ + apoe + age * apoe + age2 * apoe,
     # "ptau_centiloids" = Surv(tstart, tstop, event) ~ ptau + centiloids,
     # "ptau_centiloids_demographics_no_apoe" = Surv(tstart, tstop, event) ~ ptau + centiloids +
     #   age + age2 +
     #   sex + educ,
     # "ptau_centiloids_demographics" = Surv(tstart, tstop, event) ~ ptau + centiloids +
     #   age + age2 +
-    #   sex + educ + apoe #+ age * apoe + age2 * apoe
+    #   sex + educ + apoe + age * apoe + age2 * apoe
   )
 
   formula <- base_formulas[[model_type]]
@@ -534,7 +583,16 @@ get_model_formula <- function(model_type, lancet = FALSE, lancet_cols_to_keep = 
   return(formula)
 }
 
-for (amyloid_positive_only in c(TRUE, FALSE)) {
+# count NAs in all columns of a dataframe
+# count_nas <- function(df) {
+#   return(colSums(is.na(df)))
+# }
+
+# count_nas(td_data)
+
+
+for (amyloid_positive_only in c(TRUE, 
+                              FALSE)) {
   load_path = "../../tidy_data/ADNI/"
 
   if (amyloid_positive_only) {
@@ -564,7 +622,7 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
 
   
 
-  eval_times <- seq(3, 7)
+  eval_times <- seq(1, 7)
 
   lancet_vars <- c(
           #"smoke", "alcohol", "aerobic", "walking",
@@ -602,7 +660,7 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
   adni_nightingale <- read_parquet(paste0(load_path, "adni_nightingale.parquet"))
   modhach <- read_parquet(paste0(load_path, "modhach.parquet"))
   vitals <- read_parquet(paste0(load_path, "vitals.parquet"))
-  # centiloids <- read_parquet(paste0(load_path, "pet.parquet"))
+  centiloids <- read_parquet(paste0(load_path, "pet.parquet"))
   depression <- read_parquet(paste0(load_path, "depression.parquet"))
 
   val_df_l <- list()
@@ -661,18 +719,21 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
 
     format_train <- format_df(train_df_raw, #ptau = is_ptau, lancet = is_lancet, pet = is_pet,
                       medhist, neuroexm, adni_nightingale, modhach, 
-                      vitals, depression, lancet_cols_to_keep#, centiloids
+                      vitals, depression, lancet_cols_to_keep, #centiloids
                       )
     df <- format_train[[1]]
     mean_lancet_vars <- format_train[[2]]
     sd_lancet_vars <- format_train[[3]]
     format_val <- format_df(val_df_raw, #ptau = is_ptau, lancet = is_lancet, pet = is_pet,
                       medhist, neuroexm, adni_nightingale, modhach, 
-                      vitals, depression, lancet_cols_to_keep,# centiloids,
+                      vitals, depression, lancet_cols_to_keep, #centiloids,
                       mean_lancet_vars=mean_lancet_vars,
                       sd_lancet_vars=sd_lancet_vars)
     val_df <- format_val[[1]]
-    
+
+    # force df and val_df to have the intersect of their columns
+    df <- df[, intersect(colnames(df), colnames(val_df))]
+    val_df <- val_df[, intersect(colnames(df), colnames(val_df))]
 
     train_df_l[[paste0("fold_", fold + 1)]] <- df
     val_df_l[[paste0("fold_", fold + 1)]] <- val_df
@@ -693,22 +754,66 @@ for (amyloid_positive_only in c(TRUE, FALSE)) {
       lancet_formula_cols <- intersect(colnames(df), tidy_lancet_cols)
       formula <- get_model_formula(base_type, is_lancet, lancet_formula_cols)
 
-      # Fit model
-      # if model gives overflow error, remove age2*apoe
-      tryCatch({
-        model <- coxph(formula, data = df, x = TRUE)
-      }, error = function(e) {
-        formula <- update(formula, . ~ . - age2 * apoe)
-        model <- coxph(formula, data = df, x = TRUE)
+      # # Fit model
+      # # if model gives overflow error, remove age2*apoe
+      # tryCatch({
+      #   model <- coxph(formula, data = df, x = TRUE)
+      # }, error = function(e) {
+      #   formula <- update(formula, . ~ . - age2 * apoe)
+      #   model <- coxph(formula, data = df, x = TRUE)
+      # })
+
+      # # if model still gives overflow error, remove age*apoe
+      # tryCatch({
+      #   model <- coxph(formula, data = df, x = TRUE)
+      # }, error = function(e) {
+      #   formula <- update(formula, . ~ . - age * apoe)
+      #   model <- coxph(formula, data = df, x = TRUE)
+      # })
+
+      # # if model still gives overflow error, remove age2
+      # tryCatch({
+      #   model <- coxph(formula, data = df, x = TRUE)
+      # }, error = function(e) {
+      #   formula <- update(formula, . ~ . - age2)
+      #   model <- coxph(formula, data = df, x = TRUE)
+      # })
+
+      # # if model still gives overflow error, remove alc_abuse_years
+      # tryCatch({
+      #   model <- coxph(formula, data = df, x = TRUE)
+      # }, error = function(e) {
+      #   formula <- update(formula, . ~ . - alc_abuse_years)
+      #   model <- coxph(formula, data = df, x = TRUE)
+      # })
+
+      # Try fitting the model, removing interaction terms one at a time if needed
+      model <- tryCatch({
+        coxph(formula, data = df, x = TRUE)
+      }, error = function(e1) {
+        message("First model failed, removing age2*apoe")
+        formula1 <- update(formula, . ~ . - age2 * apoe)
+        tryCatch({
+          coxph(formula1, data = df, x = TRUE)
+        }, error = function(e2) {
+          message("Second model failed, removing age*apoe as well")
+          formula2 <- update(formula1, . ~ . - age * apoe)
+          tryCatch({
+            coxph(formula2, data = df, x = TRUE)
+          }, error = function(e3) {
+            message("Third model failed, removing age2 as well")
+            formula3 <- update(formula2, . ~ . - age2)
+            tryCatch({
+              coxph(formula3, data = df, x = TRUE)
+            }, error = function(e4) {
+              message("Fourth model failed, removing alc_abuse_years as well")
+              formula4 <- update(formula3, . ~ . - alc_abuse_years)
+              coxph(formula4, data = df, x = TRUE)
+            })
+          })
+        })
       })
 
-      # if model still gives overflow error, remove age*apoe
-      tryCatch({
-        model <- coxph(formula, data = df, x = TRUE)
-      }, error = function(e) {
-        formula <- update(formula, . ~ . - age * apoe)
-        model <- coxph(formula, data = df, x = TRUE)
-      })
       
       gc()
       models_list[[model_name]][[paste0("fold_", fold + 1)]] <- model

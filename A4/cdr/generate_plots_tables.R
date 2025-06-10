@@ -80,6 +80,9 @@ for (t in seq(3, 8)) {
   )
 }
 
+# print sensitivity and specificity for Year 7 for models ptau_demographics_lancet and demographics_lancet
+df_spspppvnpv[df_spspppvnpv$time == 7 & df_spspppvnpv$model %in% c("ptau_demographics_lancet", "demographics_lancet", "centiloids_demographics_lancet"), ]
+
 ########################################################
 # Bayes Information Criterion
 for (model_name in names(models_list)) {

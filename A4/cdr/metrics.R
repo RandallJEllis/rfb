@@ -371,18 +371,19 @@ calculate_SeSpPPVNPV <- function(model, train_data, val_data, times) {
 }
 
 
-SeSpPPVNPV_summary <- function(models_list, model_names, train_df_l, val_df_l) {
+SeSpPPVNPV_summary <- function(models_list, model_names, train_df_l, val_df_l, eval_times=NULL) {
   metrics_over_time <- list()
 
   # Calculate metrics for each model and fold
   for (model_name in model_names) {
+    print(paste0("Calculating SeSpPPVNPV for ", model_name))
     metrics_over_time[[model_name]] <- list()
     for (fold in 1:5) {
       model <- models_list[[model_name]][[paste0("fold_", fold)]]
       train_data <- train_df_l[[paste0("fold_", fold)]]
       val_data <- val_df_l[[paste0("fold_", fold)]]
       
-      metrics <- calculate_SeSpPPVNPV(model, train_data, val_data, times = seq(3, 7))
+      metrics <- calculate_SeSpPPVNPV(model, train_data, val_data, times = eval_times)
       
       # Store results in a data frame
       metrics_df <- data.frame(

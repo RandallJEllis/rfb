@@ -98,6 +98,7 @@ get_colors_labels <- function() {
   ))
 }
 
+# time-dependent plots
 td_plot <- function(summary_df, all_results_df=NULL, model_names, metric = "auc", all_models = FALSE) {
   # Filter models if all_models is FALSE
   if (!all_models) {
@@ -872,7 +873,7 @@ create_additional_figures <- function(models, val_data_dict, times) {
 }
 
 
-plot_auc_over_time <- function(auc_summary, model_names) {
+plot_auc_over_time <- function(auc_summary, model_names, eval_times=NULL) {
   sub_auc_summary <- auc_summary %>% 
     filter(model %in% model_names) %>%
     mutate(fold = as.factor(fold), # Make fold a factor for better grouping
@@ -886,11 +887,17 @@ plot_auc_over_time <- function(auc_summary, model_names) {
   )
   agg_sub_auc_summary$model <- factor(agg_sub_auc_summary$model, levels=model_names)
 
+  if (!is.null(eval_times)) {
+    agg_sub_auc_summary <- agg_sub_auc_summary %>%
+      filter(time %in% eval_times)
+  }
+
   # plot auc over time
   auc_plot <- td_plot(agg_sub_auc_summary,
                       sub_auc_summary,
                       model_names,
-                      metric = "auc")
+                      metric = "auc"
+                      )
 
   return(auc_plot)
 }
@@ -1030,7 +1037,7 @@ plot_roc_biggest_year_difference <- function(auc_summary, agg_auc_summary, model
   return(list(plot = p_year, year = year))
 }
 
-plot_brier_over_time <- function(metrics_list, model_names) {
+plot_brier_over_time <- function(metrics_list, model_names, eval_times=NULL) {
   brier_results <- collate_metric(metrics_list, metric = "brier")
   brier_summary <- brier_results %>%
     group_by(model, time) %>%
@@ -1042,6 +1049,11 @@ plot_brier_over_time <- function(metrics_list, model_names) {
     .groups = "drop"
   )
   brier_summary$model <- factor(brier_summary$model, levels=model_names)
+
+  if (!is.null(eval_times)) {
+    brier_summary <- brier_summary %>%
+      filter(time %in% eval_times)
+  }
 
   # Figure 1D - plot brier score over time
   brier_plot <- td_plot(brier_summary,
@@ -1155,7 +1167,7 @@ plot_SeSpPPVNPV <- function(data, metric) {
     )
 }
 
-save_all_figures <- function(model_names, models_list, metrics_list, train_df_l, val_df_l, width, height, dpi, main_path, filename_addon="") {
+save_all_figures <- function(model_names, models_list, metrics_list, train_df_l, val_df_l, width, height, dpi, main_path, eval_times=NULL, filename_addon="") {
   ##### FIGURE 1A: AUC over time
   # AUROC and CIs 
   print("Plotting AUC over time")
@@ -1165,7 +1177,8 @@ save_all_figures <- function(model_names, models_list, metrics_list, train_df_l,
     data = auc_summary,
     FUN = mean
   )
-  auc_plot <- plot_auc_over_time(auc_summary, model_names)
+ 
+  auc_plot <- plot_auc_over_time(auc_summary, model_names, eval_times=eval_times)
 
   # Save plots
   ggsave(paste0(main_path, "final_auc_Over_Time", filename_addon, ".pdf"),
@@ -1175,7 +1188,7 @@ save_all_figures <- function(model_names, models_list, metrics_list, train_df_l,
         dpi = 300)
 
   print("Plotting individual year ROC curves")
-  roc_plot <- plot_all_roc_curves(model_names, eval_times=seq(3, 7))
+  roc_plot <- plot_all_roc_curves(model_names, eval_times=eval_times)
   # Save the plot
   ggsave(paste0(main_path, "ROC_curves_by_timepoint", filename_addon, ".pdf"),
         plot = roc_plot,
@@ -1189,7 +1202,7 @@ save_all_figures <- function(model_names, models_list, metrics_list, train_df_l,
   p_year <- plot_roc_biggest_year_difference(auc_summary,
                                             agg_auc_summary, 
                                             model_names,
-                                            eval_times=seq(3, 7))
+                                            eval_times=eval_times)
   # Save plots
   ggsave(paste0(main_path, "final_ROCcurve_", p_year$year, "years", filename_addon, ".pdf"),
     plot = p_year$plot,
@@ -1201,7 +1214,7 @@ save_all_figures <- function(model_names, models_list, metrics_list, train_df_l,
 
   ###### Figure 1D: BRIER SCORE - plot brier score over time
   print("Plotting Brier score over time")
-  brier_plot <- plot_brier_over_time(metrics_list, model_names)
+  brier_plot <- plot_brier_over_time(metrics_list, model_names, eval_times=eval_times)
 
   # Save plots
   ggsave(paste0(main_path, "final_brier_Over_Time", filename_addon, ".pdf"),
@@ -1212,16 +1225,16 @@ save_all_figures <- function(model_names, models_list, metrics_list, train_df_l,
   )
 
   ##### Figure 1C: plot concordance over time
-  print("Plotting concordance over time")
-  concordance_plot <- plot_concordance_over_time(metrics_list, model_names)
+  # print("Plotting concordance over time")
+  # concordance_plot <- plot_concordance_over_time(metrics_list, model_names, eval_times=eval_times)
 
-  # Save plots
-  ggsave(paste0(main_path, "final_concordance_Over_Time", filename_addon, ".pdf"),
-    plot = concordance_plot,
-    width = width,
-    height = height,
-    dpi = 300
-  )
+  # # Save plots
+  # ggsave(paste0(main_path, "final_concordance_Over_Time", filename_addon, ".pdf"),
+  #   plot = concordance_plot,
+  #   width = width,
+  #   height = height,
+  #   dpi = 300
+  # )
 
   ########################################################
   # Sensitivity, Specificity, PPV, NPV
@@ -1231,7 +1244,7 @@ save_all_figures <- function(model_names, models_list, metrics_list, train_df_l,
   ##### Figure 1E: Sensitivity, Specificity, PPV, NPV
   print("Plotting sensitivity, specificity, PPV, NPV")
   # Set up parallel processing
-  df_sespppvnpv <- SeSpPPVNPV_summary(models_list, model_names, train_df_l, val_df_l)
+  df_sespppvnpv <- SeSpPPVNPV_summary(models_list, model_names, train_df_l, val_df_l, eval_times=eval_times)
   write_parquet(df_sespppvnpv, paste0(main_path, "sespppvnpv_summary", filename_addon, ".parquet"))
 
   # Create individual plots

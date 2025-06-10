@@ -6,8 +6,8 @@ library(this.path)
 
 setwd(dirname(this.path()))
 
-source("../A4/plot_figures.R")
-source("../A4/metrics.R")
+source("../A4/cdr/plot_figures.R")
+source("../A4/cdr/metrics.R")
 
 # Load fonts
 library(extrafont)
@@ -15,27 +15,33 @@ extrafont::loadfonts()
 font_import()
 loadfonts(device = "postscript")
 
-for (amyloid_positive_only in c(TRUE, FALSE)) {
+for (amyloid_positive_only in c(TRUE, 
+                            FALSE)) {
   if (amyloid_positive_only) {
     main_path <- "../../tidy_data/ADNI/amyloid_positive/"
   } else {
     main_path <- "../../tidy_data/ADNI/"
   }
 
-models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
-metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
-val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
+  models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
+  metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
+  train_df_l <- qs::qread(paste0(main_path, "train_df_l.qs"))
+  val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
 
-model_names <- c("demographics_lancet",
-                  "ptau",
-                  "ptau_demographics_lancet",
-                  "centiloids",
-                  "centiloids_demographics_lancet",
-                  "ptau_centiloids_demographics_lancet")
+  model_names <- c("demographics_lancet",
+                    "ptau_demographics_lancet",
+                    "ptau",
+                    "demographics"#,
+                    # "centiloids",
+                    # "centiloids_demographics_lancet",
+                    # "ptau_centiloids_demographics_lancet"
+                    )
   width <- 8
   height <- 6
   dpi <- 300
-  save_all_figures(model_names, models_list, metrics_list, val_df_l, width, height, dpi, main_path)
+  save_all_figures(model_names, models_list, metrics_list, train_df_l, val_df_l, width, height, dpi, main_path, eval_times=seq(1,7))
+
+
 }
 
 

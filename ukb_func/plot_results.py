@@ -1055,7 +1055,7 @@ if __name__ == "__main__":
         image_format (str): The format of the image to save the results in.
 
     Example usage: python plot_results.py ../../results/UKBiobank lgbm log_loss pdf
-    
+
     Insead of 'lgbm', use 'lrl1' for Logistic Regression with L1 regularization (LASSO).
     """
     parser = argparse.ArgumentParser(description="Plot ROC and PR curves")
