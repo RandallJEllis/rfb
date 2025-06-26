@@ -15,13 +15,17 @@ extrafont::loadfonts()
 font_import()
 loadfonts(device = "postscript")
 
-for (amyloid_positive_only in c(TRUE, 
-                            FALSE)) {
-  if (amyloid_positive_only) {
-    main_path <- "../../tidy_data/ADNI/amyloid_positive/"
-  } else {
-    main_path <- "../../tidy_data/ADNI/"
-  }
+eval_times <- seq(2, 7)
+for (outcome in c("allcausedementia", "alzheimers")) {  
+# for (amyloid_positive_only in c(TRUE, FALSE)) {
+  main_path = paste0("../../tidy_data/ADNI/", outcome, "_outcome/")
+# for (amyloid_positive_only in c(TRUE, 
+#                             FALSE)) {
+  # if (amyloid_positive_only) {
+  #   main_path <- "../../tidy_data/ADNI/amyloid_positive/"
+  # } else {
+  #   main_path <- "../../tidy_data/ADNI/"
+  # }
 
   models_list <- qs::qread(paste0(main_path, "fitted_models.qs"))
   metrics_list <- qs::qread(paste0(main_path, "metrics.qs"))
@@ -39,7 +43,7 @@ for (amyloid_positive_only in c(TRUE,
   width <- 8
   height <- 6
   dpi <- 300
-  save_all_figures(model_names, models_list, metrics_list, train_df_l, val_df_l, width, height, dpi, main_path, eval_times=seq(1,7))
+  save_all_figures(model_names, models_list, metrics_list, train_df_l, val_df_l, width, height, dpi, main_path, eval_times=eval_times)
 
 
 }
@@ -115,24 +119,24 @@ sd(unlist(ptau_coefs))
 ########################################################  
 # pull all centiloids coefficients and p-values
 # iterate over all models and folds in models_list to do this
-centiloids_coefs <- list()
-centiloids_pvals <- list()
+# centiloids_coefs <- list()
+# centiloids_pvals <- list()
 
-for (model_name in names(models_list)) {
-  if (grepl("centiloids", model_name)) {
-    for (fold in 1:5) {
-      model <- models_list[[model_name]][[paste0("fold_", fold)]]
-      centiloids_coefs[[model_name]][[paste0("fold_", fold)]] <-
-        exp(model$coefficients["centiloids"])
-      centiloids_pvals[[model_name]][[paste0("fold_", fold)]] <-
-        summary(model)$coefficients["centiloids", "Pr(>|z|)"]
-    }
-  }
-}
+# for (model_name in names(models_list)) {
+#   if (grepl("centiloids", model_name)) {
+#     for (fold in 1:5) {
+#       model <- models_list[[model_name]][[paste0("fold_", fold)]]
+#       centiloids_coefs[[model_name]][[paste0("fold_", fold)]] <-
+#         exp(model$coefficients["centiloids"])
+#       centiloids_pvals[[model_name]][[paste0("fold_", fold)]] <-
+#         summary(model)$coefficients["centiloids", "Pr(>|z|)"]
+#     }
+#   }
+# }
 
-range(unlist(centiloids_pvals))
-mean(unlist(centiloids_coefs))
-sd(unlist(centiloids_coefs))
+# range(unlist(centiloids_pvals))
+# mean(unlist(centiloids_coefs))
+# sd(unlist(centiloids_coefs))
 
 
 ########################################################
@@ -172,51 +176,55 @@ sd(unlist(centiloids_coefs))
 # )
 
 demo_trocs <- list(
-  metrics_list$demographics$fold_1$troc,
-  metrics_list$demographics$fold_2$troc,
-  metrics_list$demographics$fold_3$troc,
-  metrics_list$demographics$fold_4$troc,
-  metrics_list$demographics$fold_5$troc
+  metrics_list$demographics_lancet$fold_1$troc,
+  metrics_list$demographics_lancet$fold_2$troc,
+  metrics_list$demographics_lancet$fold_3$troc,
+  metrics_list$demographics_lancet$fold_4$troc,
+  metrics_list$demographics_lancet$fold_5$troc
 )
 
 ptau_demo_trocs <- list(
-  metrics_list$ptau_demographics$fold_1$troc,
-  metrics_list$ptau_demographics$fold_2$troc,
-  metrics_list$ptau_demographics$fold_3$troc,
-  metrics_list$ptau_demographics$fold_4$troc,
-  metrics_list$ptau_demographics$fold_5$troc
+  metrics_list$ptau_demographics_lancet$fold_1$troc,
+  metrics_list$ptau_demographics_lancet$fold_2$troc,
+  metrics_list$ptau_demographics_lancet$fold_3$troc,
+  metrics_list$ptau_demographics_lancet$fold_4$troc,
+  metrics_list$ptau_demographics_lancet$fold_5$troc
 )
 
-centiloids_demo_trocs <- list(
-  metrics_list$centiloids_demographics$fold_1$troc,
-  metrics_list$centiloids_demographics$fold_2$troc,
-  metrics_list$centiloids_demographics$fold_3$troc,
-  metrics_list$centiloids_demographics$fold_4$troc,
-  metrics_list$centiloids_demographics$fold_5$troc
-)
+# centiloids_demo_trocs <- list(
+#   metrics_list$centiloids_demographics$fold_1$troc,
+#   metrics_list$centiloids_demographics$fold_2$troc,
+#   metrics_list$centiloids_demographics$fold_3$troc,
+#   metrics_list$centiloids_demographics$fold_4$troc,
+#   metrics_list$centiloids_demographics$fold_5$troc
+# )
 
-ptau_centiloids_demo_trocs <- list(
-  metrics_list$ptau_centiloids_demographics$fold_1$troc,
-  metrics_list$ptau_centiloids_demographics$fold_2$troc,
-  metrics_list$ptau_centiloids_demographics$fold_3$troc,
-  metrics_list$ptau_centiloids_demographics$fold_4$troc,
-  metrics_list$ptau_centiloids_demographics$fold_5$troc
-)
+# ptau_centiloids_demo_trocs <- list(
+#   metrics_list$ptau_centiloids_demographics$fold_1$troc,
+#   metrics_list$ptau_centiloids_demographics$fold_2$troc,
+#   metrics_list$ptau_centiloids_demographics$fold_3$troc,
+#   metrics_list$ptau_centiloids_demographics$fold_4$troc,
+#   metrics_list$ptau_centiloids_demographics$fold_5$troc
+# )
 
 # demo+lancet vs ptau+demo+lancet
 pvals_compare_trocs <- compare_tvaurocs(demo_trocs,
                                         ptau_demo_trocs)
 
+ptau_stats <- print_model_stats(models_list, "ptau", return_table = TRUE)
+# print ptau_stats as latex table
+print(xtable(ptau_stats), type = "latex", sanitize.text.function = function(x) x)
+
 # print out all p-values
 print("Summary of AUC differences and p-values by time point:")
-print(range(pvals_compare_trocs$all_results$p_value))
-print(mean(pvals_compare_trocs$all_results$p_value))
-print(sd(pvals_compare_trocs$all_results$p_value))
-print(median(pvals_compare_trocs$all_results$p_value))
+print(range(pvals_compare_trocs$all_results$p_value[is.na(pvals_compare_trocs$all_results$p_value) == FALSE]))
+print(mean(pvals_compare_trocs$all_results$p_value[is.na(pvals_compare_trocs$all_results$p_value) == FALSE]))
+print(sd(pvals_compare_trocs$all_results$p_value[is.na(pvals_compare_trocs$all_results$p_value) == FALSE]))
+print(median(pvals_compare_trocs$all_results$p_value[is.na(pvals_compare_trocs$all_results$p_value) == FALSE]))
 
 # how many p-values are less than 0.05? out of how many total p-values?
-sum(pvals_compare_trocs$all_results$p_value < 0.05) /
-  length(pvals_compare_trocs$all_results$p_value)
+sum(pvals_compare_trocs$all_results$p_value[is.na(pvals_compare_trocs$all_results$p_value) == FALSE] < 0.05) /
+  length(pvals_compare_trocs$all_results$p_value[is.na(pvals_compare_trocs$all_results$p_value) == FALSE])
 
 # Create detailed results table
 results_table <- pvals_compare_trocs$all_results

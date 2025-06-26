@@ -21,7 +21,7 @@ def pull_columns_by_prefix(df, column_prefixes):
         eid_in_columns = True
         
     # Filter rows where 1+ value in the subset of columns is not NA (NaN or None)
-    df = df[~df[matching_columns].isnull().all(axis=1)]
+    # df = df[~df[matching_columns].isnull().all(axis=1)]
     
     if eid_in_columns:
         # Include the exclude_column in the result
@@ -45,7 +45,7 @@ def pull_columns_by_suffix(df, column_suffixes):
         eid_in_columns = True
 
     # Filter rows where 1+ value in the subset of columns is not NA (NaN or None)
-    df = df[~df[matching_columns].isnull().all(axis=1)]
+    # df = df[~df[matching_columns].isnull().all(axis=1)]
     
     if eid_in_columns:
         # Include the exclude_column in the result

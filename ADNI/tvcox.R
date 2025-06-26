@@ -590,14 +590,14 @@ get_model_formula <- function(model_type, lancet = FALSE, lancet_cols_to_keep = 
 
 # count_nas(td_data)
 
+eval_times <- seq(2, 7)
+for (outcome in c("allcausedementia", "alzheimers")) {  
+# for (amyloid_positive_only in c(TRUE, FALSE)) {
+  load_path = paste0("../../tidy_data/ADNI/", outcome, "_outcome/")
 
-for (amyloid_positive_only in c(TRUE, 
-                              FALSE)) {
-  load_path = "../../tidy_data/ADNI/"
-
-  if (amyloid_positive_only) {
-    load_path = paste0(load_path, "amyloid_positive/")
-  } 
+  # if (amyloid_positive_only) {
+  #   load_path = paste0(load_path, "amyloid_positive/")
+  # } 
 
   # # Load fonts
   # library(extrafont)
@@ -620,15 +620,14 @@ for (amyloid_positive_only in c(TRUE,
   #     ungroup()
   # }
 
+
   
 
-  eval_times <- seq(1, 7)
-
-  lancet_vars <- c(
-          #"smoke", "alcohol", "aerobic", "walking",
-          "gdtotal"
-          #, "staital", "vsbsys", "vsdia"
-        )
+  # lancet_vars <- c(
+  #         #"smoke", "alcohol", "aerobic", "walking",
+  #         "gdtotal"
+  #         #, "staital", "vsbsys", "vsdia"
+  #       )
 
   # Initialize lists to store results for all models
   models_list <- list(
@@ -660,7 +659,7 @@ for (amyloid_positive_only in c(TRUE,
   adni_nightingale <- read_parquet(paste0(load_path, "adni_nightingale.parquet"))
   modhach <- read_parquet(paste0(load_path, "modhach.parquet"))
   vitals <- read_parquet(paste0(load_path, "vitals.parquet"))
-  centiloids <- read_parquet(paste0(load_path, "pet.parquet"))
+  # centiloids <- read_parquet(paste0(load_path, "pet.parquet"))
   depression <- read_parquet(paste0(load_path, "depression.parquet"))
 
   val_df_l <- list()
@@ -754,6 +753,50 @@ for (amyloid_positive_only in c(TRUE,
       lancet_formula_cols <- intersect(colnames(df), tidy_lancet_cols)
       formula <- get_model_formula(base_type, is_lancet, lancet_formula_cols)
 
+      # Fit initial model
+      cox_fit <- coxph(formula, data = df)
+
+      # Get coefficient names and values
+      coefs <- coef(cox_fit)
+
+      # Identify terms with NA coefficients
+      na_terms <- names(coefs)[is.na(coefs)]
+
+      # Extract variable names before the level suffix (e.g., "sexmale" → "sex")
+      # This works assuming dummy variables are named like varnameLEVEL
+      base_vars <- unique(sub("[0-9]+$", "", na_terms))
+
+      # remove NA from base_vars if it is in there
+      base_vars <- base_vars[!is.na(base_vars)]
+
+      # Drop the full variable(s) from the data
+      if (length(base_vars) > 0) {
+        df <- df[, !names(df) %in% base_vars]
+        # Update formula by removing each variable individually
+        for (var in base_vars) {
+          formula <- update(formula, as.formula(paste(". ~ . -", var)))
+        }
+      }
+
+      # Identify terms with exp(coef) > 10000
+      exp_terms <- names(coef(cox_fit))[abs(exp(coef(cox_fit))) > 10000]
+
+      # Extract variable names before the level suffix (e.g., "sexmale" → "sex")
+      base_vars <- unique(sub("[0-9]+$", "", exp_terms))
+
+      # remove NA from base_vars if it is in there
+      base_vars <- base_vars[!is.na(base_vars)]
+
+      # Drop the full variable(s) from the data
+      if (length(base_vars) > 0) {
+        df <- df[, !names(df) %in% base_vars]
+        # Update formula by removing each variable individually
+        for (var in base_vars) {
+          formula <- update(formula, as.formula(paste(". ~ . -", var)))
+        }
+      }
+
+
       # # Fit model
       # # if model gives overflow error, remove age2*apoe
       # tryCatch({
@@ -788,31 +831,43 @@ for (amyloid_positive_only in c(TRUE,
       # })
 
       # Try fitting the model, removing interaction terms one at a time if needed
+      model <- NULL
+      variables_to_remove <- c("age2*apoe", "age*apoe", "age2", "alc_abuse_years")
+
+      # Try initial model
       model <- tryCatch({
         coxph(formula, data = df, x = TRUE)
-      }, error = function(e1) {
-        message("First model failed, removing age2*apoe")
-        formula1 <- update(formula, . ~ . - age2 * apoe)
-        tryCatch({
-          coxph(formula1, data = df, x = TRUE)
-        }, error = function(e2) {
-          message("Second model failed, removing age*apoe as well")
-          formula2 <- update(formula1, . ~ . - age * apoe)
-          tryCatch({
-            coxph(formula2, data = df, x = TRUE)
-          }, error = function(e3) {
-            message("Third model failed, removing age2 as well")
-            formula3 <- update(formula2, . ~ . - age2)
-            tryCatch({
-              coxph(formula3, data = df, x = TRUE)
-            }, error = function(e4) {
-              message("Fourth model failed, removing alc_abuse_years as well")
-              formula4 <- update(formula3, . ~ . - alc_abuse_years)
-              coxph(formula4, data = df, x = TRUE)
-            })
-          })
-        })
+      }, error = function(e) {
+        message("Initial model failed: ", e$message)
+        # First check for NA coefficients
+        if (length(names(which(is.na(coef(coxph(formula, data = df, x = TRUE)))))) > 0) {
+          message("Removing NA coefficients")
+          formula <- update(formula, . ~ . - names(which(is.na(coef(coxph(formula, data = df, x = TRUE))))))
+          model <- tryCatch(coxph(formula, data = df, x = TRUE), error = function(e) NULL)
+        }
+        
+        # If still failing, try removing variables in sequence
+        if (is.null(model)) {
+          for (var in variables_to_remove) {
+            if (is.null(model)) {
+              message(paste("Model failed, removing", var))
+              formula <- update(formula, as.formula(paste(". ~ . -", var)))
+              model <- tryCatch(coxph(formula, data = df, x = TRUE), error = function(e) NULL)
+            }
+          }
+        }
+        
+        if (is.null(model)) {
+          warning("All model attempts failed")
+          return(NULL)
+        }
+        return(model)
       })
+
+      if (is.null(model)) {
+        stop("Failed to fit any Cox model after all attempts")
+      }
+    
 
       
       gc()

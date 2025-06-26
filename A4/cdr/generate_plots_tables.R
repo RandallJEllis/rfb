@@ -56,6 +56,64 @@ val_df_l <- qs::qread(paste0(main_path, "val_df_l.qs"))
 
 
 options(pillar.width = Inf)
+
+########################################################
+# Table - Summary stat ranges for models
+# Assuming models_list is a list of 5 data frames with identical structure
+
+# Step 1: Stack them into a single long-form data frame with an ID
+library(dplyr)
+library(tidyr)
+library(purrr)
+
+m_list <- models_list$ptau_demographics_lancet
+
+# Step 1: Extract summary tables from models
+model_tables <- lapply(seq_along(m_list), function(i) {
+  coef_df <- as.data.frame(summary(m_list[[i]])$coefficients)
+  coef_df$term <- rownames(coef_df)
+  coef_df$fold <- i
+  coef_df
+})
+
+# Step 2: Combine all into one long-form table
+combined_df <- bind_rows(model_tables)
+
+# Step 3: Extract desired row order from the first model
+term_order <- rownames(summary(m_list[[1]])$coefficients)
+
+# Step 4: Pivot longer
+long_df <- combined_df %>%
+  pivot_longer(cols = c(coef, `exp(coef)`, `se(coef)`, z, `Pr(>|z|)`),
+               names_to = "metric", values_to = "value")
+
+# Step 5: Summarize range per term and metric
+summary_range <- long_df %>%
+  group_by(term, metric) %>%
+  summarise(
+    range = paste0(signif(min(value), 3), "–", signif(max(value), 3)),
+    .groups = "drop"
+  )
+
+# Step 5b: Compute mean p-value per term (across folds)
+pval_means <- long_df %>%
+  filter(metric == "Pr(>|z|)") %>%
+  group_by(term) %>%
+  summarise(pval_mean = mean(value), .groups = "drop")
+
+# Step 6: Pivot wider and join with p-value summary for sorting
+final_table <- summary_range %>%
+  pivot_wider(names_from = metric, values_from = range) %>%
+  left_join(pval_means, by = "term") %>%
+  arrange(pval_mean) %>%
+  select(-pval_mean)  # Remove sorting helper column if desired
+
+
+# View
+print(xtable(final_table), type = "latex", sanitize.text.function = function(x) x)
+
+
+
 ########################################################
 # Sensitivity, Specificity, PPV, NPV
 df_spspppvnpv <- read_parquet(paste0(main_path, "spspppvnpv_summary.parquet"))

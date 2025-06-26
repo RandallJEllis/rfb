@@ -226,7 +226,7 @@ compare_tvaurocs <- function(trocs_x, trocs_y) {
     # Compare timeROC objects using timeROC::compare
     comparison <- timeROC::compare(trocs_x[[fold]],
                                    trocs_y[[fold]],
-                                   adjusted = TRUE
+                                   #adjusted = TRUE
     )
     
     # Store results for this fold
@@ -236,7 +236,7 @@ compare_tvaurocs <- function(trocs_x, trocs_y) {
       auc_x = trocs_x[[fold]]$AUC,
       auc_y = trocs_y[[fold]]$AUC,
       auc_diff = trocs_y[[fold]]$AUC - trocs_x[[fold]]$AUC,
-      p_value = comparison$p_values_AUC[2, ]
+      p_value = comparison$p_values_AUC#[1, ]
     )
   }
   

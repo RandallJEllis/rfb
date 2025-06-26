@@ -19,7 +19,7 @@ from datetime import datetime
 import pickle
 import matplotlib.pyplot as plt
 import os
-from utils import save_pickle
+from rfb.code.ukb_func.utils import save_pickle
 from sklearn.preprocessing import OneHotEncoder, OrdinalEncoder
 import pyarrow as pa
 
@@ -168,12 +168,12 @@ def calc_results(
             fn,
             acc,
             bal_acc,
-            prfs[0][0],
-            prfs[0][1],
-            prfs[1][0],
-            prfs[1][1],
-            prfs[2][0],
-            prfs[2][1],
+            prfs[0][0], # precision negative (NPV)
+            prfs[0][1], # precision positive (PPV)
+            prfs[1][0], # recall negative (Sensitivity)
+            prfs[1][1], # recall positive (Specificity)
+            prfs[2][0], # fbeta negative
+            prfs[2][1], # fbeta positive
             mcc,
         ],
         index=[

@@ -2,12 +2,12 @@ import sys
 import os
 
 sys.path.append("../ukb_func")
-import ml_utils
-import df_utils
-import ukb_utils
-import utils
-import f3
-import dementia_utils
+import rfb.code.ukb_func.ml_utils as ml_utils
+import rfb.code.ukb_func.df_utils as df_utils
+import rfb.code.ukb_func.ukb_utils as ukb_utils
+import rfb.code.ukb_func.utils as utils
+import rfb.code.ukb_func.f3 as f3
+import rfb.code.ukb_func.dementia_utils as dementia_utils
 
 import pickle
 import argparse
@@ -1199,7 +1199,7 @@ def main():
         continuous_cols = continuous_vars_for_scaling(
             data_modality, data_instance, experiment, continuous_lancet_vars, X
         )
-        print("Done scaling data")
+        print("Done retrieving continuous variables")
 
     # print experiment details
     print(

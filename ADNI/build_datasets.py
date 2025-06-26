@@ -53,243 +53,273 @@ apoe_df = pd.read_csv(apoe_path)
 demo_df = pd.read_csv(demo_path)
 ptau_df = pd.read_csv(ptau_path, low_memory=False)
 
-# Flag for subsetting amyloid positive cases
-for subset_amyloid_positive in [True, False]:
+# Define outcomes to process
+for outcome in ["allcausedementia", "alzheimers"]:
 
-    print(f"subsetting amyloid positive: {subset_amyloid_positive}")
+    # Flag for subsetting amyloid positive cases
+    for subset_amyloid_positive in [False]:  # True,
 
-    pet = pet_df[pet_df.qc_flag > 0]
+        print(f"subsetting amyloid positive: {subset_amyloid_positive}")
 
-    # Set save path based on amyloid positive subsetting
-    if subset_amyloid_positive:
-        save_path = "../../tidy_data/ADNI/amyloid_positive/"
-        pet = pet[pet.AMYLOID_STATUS_COMPOSITE_REF == 1]
-    else:
-        save_path = "../../tidy_data/ADNI/"
-    os.makedirs(save_path, exist_ok=True)
+        pet = pet_df[pet_df.qc_flag > 0]
 
-    # Process ptau data
-    ptau = ptau_df.copy()
-    print(f"starting shape of ptau:, {ptau.shape}")
-    print(f"number of unique subjects in ptau:, {ptau.RID.nunique()}")
-    ptau.EXAMDATE = pd.to_datetime(ptau.EXAMDATE, format="%Y-%m-%d", errors="coerce")
-
-    # Process PET data
-    pet.rename({"SCANDATE": "EXAMDATE"}, axis=1, inplace=True)
-    pet.EXAMDATE = pd.to_datetime(pet.EXAMDATE, format="%Y-%m-%d", errors="coerce")
-    pet = pet.iloc[:, :20]  # Keep only first 20 columns
-    print(f"starting shape of pet:, {pet.shape}")
-    print(f"number of unique subjects in pet:, {pet.RID.nunique()}")
-
-    # Process diagnosis data
-    dx = dx_df[dx_df.EXAMDATE.notna()]  # Remove rows with missing exam dates
-    dx.EXAMDATE = pd.to_datetime(dx.EXAMDATE, format="%Y-%m-%d", errors="coerce")
-    dx.sort_values(by=["RID", "EXAMDATE"], inplace=True)
-
-    # Process demographic data
-    demo = demo_df.rename({"VISDATE": "EXAMDATE"}, axis=1)
-    demo.EXAMDATE = pd.to_datetime(demo.EXAMDATE, format="%Y-%m-%d", errors="coerce")
-
-    # Find common IDs between PET and ptau data
-    ptau_pet_common_ids = set(ptau.RID)  # & set(pet.RID)
-    print(f"Number of ptau subjects with PET data: {len(ptau_pet_common_ids)}")
-
-    # Filter all datasets to include only subjects with both PET and ptau data
-    ptau = ptau[ptau.RID.isin(ptau_pet_common_ids)].reset_index(drop=True)
-    pet = pet[pet.RID.isin(ptau_pet_common_ids)].reset_index(drop=True)
-    demo = demo[demo.RID.isin(ptau_pet_common_ids)].reset_index(drop=True)
-    dx = dx[dx.RID.isin(ptau_pet_common_ids)].reset_index(drop=True)
-
-    # Find earliest baseline visit and latest visit dates
-    earliest_baseline = find_first_or_last_visit(
-        [ptau, pet, demo, dx], first_or_last="first"
-    )
-    latest_date = find_first_or_last_visit([ptau, pet, demo, dx], first_or_last="last")
-    latest_date = map_time_from_baseline(latest_date, earliest_baseline)
-
-    # Calculate time from baseline for all datasets
-    ptau = map_time_from_baseline(ptau, earliest_baseline)
-    pet = map_time_from_baseline(pet, earliest_baseline)
-    demo = map_time_from_baseline(demo, earliest_baseline)
-    dx = map_time_from_baseline(dx, earliest_baseline)
-
-    # Filter to valid gender codes (1=male, 2=female)
-    print(f"starting shape of demographics:, {demo.shape}")
-    demo = demo[demo.PTGENDER.isin([1, 2])]
-    print(f"filtering by sex, {demo.shape}")
-
-    # Select core demographic variables and remove duplicates
-    demo = demo.loc[:, ["RID", "PTGENDER", "PTDOB", "PTEDUCAT"]].drop_duplicates()
-    print(f"dropping demographics duplicates {demo.shape}")
-    # Handle duplicate RIDs with missing education
-    demo = demo[demo.PTEDUCAT.notnull()]
-    print(f"removing rows with no education {demo.shape}")
-    # For remaining duplicates, take mean of education values
-    demo = demo.groupby(["RID", "PTGENDER", "PTDOB"], as_index=False)["PTEDUCAT"].mean()
-
-    # Identify cases (subjects who developed dementia)
-    # Case definition: DIAGNOSIS=3 (Dementia) or other dementia diagnosis (DXOTHDEM=1) or AD diagnosis (DXAD=1)
-    case_dx = dx[(dx.DIAGNOSIS == 3) | (dx.DXOTHDEM == 1) | (dx.DXAD == 1)]
-    case_dx_first = case_dx.drop_duplicates(subset=["RID"], keep="first")
-    print(f"number of unique subjects in case_dx_first:, {case_dx_first.RID.nunique()}")
-
-    # Process ptau measurements for cases
-    ptau_case_df = []
-    # pet_case_df = []
-
-    n_remove = 0
-    # For each case subject
-    for c in case_dx_first.RID.unique():
-        c_ptau = ptau[ptau.RID == c]
-        c_pet = pet[pet.RID == c]
-        c_first_dx = case_dx_first[case_dx_first.RID == c]
-
-        # Only include ptau measurements and PET scans before diagnosis
-        c_ptau_before_dx = c_ptau[c_ptau["EXAMDATE"] < c_first_dx["EXAMDATE"].values[0]]
-        # c_pet_before_dx = c_pet[c_pet["EXAMDATE"] < c_first_dx["EXAMDATE"].values[0]]
-        if c_ptau_before_dx.shape[0] == 0:  # or c_pet_before_dx.shape[0] == 0:
-            n_remove += 1
-            continue
+        # Set save path based on amyloid positive subsetting
+        if subset_amyloid_positive:
+            save_path = f"../../tidy_data/ADNI/{outcome}_outcome/amyloid_positive/"
+            pet = pet[pet.AMYLOID_STATUS_COMPOSITE_REF == 1]
         else:
-            # Add time-to-event information
-            c_ptau = c_ptau.merge(
-                c_first_dx[["RID", "visit_to_years"]], on="RID", how="left"
-            )
-            c_ptau.rename({"visit_to_years_x": "visit_to_years"}, axis=1, inplace=True)
-            c_ptau.rename({"visit_to_years_y": "time_to_event"}, axis=1, inplace=True)
-            ptau_case_df.append(c_ptau)
-            # pet_case_df.append(c_pet)
-    print(
-        f"Number of cases removed due to no pTau measurements or PET scans before diagnosis: {n_remove}"
-    )
+            save_path = f"../../tidy_data/ADNI/{outcome}_outcome/"
+        os.makedirs(save_path, exist_ok=True)
 
-    # Combine all case PET data
-    ptau_case_df = pd.concat(ptau_case_df, axis=0).reset_index(drop=True)
-    # pet_case_df = pd.concat(pet_case_df, axis=0).reset_index(drop=True)
-    # Process control subjects (those who never developed dementia)
-    ptau_control_df = ptau[~ptau.RID.isin(case_dx_first.RID.unique())]
-    # pet_control_df = pet[~pet.RID.isin(case_dx_first.RID.unique())]
+        # Process ptau data
+        ptau = ptau_df.copy()
+        print(f"starting shape of ptau:, {ptau.shape}")
+        print(f"number of unique subjects in ptau:, {ptau.RID.nunique()}")
+        ptau.EXAMDATE = pd.to_datetime(
+            ptau.EXAMDATE, format="%Y-%m-%d", errors="coerce"
+        )
 
-    # exclusions for controls
-    exclusions = dx[
-        (dx.DIAGNOSIS > 1)
-        | (dx.DXMCI == 1)
-        | (dx.DXMPTR2 == 1)
-        | (dx.DXMPTR5 == 1)
-        | (dx.DXMPTR6 == 0)
-        | (dx.DXPARK == 1)
-        | (dx.DXPATYP == 1)
-    ]
-    exclusions = exclusions[exclusions.RID.isin(ptau_control_df.RID)]
-    # Remove excluded subjects from control group
-    print(f"Number of controls (before exclusions): {ptau_control_df.RID.nunique()}")
-    print(f"Number of excluded subjects: {exclusions.RID.nunique()}")
-    ptau_control_df = ptau_control_df[~ptau_control_df.RID.isin(exclusions.RID)]
-    # pet_control_df = pet_control_df[~pet_control_df.RID.isin(exclusions.RID)]
-    # Add time-to-event information for controls (time to last visit)
-    ptau_control_df = ptau_control_df.merge(
-        latest_date[["RID", "visit_to_years"]], on="RID", how="left"
-    )
-    ptau_control_df.rename({"visit_to_years_x": "visit_to_years"}, axis=1, inplace=True)
-    ptau_control_df.rename({"visit_to_years_y": "time_to_event"}, axis=1, inplace=True)
+        # Process PET data
+        pet.rename({"SCANDATE": "EXAMDATE"}, axis=1, inplace=True)
+        pet.EXAMDATE = pd.to_datetime(pet.EXAMDATE, format="%Y-%m-%d", errors="coerce")
+        pet = pet.iloc[:, :20]  # Keep only first 20 columns
+        print(f"starting shape of pet:, {pet.shape}")
+        print(f"number of unique subjects in pet:, {pet.RID.nunique()}")
 
-    # Combine case and control data
-    print(f"case data shape: {ptau_case_df.shape}")
-    print(f"control data shape: {ptau_control_df.shape}")
-    print(f"number of unique subjects in case data: {ptau_case_df.RID.nunique()}")
-    print(f"number of unique subjects in control data: {ptau_control_df.RID.nunique()}")
-    ptau = pd.concat([ptau_case_df, ptau_control_df], axis=0).reset_index(drop=True)
-    ptau["label"] = [1] * ptau_case_df.shape[0] + [0] * ptau_control_df.shape[0]
-    print(f"ptau.RID.nunique(): {ptau.RID.nunique()}")
+        # Process diagnosis data
+        dx = dx_df[dx_df.EXAMDATE.notna()]  # Remove rows with missing exam dates
+        dx.EXAMDATE = pd.to_datetime(dx.EXAMDATE, format="%Y-%m-%d", errors="coerce")
+        dx.sort_values(by=["RID", "EXAMDATE"], inplace=True)
 
-    # Add demographic information
-    ptau = ptau.merge(
-        demo[["RID", "PTGENDER", "PTDOB", "PTEDUCAT"]].drop_duplicates(),
-        on="RID",
-        how="left",
-    )
+        # Process demographic data
+        demo = demo_df.rename({"VISDATE": "EXAMDATE"}, axis=1)
+        demo.EXAMDATE = pd.to_datetime(
+            demo.EXAMDATE, format="%Y-%m-%d", errors="coerce"
+        )
 
-    # Calculate age at examination
-    ptau["PTDOB"] = pd.to_datetime(ptau["PTDOB"], format="%m/%Y")
-    ptau["EXAMDATE"] = pd.to_datetime(ptau["EXAMDATE"])
-    ptau["age"] = ptau["EXAMDATE"].dt.year - ptau["PTDOB"].dt.year
+        # Find common IDs between PET and ptau data
+        ptau_pet_common_ids = set(ptau.RID)  # & set(pet.RID)
+        print(f"Number of ptau subjects with PET data: {len(ptau_pet_common_ids)}")
 
-    # Add APOE genotype information
-    ptau = ptau.merge(apoe_df[["RID", "GENOTYPE"]], on="RID", how="left")
+        # Filter all datasets to include only subjects with both PET and ptau data
+        ptau = ptau[ptau.RID.isin(ptau_pet_common_ids)].reset_index(drop=True)
+        pet = pet[pet.RID.isin(ptau_pet_common_ids)].reset_index(drop=True)
+        demo = demo[demo.RID.isin(ptau_pet_common_ids)].reset_index(drop=True)
+        dx = dx[dx.RID.isin(ptau_pet_common_ids)].reset_index(drop=True)
 
-    ptau.rename(
-        columns={"RID": "id", "PTEDUCAT": "educ", "pT217_F": "ptau"}, inplace=True
-    )
+        # Find earliest baseline visit and latest visit dates
+        earliest_baseline = find_first_or_last_visit(
+            [ptau, pet, demo, dx], first_or_last="first"
+        )
+        latest_date = find_first_or_last_visit(
+            [ptau, pet, demo, dx], first_or_last="last"
+        )
+        latest_date = map_time_from_baseline(latest_date, earliest_baseline)
 
-    ptau.GENOTYPE.replace({"2/3": "E2_carrier", "2/2": "E2_carrier"}, inplace=True)
-    print(ptau.GENOTYPE.value_counts())
+        # Calculate time from baseline for all datasets
+        ptau = map_time_from_baseline(ptau, earliest_baseline)
+        pet = map_time_from_baseline(pet, earliest_baseline)
+        demo = map_time_from_baseline(demo, earliest_baseline)
+        dx = map_time_from_baseline(dx, earliest_baseline)
 
-    data = ptau
-    fold_assignments = create_stratified_folds(data)
-    val_sets = []
+        # Filter to valid gender codes (1=male, 2=female)
+        print(f"starting shape of demographics:, {demo.shape}")
+        demo = demo[demo.PTGENDER.isin([1, 2])]
+        print(f"filtering by sex, {demo.shape}")
 
-    for fold in range(5):
-        # Process the fold
-        train_set, val_set = process_fold(data, "id", fold_assignments, fold)
+        # Select core demographic variables and remove duplicates
+        demo = demo.loc[:, ["RID", "PTGENDER", "PTDOB", "PTEDUCAT"]].drop_duplicates()
+        print(f"dropping demographics duplicates {demo.shape}")
+        # Handle duplicate RIDs with missing education
+        demo = demo[demo.PTEDUCAT.notnull()]
+        print(f"removing rows with no education {demo.shape}")
+        # For remaining duplicates, take mean of education values
+        demo = demo.groupby(["RID", "PTGENDER", "PTDOB"], as_index=False)[
+            "PTEDUCAT"
+        ].mean()
 
-        # print overlapping BIDs between training and validation sets
-        train_bids = set(train_set["id"])
-        val_bids = set(val_set["id"])
-        overlap = train_bids.intersection(val_bids)
-        print(f"  Overlapping BIDs: {len(overlap)}\n")
+        # Identify cases (subjects who developed dementia)
+        # Case definition: DIAGNOSIS=3 (Dementia) or other dementia diagnosis (DXOTHDEM=1) or AD diagnosis (DXAD=1)
+        if outcome == "allcausedementia":
+            case_dx = dx[(dx.DIAGNOSIS == 3) | (dx.DXOTHDEM == 1) | (dx.DXAD == 1)]
+        elif outcome == "alzheimers":
+            case_dx = dx[dx.DXAD == 1]
+        case_dx_first = case_dx.drop_duplicates(subset=["RID"], keep="first")
+        print(
+            f"Number of unique subjects in case_dx_first for {outcome} outcome:, {case_dx_first.RID.nunique()}"
+        )
 
-        # Save datasets
-        train_set.to_parquet(f"{save_path}/train_{fold}.parquet")
-        val_set.to_parquet(f"{save_path}/val_{fold}.parquet")
+        # Process ptau measurements for cases
+        ptau_case_df = []
+        # pet_case_df = []
 
-    depression = format_data(depression_path, earliest_baseline)
-    depression = depression[depression.RID.isin(earliest_baseline.RID)]
-    depression = map_time_from_baseline(depression, earliest_baseline)
-    depression.to_parquet(f"{save_path}/depression.parquet")
+        n_remove = 0
+        # For each case subject
+        for c in case_dx_first.RID.unique():
+            c_ptau = ptau[ptau.RID == c]
+            # c_pet = pet[pet.RID == c]
+            c_first_dx = case_dx_first[case_dx_first.RID == c]
 
-    medhist = format_data(medhist_path, earliest_baseline)
-    medhist = medhist[medhist.RID.isin(earliest_baseline.RID)]
-    medhist = map_time_from_baseline(medhist, earliest_baseline)
-    medhist.to_parquet(f"{save_path}/medhist.parquet")
+            # Only include ptau measurements and PET scans before diagnosis
+            c_ptau_before_dx = c_ptau[
+                c_ptau["EXAMDATE"] < c_first_dx["EXAMDATE"].values[0]
+            ]
+            # c_pet_before_dx = c_pet[c_pet["EXAMDATE"] < c_first_dx["EXAMDATE"].values[0]]
+            if c_ptau_before_dx.shape[0] == 0:  # or c_pet_before_dx.shape[0] == 0:
+                n_remove += 1
+                continue
+            else:
+                # Add time-to-event information
+                c_ptau = c_ptau.merge(
+                    c_first_dx[["RID", "visit_to_years"]], on="RID", how="left"
+                )
+                c_ptau.rename(
+                    {"visit_to_years_x": "visit_to_years"}, axis=1, inplace=True
+                )
+                c_ptau.rename(
+                    {"visit_to_years_y": "time_to_event"}, axis=1, inplace=True
+                )
+                ptau_case_df.append(c_ptau)
+                # pet_case_df.append(c_pet)
+        print(
+            f"Number of cases removed due to no pTau measurements or PET scans before diagnosis: {n_remove}"
+        )
 
-    neuroexm = format_data(neuroexm_path, earliest_baseline)
-    neuroexm = neuroexm[neuroexm.RID.isin(earliest_baseline.RID)]
-    neuroexm = map_time_from_baseline(neuroexm, earliest_baseline)
-    neuroexm.to_parquet(f"{save_path}/neuroexm.parquet")
+        # Combine all case PET data
+        ptau_case_df = pd.concat(ptau_case_df, axis=0).reset_index(drop=True)
+        # pet_case_df = pd.concat(pet_case_df, axis=0).reset_index(drop=True)
+        # Process control subjects (those who never developed dementia)
+        ptau_control_df = ptau[~ptau.RID.isin(case_dx_first.RID.unique())]
+        # pet_control_df = pet[~pet.RID.isin(case_dx_first.RID.unique())]
 
-    adni_nightingale = format_data(adni_nightingale_path, earliest_baseline)
-    adni_nightingale = adni_nightingale[
-        adni_nightingale.RID.isin(earliest_baseline.RID)
-    ]
-    adni_nightingale = map_time_from_baseline(adni_nightingale, earliest_baseline)
-    adni_nightingale = adni_nightingale.loc[:, ["RID", "visit_to_years", "LDL_C"]]
-    # adni_nightingale.GLN = adni_nightingale.GLN.astype(float)
-    # adni_nightingale.PYRUVATE = adni_nightingale.PYRUVATE.astype(float)
-    # adni_nightingale.CREATININE = adni_nightingale.CREATININE.astype(float)
-    adni_nightingale.to_parquet(f"{save_path}/adni_nightingale.parquet")
+        # exclusions for controls
+        exclusions = dx[
+            (dx.DIAGNOSIS > 1)
+            | (dx.DXMCI == 1)
+            | (dx.DXMPTR2 == 1)
+            | (dx.DXMPTR5 == 1)
+            | (dx.DXMPTR6 == 0)
+            | (dx.DXPARK == 1)
+            | (dx.DXPATYP == 1)
+        ]
+        exclusions = exclusions[exclusions.RID.isin(ptau_control_df.RID)]
+        # Remove excluded subjects from control group
+        print(
+            f"Number of controls (before exclusions): {ptau_control_df.RID.nunique()}"
+        )
+        print(f"Number of excluded subjects: {exclusions.RID.nunique()}")
+        ptau_control_df = ptau_control_df[~ptau_control_df.RID.isin(exclusions.RID)]
+        # pet_control_df = pet_control_df[~pet_control_df.RID.isin(exclusions.RID)]
+        # Add time-to-event information for controls (time to last visit)
+        ptau_control_df = ptau_control_df.merge(
+            latest_date[["RID", "visit_to_years"]], on="RID", how="left"
+        )
+        ptau_control_df.rename(
+            {"visit_to_years_x": "visit_to_years"}, axis=1, inplace=True
+        )
+        ptau_control_df.rename(
+            {"visit_to_years_y": "time_to_event"}, axis=1, inplace=True
+        )
 
-    modhach = format_data(modhach_path, earliest_baseline)
-    modhach = modhach[modhach.RID.isin(earliest_baseline.RID)]
-    modhach = map_time_from_baseline(modhach, earliest_baseline)
-    modhach.to_parquet(f"{save_path}/modhach.parquet")
+        # Combine case and control data
+        print(f"case data shape: {ptau_case_df.shape}")
+        print(f"control data shape: {ptau_control_df.shape}")
+        print(f"number of unique subjects in case data: {ptau_case_df.RID.nunique()}")
+        print(
+            f"number of unique subjects in control data: {ptau_control_df.RID.nunique()}"
+        )
+        ptau = pd.concat([ptau_case_df, ptau_control_df], axis=0).reset_index(drop=True)
+        ptau["label"] = [1] * ptau_case_df.shape[0] + [0] * ptau_control_df.shape[0]
+        print(f"ptau.RID.nunique(): {ptau.RID.nunique()}")
 
-    vitals = format_data(vitals_path, earliest_baseline)
-    vitals = vitals[vitals.RID.isin(earliest_baseline.RID)]
-    # VSWEIGHT	1a. Weight
-    # VSWTUNIT	1b. Weight Units - 1=pounds, 2=kilograms
-    # VSHEIGHT	2a. Height
-    # VSHTUNIT	2b. Height Units - 1=inches, 2=centimeters
+        # Add demographic information
+        ptau = ptau.merge(
+            demo[["RID", "PTGENDER", "PTDOB", "PTEDUCAT"]].drop_duplicates(),
+            on="RID",
+            how="left",
+        )
 
-    # convert all heights to meters, whether in inches or centimeters
-    vitals["height_m"] = vitals["VSHEIGHT"]
-    vitals.loc[vitals["VSHTUNIT"] == 1, "height_m"] = vitals["VSHEIGHT"] * 0.0254
-    vitals.loc[vitals["VSHTUNIT"] == 2, "height_m"] = vitals["VSHEIGHT"] / 100
+        # Calculate age at examination
+        ptau["PTDOB"] = pd.to_datetime(ptau["PTDOB"], format="%m/%Y")
+        ptau["EXAMDATE"] = pd.to_datetime(ptau["EXAMDATE"])
+        ptau["age"] = ptau["EXAMDATE"].dt.year - ptau["PTDOB"].dt.year
 
-    # convert all weights to kilograms, whether in pounds or kilograms
-    vitals["weight_kg"] = vitals["VSWEIGHT"]
-    vitals.loc[vitals["VSWTUNIT"] == 1, "weight_kg"] = vitals["VSWEIGHT"] * 0.453592
-    vitals.loc[vitals["VSWTUNIT"] == 2, "weight_kg"] = vitals["VSWEIGHT"]
+        # Add APOE genotype information
+        ptau = ptau.merge(apoe_df[["RID", "GENOTYPE"]], on="RID", how="left")
 
-    vitals["BMI"] = vitals["weight_kg"] / (vitals["height_m"] ** 2)
-    vitals = map_time_from_baseline(vitals, earliest_baseline)
-    vitals.to_parquet(f"{save_path}/vitals.parquet")
+        ptau.rename(
+            columns={"RID": "id", "PTEDUCAT": "educ", "pT217_F": "ptau"}, inplace=True
+        )
+
+        ptau.GENOTYPE.replace({"2/3": "E2_carrier", "2/2": "E2_carrier"}, inplace=True)
+        print(ptau.GENOTYPE.value_counts())
+
+        data = ptau
+        fold_assignments = create_stratified_folds(data)
+        val_sets = []
+
+        for fold in range(5):
+            # Process the fold
+            train_set, val_set = process_fold(data, "id", fold_assignments, fold)
+
+            # print overlapping BIDs between training and validation sets
+            train_bids = set(train_set["id"])
+            val_bids = set(val_set["id"])
+            overlap = train_bids.intersection(val_bids)
+            print(f"  Overlapping BIDs: {len(overlap)}\n")
+
+            # Save datasets
+            train_set.to_parquet(f"{save_path}/train_{fold}.parquet")
+            val_set.to_parquet(f"{save_path}/val_{fold}.parquet")
+
+        depression = format_data(depression_path, earliest_baseline)
+        depression = depression[depression.RID.isin(earliest_baseline.RID)]
+        depression = map_time_from_baseline(depression, earliest_baseline)
+        depression.to_parquet(f"{save_path}/depression.parquet")
+
+        medhist = format_data(medhist_path, earliest_baseline)
+        medhist = medhist[medhist.RID.isin(earliest_baseline.RID)]
+        medhist = map_time_from_baseline(medhist, earliest_baseline)
+        medhist.to_parquet(f"{save_path}/medhist.parquet")
+
+        neuroexm = format_data(neuroexm_path, earliest_baseline)
+        neuroexm = neuroexm[neuroexm.RID.isin(earliest_baseline.RID)]
+        neuroexm = map_time_from_baseline(neuroexm, earliest_baseline)
+        neuroexm.to_parquet(f"{save_path}/neuroexm.parquet")
+
+        adni_nightingale = format_data(adni_nightingale_path, earliest_baseline)
+        adni_nightingale = adni_nightingale[
+            adni_nightingale.RID.isin(earliest_baseline.RID)
+        ]
+        adni_nightingale = map_time_from_baseline(adni_nightingale, earliest_baseline)
+        adni_nightingale = adni_nightingale.loc[:, ["RID", "visit_to_years", "LDL_C"]]
+        # adni_nightingale.GLN = adni_nightingale.GLN.astype(float)
+        # adni_nightingale.PYRUVATE = adni_nightingale.PYRUVATE.astype(float)
+        # adni_nightingale.CREATININE = adni_nightingale.CREATININE.astype(float)
+        adni_nightingale.to_parquet(f"{save_path}/adni_nightingale.parquet")
+
+        modhach = format_data(modhach_path, earliest_baseline)
+        modhach = modhach[modhach.RID.isin(earliest_baseline.RID)]
+        modhach = map_time_from_baseline(modhach, earliest_baseline)
+        modhach.to_parquet(f"{save_path}/modhach.parquet")
+
+        vitals = format_data(vitals_path, earliest_baseline)
+        vitals = vitals[vitals.RID.isin(earliest_baseline.RID)]
+        # VSWEIGHT	1a. Weight
+        # VSWTUNIT	1b. Weight Units - 1=pounds, 2=kilograms
+        # VSHEIGHT	2a. Height
+        # VSHTUNIT	2b. Height Units - 1=inches, 2=centimeters
+
+        # convert all heights to meters, whether in inches or centimeters
+        vitals["height_m"] = vitals["VSHEIGHT"]
+        vitals.loc[vitals["VSHTUNIT"] == 1, "height_m"] = vitals["VSHEIGHT"] * 0.0254
+        vitals.loc[vitals["VSHTUNIT"] == 2, "height_m"] = vitals["VSHEIGHT"] / 100
+
+        # convert all weights to kilograms, whether in pounds or kilograms
+        vitals["weight_kg"] = vitals["VSWEIGHT"]
+        vitals.loc[vitals["VSWTUNIT"] == 1, "weight_kg"] = vitals["VSWEIGHT"] * 0.453592
+        vitals.loc[vitals["VSWTUNIT"] == 2, "weight_kg"] = vitals["VSWEIGHT"]
+
+        vitals["BMI"] = vitals["weight_kg"] / (vitals["height_m"] ** 2)
+        vitals = map_time_from_baseline(vitals, earliest_baseline)
+        vitals.to_parquet(f"{save_path}/vitals.parquet")

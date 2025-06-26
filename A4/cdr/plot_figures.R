@@ -99,7 +99,7 @@ get_colors_labels <- function() {
 }
 
 # time-dependent plots
-td_plot <- function(summary_df, all_results_df=NULL, model_names, metric = "auc", all_models = FALSE) {
+td_plot <- function(summary_df, all_results_df=NULL, model_names, metric = "auc", all_models = FALSE, eval_times=NULL) {
   # Filter models if all_models is FALSE
   if (!all_models) {
     summary_df <- summary_df %>%
@@ -172,11 +172,19 @@ td_plot <- function(summary_df, all_results_df=NULL, model_names, metric = "auc"
                     labels = model_labels,
                     name = "Model") +
   {if (metric == "auc") {
-    list(
-      scale_y_continuous(breaks = seq(0.3, 1, by = 0.1)),
-      scale_x_continuous(breaks = seq(1, 10, 1)),
-      geom_hline(yintercept = 0.5, linetype = "dotted", color = "gray50")
-    )
+    if (is.null(eval_times)) {
+      list(
+        scale_y_continuous(breaks = seq(0.3, 1, by = 0.1)),
+        scale_x_continuous(breaks = seq(1, 10, 1)),
+        geom_hline(yintercept = 0.5, linetype = "dotted", color = "gray50")
+      )
+    } else {
+      list(
+        scale_y_continuous(breaks = seq(0.3, 1, by = 0.1)),
+        scale_x_continuous(breaks = seq(1, max(eval_times), 1)),
+        geom_hline(yintercept = 0.5, linetype = "dotted", color = "gray50")
+      )
+    }
   }} +
   theme_bw(base_size = 14) +
   theme(
@@ -896,7 +904,8 @@ plot_auc_over_time <- function(auc_summary, model_names, eval_times=NULL) {
   auc_plot <- td_plot(agg_sub_auc_summary,
                       sub_auc_summary,
                       model_names,
-                      metric = "auc"
+                      metric = "auc",
+                      eval_times = eval_times
                       )
 
   return(auc_plot)
@@ -1059,7 +1068,8 @@ plot_brier_over_time <- function(metrics_list, model_names, eval_times=NULL) {
   brier_plot <- td_plot(brier_summary,
                         model_names=model_names,
                         metric = "brier",
-                        all_models = F)
+                        all_models = F,
+                        eval_times = eval_times)
 
   return(brier_plot)
 }
@@ -1088,7 +1098,8 @@ plot_concordance_over_time <- function(metrics_list, model_names) {
   concordance_plot <- td_plot(concordance_summary,
                               concordance_results,
                               model_names=model_names,
-                              metric = "concordance")
+                              metric = "concordance",
+                              eval_times = eval_times)
 
   return(concordance_plot)
 }
@@ -1118,7 +1129,7 @@ histogram_pvals <- function(results_table) {
   return(hist_pvalues)
 }
 
-plot_SeSpPPVNPV <- function(data, metric) {
+plot_SeSpPPVNPV <- function(data, metric, eval_times=NULL) {
 
   color_label_info <- get_colors_labels()
   colors <- color_label_info$colors
@@ -1146,6 +1157,13 @@ plot_SeSpPPVNPV <- function(data, metric) {
     geom_point(aes(color = model), fill = "white", size = 3, shape = 21) +
     scale_color_manual(values = colors, labels = labels) +
     scale_fill_manual(values = colors, labels = labels) +
+    list(
+      if (!is.null(eval_times)) {
+        scale_x_continuous(breaks = eval_times)
+      } else {
+        scale_x_continuous()
+      }
+    ) +
     labs(
       x = "Time (years)",
       y = y_label,
@@ -1248,10 +1266,10 @@ save_all_figures <- function(model_names, models_list, metrics_list, train_df_l,
   write_parquet(df_sespppvnpv, paste0(main_path, "sespppvnpv_summary", filename_addon, ".parquet"))
 
   # Create individual plots
-  sensitivity_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "sensitivity")
-  specificity_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "specificity")
-  ppv_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "ppv")
-  npv_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "npv")
+  sensitivity_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "sensitivity", eval_times=eval_times)
+  specificity_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "specificity", eval_times=eval_times)
+  ppv_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "ppv", eval_times=eval_times)
+  npv_plot <- plot_SeSpPPVNPV(df_sespppvnpv, "npv", eval_times=eval_times)
 
   ggsave(
     paste0(main_path, "sensitivity_plot", filename_addon, ".pdf"),

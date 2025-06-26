@@ -1,6 +1,10 @@
 import pandas as pd
 import numpy as np
-import df_utils
+import rfb.code.ukb_func.df_utils as df_utils
+
+"""
+dementia_df: randy/proj_idp/tidy_data/acd/allcausedementia.parquet
+"""
 
 
 def get_first_diagnosis(dementia_df):
@@ -155,7 +159,7 @@ def apoe_alleles(df, alleles, genotype=False):
             (alleles.rs429358_T == 0) & (alleles.rs7412_C == 2), "apoe_polymorphism"
         ] = "e2/e2"
 
-    else:
+    else: # count e4 alleles
         alleles.loc[(alleles.rs429358_T == 0), "apoe_polymorphism"] = 0
         alleles.loc[(alleles.rs429358_T == 1), "apoe_polymorphism"] = 1
         alleles.loc[(alleles.rs429358_T == 2), "apoe_polymorphism"] = 2
